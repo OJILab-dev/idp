@@ -78,12 +78,16 @@ CREATE TABLE challenges    (challenge TEXT PRIMARY KEY, user_id TEXT REFERENCES 
                             session_token_hash TEXT,         -- 本人による追加と失効のときだけ持つ（sessions.token_hash）
                             target_credential_id TEXT,       -- 本人による失効のときだけ持つ（失効させる credentials.id）
                             expires_at INTEGER NOT NULL);
+-- セッションの根拠はサインインに使ったパスキーなので、パスキーを失効させるとセッションも連鎖で消える。
+-- 認可コードは発行したセッションに紐付け、セッションが消えれば未使用のコードも連鎖で消える（authentication.md 参照）
 CREATE TABLE sessions      (token_hash TEXT PRIMARY KEY,
                             user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                            credential_id TEXT NOT NULL REFERENCES credentials(id) ON DELETE CASCADE,  -- サインインに使ったパスキー
                             auth_time INTEGER NOT NULL, expires_at INTEGER NOT NULL);  -- auth_time から 1 時間。延長しない
 CREATE TABLE auth_codes    (code_hash TEXT PRIMARY KEY,
                             client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
                             user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                            session_token_hash TEXT NOT NULL REFERENCES sessions(token_hash) ON DELETE CASCADE,  -- 発行の根拠になったセッション
                             redirect_uri TEXT NOT NULL, code_challenge TEXT NOT NULL, nonce TEXT, scope TEXT,
                             auth_time INTEGER NOT NULL, expires_at INTEGER NOT NULL);
 -- サインインを挟む間だけ保持する、検証済みの認可リクエスト（15 分。チャレンジの 10 分より先に切れないようにする）。ID は __Host- Cookie でブラウザに渡す
@@ -105,6 +109,9 @@ CREATE INDEX authorize_requests_expires_at ON authorize_requests (expires_at);
 -- ユーザー単位の削除（session_revoke、user_disable、passkey_revoke）も、テーブル全体を走査しないようにする（理由は上と同じ）
 CREATE INDEX sessions_user_id    ON sessions (user_id);
 CREATE INDEX credentials_user_id ON credentials (user_id);
+-- 外部キーの連鎖（パスキーの失効 → セッション → 認可コード）も、テーブル全体を走査しないようにする
+CREATE INDEX sessions_credential_id        ON sessions (credential_id);
+CREATE INDEX auth_codes_session_token_hash ON auth_codes (session_token_hash);
 
 -- アクセス判定の唯一の定義
 CREATE VIEW effective_access AS
