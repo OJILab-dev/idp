@@ -17,14 +17,9 @@ CREATE TABLE users (
   id             TEXT PRIMARY KEY,        -- 不変のランダム ID（OIDC の sub）。UUIDv4 で、再利用しない
   kind           TEXT NOT NULL DEFAULT 'user' CHECK (kind = 'user'),
   user_handle    BLOB NOT NULL UNIQUE,    -- WebAuthn の user.id。64 バイトの乱数で、個人情報を含めない
-  email          TEXT,                    -- 任意。管理者だけが設定する
-  email_key      TEXT UNIQUE,             -- ASCII 小文字化した検索キー。NULL 同士は重複とみなさない
-  email_verified INTEGER NOT NULL DEFAULT 0, -- 管理者が明示的に確認したときだけ 1
-  name           TEXT NOT NULL,
+  name           TEXT NOT NULL,           -- 表示名。本名でなくてよい。メールアドレスなどの個人情報は持たない
   disabled       INTEGER NOT NULL DEFAULT 0,
   created_at     INTEGER NOT NULL,        -- UNIX 秒
-  CHECK ((email IS NULL) = (email_key IS NULL)),
-  CHECK (email_verified = 0 OR email IS NOT NULL), -- アドレスのない「確認済み」を作らない
   FOREIGN KEY (id, kind) REFERENCES principals (id, kind) ON DELETE CASCADE
 );
 CREATE TABLE credentials (             -- WebAuthn 仕様どおりの値をそのまま保存

@@ -11,7 +11,6 @@ Go が書いた値を TypeScript が読むので、両者の間の取り決め�
 | ID | 利用者の ID（`users.id`、OIDC の `sub`）は UUIDv4（RFC 9562）を小文字のハイフン区切りで書く。OIDC Core §2 は `sub` の形式を定めず（発行者の中で一意、再割り当てしない、255 文字以内の ASCII、大文字と小文字を区別）、RFC 9562 §8 はセキュリティに関わる用途の UUID には v4 を使うべき（SHOULD）としている。グループの ID（`groups.id`）も同じ形にし、`principals.id` で利用者の ID と同じ名前空間を共有する。client ID と WebAuthn の credential ID はこの対象外 |
 | 時刻 | UNIX 秒の整数 |
 | JSON カラム | redirect URI は JSON 配列の文字列で持つ。グループの所属はテーブル（`group_members`）で持つ |
-| メールアドレスの検索キー | ASCII の小文字化 |
 | パスキー | WebAuthn 仕様どおりの値（COSE 公開鍵の生バイトなど） |
 | 署名鍵 | JWK で Worker Secret に置く。運用者が生成し、Worker が読む |
 | 署名鍵の種類 | RS256 用の RSA 鍵で、モジュラスは 2048 bit。RFC 7518 §3.3 は 2048 bit 以上を求めており、無料枠の CPU 時間に収めるため下限の 2048 bit にする |

@@ -4,7 +4,7 @@
 
 | 種類 | 形式 | 主な中身 | 有効期限 |
 | --- | --- | --- | --- |
-| ID トークン | JWT（`typ: JWT`、RS256） | 常に `iss`、`sub`、`aud`（client\_id）、`exp`、`iat`、`auth_time`、`nonce`（要求時）。スコープに応じて `email` と `email_verified`（email）、`name`（profile） | 5 分 |
+| ID トークン | JWT（`typ: JWT`、RS256） | 常に `iss`、`sub`、`aud`（client\_id）、`exp`、`iat`、`auth_time`、`nonce`（要求時）。スコープに応じて `name`（profile） | 5 分 |
 | アクセストークン | JWT（`typ: at+jwt`、RS256） | `iss`、`sub`、`aud`（issuer）、`client_id`、`scope`、`exp`、`iat`、`jti` | 5 分 |
 | 認可コード | 不透明な値（ハッシュ保存） | client、redirect\_uri、PKCE、nonce に紐付け | 60 秒 |
 | セッション | `__Host-` Cookie（ハッシュ保存） | ユーザー、`auth_time` | サインインから 1 時間（絶対期限。延長しない） |
@@ -20,8 +20,8 @@
 - 複数の client が同じ IdP を使っても、どの client 向けのトークンかは `client_id` クレームで表す。`/userinfo` はこれを使って、その client に対するアクセス可否を判定する。
 - 将来 API（認可レベル 3）を足すときは、resource ごとに登録した URI を `aud` にし、issuer あてのトークンでは API を呼べないようにする。
 - クレームは要求されたスコープの分だけ返し、ID トークンにも同じ範囲だけを入れる。独自のクレーム（グループなど）は v1 では発行しない。
-- メールアドレスは任意。持たないユーザーには、`email` スコープが要求されても `email` と `email_verified` を返さない（null や空文字を入れずにクレームごと省く。OIDC Core §5.3.2）。
-- `email_verified` は既定で `false`。管理者が本人のアドレスであることを確認し、`idpctl` で明示的に指定したときだけ `true` にし、監査ログに記録する。OIDC の定義では、`true` は「OP がそのアドレスを本人が管理していることを確認する手段をとった」ことを意味するため。
+- メールアドレスは持たない。IdP は連絡にも復旧にも識別にもメールアドレスを使わないので、残る用途は RP への受け渡しだけになる。そのために他人の個人情報を保管するより、メールアドレスを必要とする RP が本人から必要な分だけ集めるほうがよい。`email_verified` を誤って扱うことによるアカウント乗っ取りの経路も、持たなければ生じない。
+- `email` スコープは扱わない。要求されてもエラーにはせず無視し、`email` と `email_verified` のクレームは返さない。認可サーバーは要求されたスコープを一部無視してよく、発行したスコープが要求と異なるときはトークンレスポンスに `scope` を含める（RFC 6749 §3.3、§5.1）。既定で `openid email profile` を要求する RP が多いので、エラーにすると、メールアドレスなしで動く RP までつながらなくなる。
 - 課金やプランに関する情報はクレームに一切入れない。
 - 署名鍵は RS256 の JWK を Worker Secret に置き、インポートした鍵はモジュールスコープでキャッシュする。ローテーションは current と previous の 2 つの Secret で行い、JWKS には両方の公開鍵を載せる。
 

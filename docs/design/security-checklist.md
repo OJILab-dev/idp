@@ -27,7 +27,7 @@
 - [ ] `/token` と `/userinfo` で、無効化されたユーザーとアクセス可否を再確認する（Pocket ID CVE-2026-43983 の教訓）
 - [ ] `/userinfo` は `typ: at+jwt` かつ `aud` が issuer のトークンだけを受け付け、ID トークンや他の `aud` のトークンは拒否する。トークンの `client_id` に対するアクセス可否も確認する
 - [ ] 未登録の resource や audience を受け付けない（Pocket ID CVE-2026-62662）
-- [ ] メールアドレスは管理者だけが設定し、セルフ変更の機能を作らない。`email_verified` は既定で `false`（Pocket ID CVE-2026-115770、edge-idp 2.2.0 の修正）
+- [ ] メールアドレスを保存しない。`email` スコープを要求されても無視し、`email` と `email_verified` のクレームを返さない。メールアドレスの検証や変更の仕組みそのものを持たないことで、その欠陥の経路をなくす（Pocket ID CVE-2026-115770、edge-idp 2.2.0 の修正）
 
 **パスキー**
 
