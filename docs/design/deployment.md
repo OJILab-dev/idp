@@ -10,6 +10,13 @@
 - リクエストの `Host` ヘッダーから issuer や origin を作らない。`Host` は送信側が自由に書き換えられるため。
 - issuer が未設定、または形式が不正（`https` でない、パスが付いている、ホストが IP アドレスなど）なら、リクエストを処理せずエラーを返す（fail-closed）。
 
+**デプロイの道具**
+
+- Worker のデプロイ、D1 のマイグレーション、break-glass の D1 の操作は、すべて Cloudflare の `cf` CLI で行う。wrangler はどこにも使わない。`cf` は Worker のデプロイ（`cf deploy`。Cloudflare「Deploy your first Worker」）と D1 のマイグレーション（`cf d1 migrations apply`。Cloudflare「Wrangler to cf reference」）を挙げている。
+- `cf` にドキュメント化されたコマンドがない操作は、Cloudflare API かダッシュボードで行い、wrangler で補わない。`cf` で足りるかどうかを実装の前に確かめる項目は[未決事項](open-questions.md)にまとめる。
+- `cf` はベータで、コマンドが安定版の前に変わりうる（Cloudflare「Cloudflare CLI」）。
+- CI では `cf` が `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID` を読む（Cloudflare「Use cf in CI」の「Provide credentials」）。
+
 **ホスト名を変えるときの影響**
 
 ホスト名はデプロイごとに決める値で、設定を変えれば別のホスト名で動かせる。ただし、運用を始めた後に変えると、次のことが仕様上避けられない。

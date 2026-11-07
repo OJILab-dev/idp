@@ -67,6 +67,10 @@
 - [Cloudflare One：Mutual TLS（Access の mTLS、プランと署名アルゴリズム）](https://developers.cloudflare.com/cloudflare-one/access-controls/service-credentials/mutual-tls-authentication/)
 - [Cloudflare CLI（`cf`、ベータ）](https://developers.cloudflare.com/cf/)
 - [cf for Wrangler users（`cf d1 query` はデータベース ID を取る）](https://developers.cloudflare.com/cf/wrangler/)
+- [Wrangler to cf reference（`cf d1 migrations apply`、未対応のコマンド）](https://developers.cloudflare.com/cf/wrangler/reference/)
+- [cf：Deploy your first Worker（`cf deploy`）](https://developers.cloudflare.com/cf/get-started/first-worker/)
+- [Use cf in CI（`CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID`）](https://developers.cloudflare.com/cf/ci/)
+- [API：Get D1 Database（`version`）](https://developers.cloudflare.com/api/resources/d1/subresources/database/methods/get/)
 
 **言語・ライブラリ**
 
