@@ -40,7 +40,7 @@ GitHub Environment: production
 
 ## Environment変数
 
-変数名は、Wrangler、Terraform provider、S3互換backendなどが読む名前に合わせます。
+変数名は、`cf` CLI、Terraform provider、S3互換backendなどが読む名前に合わせます。`cf` は `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID` を読みます（Cloudflare「Use cf in CI」の「Provide credentials」）。
 workflowに値の対応表を重複して持たせないためです。
 
 | Variable | 内容 | Secret |

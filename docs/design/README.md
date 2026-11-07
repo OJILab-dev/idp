@@ -55,7 +55,7 @@ flowchart LR
   end
 
   core["共有コア（packages/core）<br/>規則・検証・SQL・ユースケース"]
-  secret["Worker Secret<br/>署名鍵（RS256 JWK）"]
+  secret["Worker Secret<br/>署名鍵（Ed25519 JWK、RS256 を有効にしたときだけ RSA JWK）"]
   d1[("D1<br/>全状態（APAC に配置）")]
 
   browser --> static
@@ -65,13 +65,14 @@ flowchart LR
   oidc --> secret
   idpctl -->|"HTTPS（mTLS）"| waf
   waf --> adminapi
+  adminapi -->|"discovery（Service Binding）"| oidc
   worker -.->|"利用者向けと共有のモジュールだけ"| core
   admin -.->|"管理系と共有のモジュール"| core
   worker --> d1
   admin --> d1
 ```
 
-ブラウザは静的アセットのページ（サインイン、登録、アカウント）からパスキー API を呼び、`/authorize` と `/logout` にもアクセスする。アカウントページは、サインイン中の本人が自分のパスキーを一覧し、追加し、失効させるためのページで、サインインは常に RP からの `/authorize` を経由する。RP アプリはブラウザを `/authorize` にリダイレクトし、自身は discovery、JWKS、`/token`、`/userinfo` とだけ通信する。署名鍵を使うのは OIDC エンドポイントだけ。`idpctl` は管理者のクライアント証明書で管理用のホスト名に接続し、WAF のカスタムルールを通ったリクエストだけが管理用の Worker に届く。管理用の Worker は証明書を自分でも確かめ直し、フィンガープリントの許可リストで管理者を確定してから操作する。破線は共有コアへの依存で、IdP の Worker は管理系のモジュールに依存しない。ledger や MCP などの拡張も、IdP の Worker の外に足す（[将来拡張](future-extensions.md)参照）。
+ブラウザは静的アセットのページ（サインイン、登録、アカウント）からパスキー API を呼び、`/authorize` と `/logout` にもアクセスする。アカウントページは、サインイン中の本人が自分のパスキーを一覧し、追加し、失効させるためのページで、サインインは常に RP からの `/authorize` を経由する。RP アプリはブラウザを `/authorize` にリダイレクトし、自身は discovery、JWKS、`/token`、`/userinfo` とだけ通信する。署名鍵を使うのは OIDC エンドポイントだけで、トークンは通常 Ed25519 で署名する（RS256 は RSA の鍵を設定したときだけ有効になる任意の機能）。管理用の Worker は署名鍵を持たず、RS256 が有効かどうかを Service Binding で IdP の Worker の discovery から読む。`idpctl` は管理者のクライアント証明書で管理用のホスト名に接続し、WAF のカスタムルールを通ったリクエストだけが管理用の Worker に届く。管理用の Worker は証明書を自分でも確かめ直し、フィンガープリントの許可リストで管理者を確定してから操作する。破線は共有コアへの依存で、IdP の Worker は管理系のモジュールに依存しない。ledger や MCP などの拡張も、IdP の Worker の外に足す（[将来拡張](future-extensions.md)参照）。
 
 ## ドキュメント一覧
 
@@ -84,7 +85,7 @@ flowchart LR
 | [認可](authorization.md) | IdP が持つ認可は「誰がどのアプリを使えるか」だけ。判定の場所と反映の遅れ、ユーザーとグループを分けるレイヤー、管理の関心事 |
 | [操作とリスク](operations-and-risks.md) | IdP を通じてできる行為ごとの目的、悪用や誤りの影響、今の対策と、影響の広さによる分類 |
 | [クライアントの種類](clients.md) | Web アプリ（confidential）とネイティブアプリ・CLI（public）の 2 種類と、新しいアプリのつなぎ方 |
-| [トークン設計](tokens.md) | 短命トークンのみでリフレッシュトークンは発行しない。各トークンの形式と中身、署名鍵のローテーションと生成・バックアップ |
+| [トークン設計](tokens.md) | 短命トークンのみでリフレッシュトークンは発行しない。各トークンの形式と中身、署名アルゴリズム（Ed25519、任意の RS256）、署名鍵のローテーションと生成・バックアップ |
 | [標準準拠](standards-compliance.md) | OIDC・OAuth・JWT・WebAuthn の準拠ポイントと、適合性テストによる確認方法 |
 | [セキュリティ要件チェックリスト](security-checklist.md) | e2e の攻撃ケースとして実装する要件の一覧（実際の CVE 事例付き） |
 | [管理 CLI と管理用の Worker（idpctl）](idpctl.md) | 別ホスト名の管理用の Worker と Go の `idpctl` による管理、mTLS と許可リストによる管理者の確定、IdP が発行する秘密の扱い、break-glass |

@@ -5,14 +5,15 @@ OIDC と WebAuthn は、仕様の MUST だけでなくセキュリティ上の S
 | 規格 | 主な準拠ポイント |
 | --- | --- |
 | OpenID Connect Core 1.0 | 認可コードフロー（`response_type=code`）のみ。`prompt`（`none` / `login`）と `max_age` を正しく扱い、`auth_time` と `nonce` を ID トークンに入れる。クレームは要求されたスコープの分だけ返す |
-| OpenID Connect Discovery 1.0 | `/.well-known/openid-configuration` を公開する。`id_token_signing_alg_values_supported` に RS256 を含め、実装していない機能は載せない。`code_challenge_methods_supported: ["S256"]`（RFC 8414）、`token_endpoint_auth_methods_supported: ["client_secret_basic", "none"]`、`authorization_response_iss_parameter_supported: true`（RFC 9207）を明示する。`scopes_supported` は `openid` と `profile` だけにする |
+| OpenID Connect Discovery 1.0 | `/.well-known/openid-configuration` を公開する。`id_token_signing_alg_values_supported` は設定された署名鍵から導き、既定は `["Ed25519"]`、RS256 を有効にしたデプロイでは `["Ed25519", "RS256"]` にする（RS256 を無効にしている間は §3 から外れる。下の例外を参照）。実装していない機能は載せない。`code_challenge_methods_supported: ["S256"]`（RFC 8414）、`token_endpoint_auth_methods_supported: ["client_secret_basic", "none"]`、`authorization_response_iss_parameter_supported: true`（RFC 9207）を明示する。`scopes_supported` は `openid` と `profile` だけにする |
 | OAuth 2.0（RFC 6749）と Security BCP（RFC 9700） | implicit と password グラントは提供しない。クライアント認証は client\_secret\_basic（RFC 6749 でサーバーに必須の方式）と、public client 向けの none だけにする。redirect URI は完全一致で、例外はネイティブアプリのループバックのポートだけ（RFC 9700 §2.1）。PKCE ダウングレード対策（RFC 9700 §2.1.1）は、`code_challenge` のない認可リクエストを拒否することで満たす |
 | OAuth 2.0 for Native Apps（RFC 8252） | redirect URI の 3 方式（ループバック、カスタムスキーム、https）をすべて受け付ける。client type を登録時に記録し、public client には毎回ユーザーの操作を求める |
 | OAuth 2.0 for Browser-Based Applications（RFC 10017） | ブラウザだけで動く SPA は受け付けず、BFF（confidential client）にしてもらう |
 | PKCE（RFC 7636） | `S256` のみ受け付け、`plain` は拒否する |
 | 認可レスポンスの `iss`（RFC 9207） | 認可レスポンス（エラーレスポンスを含む）に `iss` を付け、mix-up 攻撃を防ぐ |
-| JWT（RFC 7519 / RFC 8725）と JWT アクセストークン（RFC 9068） | `alg` は許可リスト（RS256）で固定し、`typ` で ID トークン（`JWT`）とアクセストークン（`at+jwt`）を区別する。`aud` を必ず検証する。アクセストークンの `aud` は、`resource` の指定がないときの既定のリソースである issuer にする（RFC 9068 §3） |
-| JWS / JWK（RFC 7515 / RFC 7517） | JWKS に `kid` 付きで公開鍵を載せ、ローテーション中は新旧両方を載せる |
+| JWT（RFC 7519 / RFC 8725）と JWT アクセストークン（RFC 9068） | `alg` は許可リスト（`Ed25519` と、RS256 を有効にしたときの `RS256`）で固定し、鍵の種類と結び付ける。`Ed25519` は `kty: OKP` / `crv: Ed25519` の鍵とだけ、`RS256` は RSA の鍵とだけ使い、`EdDSA` と `none` を含むそれ以外は拒否する（RFC 8725 §3.1）。アクセストークンは `Ed25519` だけを受け付ける。`typ` で ID トークン（`JWT`）とアクセストークン（`at+jwt`）を区別する。`aud` を必ず検証する。アクセストークンの `aud` は、`resource` の指定がないときの既定のリソースである issuer にする（RFC 9068 §3） |
+| JWS / JWK（RFC 7515 / RFC 7517） | JWKS に `kid` 付きで公開鍵を載せ、ローテーション中は新旧両方を載せる。Ed25519 の鍵は `kty: OKP`、`crv: Ed25519`、`x` で表す（RFC 8037 §2） |
+| 完全指定のアルゴリズム（RFC 9864） | JWS の `alg` は完全指定の `Ed25519`（§2.2、§4.1.1）を使う。§4.1.2 で Deprecated になった多態の `EdDSA` は、発行も受け付けもしない |
 | WebAuthn Level 3（W3C） | 登録と認証の検証手順を省略せずに実装する（下記） |
 
 **OIDC Core で守ること**
@@ -20,13 +21,23 @@ OIDC と WebAuthn は、仕様の MUST だけでなくセキュリティ上の S
 - `/authorize` は GET と POST の両方を受け付ける。
 - `scope` に `openid` がない認可リクエストは、`invalid_scope` で拒否する。OIDC Core §3.1.2.1 は `openid` がないときの動作を規定していないので、仕様の要求ではなく、fail-closed（設計原則 4）による方針として決める。
 - リクエストに `state` があれば、成功・エラーどちらのレスポンスにもその値をそのまま返す。
-- Core 15.1 の必須機能を満たす。`prompt`（`none` / `login`）と `max_age` を正しく処理し、`max_age` があれば ID トークンに `auth_time` を入れる（`max_age=0` は `prompt=login` と同じ扱い）。`display`、`ui_locales`、`claims_locales`、`acr_values` は、送られてもエラーにしない（値は無視してよい）。
+- Core 15.1 の必須機能を満たす（RS256 による ID トークンの署名だけは、RS256 を有効にしたデプロイで満たす。下の例外を参照）。`prompt`（`none` / `login`）と `max_age` を正しく処理し、`max_age` があれば ID トークンに `auth_time` を入れる（`max_age=0` は `prompt=login` と同じ扱い）。`display`、`ui_locales`、`claims_locales`、`acr_values` は、送られてもエラーにしない（値は無視してよい）。
 - `prompt=none` に他の値が混ざっていたらエラーにする。
 - `id_token_hint` があれば自分が発行したものか検証し、セッションのユーザーと違えば `login_required` を返す。
 - 対応しない `request`、`request_uri`、`registration` には、それぞれ `request_not_supported`、`request_uri_not_supported`、`registration_not_supported` を返す。対応しない `response_mode` には、エラーパラメータなしの 400 を返す。
 - トークンレスポンスには `Cache-Control: no-store` を付ける。
 - `redirect_uri` へのリダイレクトには 307 を使わない（303 か 302）。
 - サインイン画面と登録画面は、クリックジャッキングと CSRF の対策をする。
+
+**例外：RS256 を既定で無効にする**
+
+- RS256 は、RSA の署名鍵を設定したデプロイだけで有効になる任意の機能にする（[トークン設計](tokens.md)参照）。既定のデプロイは RSA の鍵を持たない。
+- RS256 を無効にしている間は、次の 2 つの MUST から外れる。
+  - OIDC Discovery 1.0 §3：`id_token_signing_alg_values_supported` に RS256 を含めなければならない。
+  - OIDC Core 1.0 §15.1：OP は ID トークンを RS256 で署名することをサポートしなければならない。例外は、ID トークンを Token Endpoint からだけ返し、client に `none` だけを登録させる OP で、IdP は `none` を使わないのでこの例外にも当たらない。
+- 理由：RSA を必要とする RP がいない間は、持つ秘密鍵の素材と攻撃面（RSA の署名の実装、鍵の保管とローテーション）を最小にする。署名できないアルゴリズムを discovery に載せると、RP がそれを選んだときに発行が失敗するので、載せる値は設定された鍵から導き、署名できるものだけにする。
+- 逸脱は RS256 を無効にしている間に限られる。RSA を必要とする RP をつなぐときは、運用者が RSA の鍵を設定して RS256 を有効にし、その RP に `RS256` を登録する。
+- ID トークンの署名のアルゴリズムは client ごとに必ず明示して登録するので、OIDC Core 1.0 §3.1.3.7 の 7（`alg` は既定の RS256 か、登録時に送った `id_token_signed_response_alg` であるべき（SHOULD））の後者に当たる。
 
 **認可コードの再利用（RFC 6749 §4.1.2）**
 
@@ -47,5 +58,5 @@ OIDC と WebAuthn は、仕様の MUST だけでなくセキュリティ上の S
 **準拠の確認方法**
 
 - OpenID Foundation がホストする適合性テスト（certification.openid.net、無料アカウントで実行可能）で、Basic OP と Config OP のテストプランを流す。Basic OP には `prompt=login` や `max_age` の確認も含まれる。
-- 正式な認定（OpenID Certified）は、費用がかかるので取得しない。認定を取らなくても、Basic OP と Config OP のテストプランの全項目合格は必須条件にする。
+- 正式な認定（OpenID Certified）は、費用がかかるので取得しない。認定を取らなくても、Basic OP と Config OP のテストプランの全項目合格は必須条件にする。テストプランは RS256 を有効にしたデプロイで流し、RS256 を無効にした既定の構成で RS256 の項目を免除することはしない。
 - WebAuthn は、仕様のテストベクタと、Playwright で仮想オーセンティケータを使う e2e テストで確認する。

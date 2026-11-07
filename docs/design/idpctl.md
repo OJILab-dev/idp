@@ -9,7 +9,7 @@
 
 **構成**
 
-- 管理用の Worker（`apps/admin-worker`）は、IdP の Worker と同じ D1 をバインディングで使い、共有コアの管理系のユースケースを管理 API として出す。`idpctl` の全 24 操作（下の一覧）は IdP のドメインの操作であり、すべて共有コアのユースケースとして実装する（[技術選定](technology.md)のコードの構成を参照）。
+- 管理用の Worker（`apps/admin-worker`）は、IdP の Worker と同じ D1 をバインディングで使い、共有コアの管理系のユースケースを管理 API として出す。`idpctl` の全 25 操作（下の一覧）は IdP のドメインの操作であり、すべて共有コアのユースケースとして実装する（[技術選定](technology.md)のコードの構成を参照）。
 - 共有コアが持つもの：入力の検証、IdP が発行する秘密の生成とハッシュ、条件付きの SQL（パスキーの上限、最後の 1 本の規則など）、監査ログの行の組み立て、`grant_add` と `group_member_add` で新たに使えるようになるユーザーと client の組の計算。
 - `idpctl` が持つもの：引数の解釈、管理 API の呼び出し、出力の整形、手元の入出力（管理者の秘密鍵を標準入力から読む、IdP が発行する秘密を `0600` のファイルに書く）だけ。ドメインの規則は評価せず、管理用の Worker が返すエラーをそのまま表示する。管理用の Worker が規則の唯一の判定者である。
 - 管理 API の仕様（OpenAPI など）は共有コアの入力のスキーマから生成し、`idpctl` の Go の型はその仕様から生成する。仕様は Go と TypeScript の間の契約として扱う（[実装に依存しない契約](cross-language-contract.md)参照）。
@@ -66,7 +66,7 @@ CLI のサブコマンドは操作名をそのまま使う（`idpctl client_crea
 
 - 読み取り：`users_list`、`user_get`、`clients_list`、`groups_list`、`grants_list`、`access_check`、`audit_tail`
 - ユーザーの管理：`user_create`、`user_rename`、`user_disable`、`user_delete`、`enroll_link_issue`、`passkey_revoke`、`session_revoke`、`group_create`、`group_rename`、`group_delete`、`group_member_add`、`group_member_remove`
-- RP の管理：`client_create`（public client は `--public`）、`client_set_redirects`、`client_rotate_secret`
+- RP の管理：`client_create`（public client は `--public`、ID トークンの署名アルゴリズムは `--id-token-alg`）、`client_set_redirects`、`client_rotate_secret`、`client_set_id_token_alg`
 - アクセスの管理：`grant_add`、`grant_remove`
 
 **操作の分類**
@@ -84,6 +84,14 @@ CLI のサブコマンドは操作名をそのまま使う（`idpctl client_crea
 - `user_rename` は表示名（`users.name`）を、`group_rename` はグループ名（`groups.name`）を変える。ID は変わらないので、`sub`、所属、grant はそのまま残る。変更前と変更後の名前を `detail_json` に残す。
 - `user_delete` は、ユーザーを `principals` の行ごと消す。外部キーの連鎖で、パスキー、セッション、所属、grant、登録トークン、チャレンジ、認可コードも消える。消えた所属と grant は `detail_json` に残すので戻せるが、ユーザーとパスキーは戻せない（`sub` は再利用しないので、同じ人を作り直しても別のユーザーになる）。そのため取り返しのつかない操作として分類する。止めるだけなら、元に戻せる `user_disable` を使う。
 - これらも他の書き込みと同じく、監査ログに 1 行を書く。
+
+ID トークンの署名アルゴリズム（[トークン設計](tokens.md)参照）は、次のように扱う。
+
+- `client_create` は、ID トークンの署名アルゴリズム（`Ed25519` か `RS256`）を `clients.id_token_signed_response_alg` に必ず明示して書く。指定がなければ `Ed25519` にする。OIDC Dynamic Client Registration 1.0 §2 は省略時の既定を RS256 としているので、値を書かずに既定に任せることはしない。
+- `RS256` は、ライブラリが Ed25519 の ID トークンを検証できない RP にだけ選ぶ。
+- `client_set_id_token_alg` は、登録済みの client のアルゴリズムを変える。変更前と変更後の値を `detail_json` に残し、ほかの書き込みと同じく監査ログに 1 行を書く。
+- RS256 が無効なデプロイでは、管理用の Worker は `client_create` と `client_set_id_token_alg` での `RS256` の指定を拒否する。有効かどうかは IdP の Worker の discovery から判断し、判断できなければ拒否する（fail-closed）。
+- `clients_list` は client ごとのアルゴリズムを返し、アルゴリズムで絞り込める。RS256 を無効にする前に、`RS256` を登録した client が残っていないことをこれで確かめる。
 
 `access_check(user, client)` は、許可か拒否かに加えて、どの grant にマッチしたか（直接付与か、どのグループ経由か。または何が足りないか）を返す。
 
