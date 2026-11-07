@@ -1,6 +1,6 @@
 # 標準準拠
 
-OIDC と WebAuthn は、仕様の MUST だけでなくセキュリティ上の SHOULD（推奨）にも従う。仕様が実装者に選択を委ねている箇所は安全側を選び、準拠は OpenID Foundation の適合性テストと e2e テストで確認する。
+OIDC と WebAuthn は、仕様の MUST だけでなくセキュリティ上の SHOULD（推奨）にも従う（例外は下記の「意図的に従わない SHOULD」に明記する）。仕様が実装者に選択を委ねている箇所は安全側を選び、準拠は OpenID Foundation の適合性テストと e2e テストで確認する。
 
 | 規格 | 主な準拠ポイント |
 | --- | --- |
@@ -18,6 +18,7 @@ OIDC と WebAuthn は、仕様の MUST だけでなくセキュリティ上の S
 **OIDC Core で守ること**
 
 - `/authorize` は GET と POST の両方を受け付ける。
+- `scope` に `openid` がない認可リクエストは、`invalid_scope` で拒否する（OIDC 専用の IdP として、素の OAuth 2.0 の要求は受け付けない）。
 - リクエストに `state` があれば、成功・エラーどちらのレスポンスにもその値をそのまま返す。
 - Core 15.1 の必須機能を満たす。`prompt`（`none` / `login`）と `max_age` を正しく処理し、`max_age` があれば ID トークンに `auth_time` を入れる（`max_age=0` は `prompt=login` と同じ扱い）。`display`、`ui_locales`、`claims_locales`、`acr_values` は、送られてもエラーにしない（値は無視してよい）。
 - `prompt=none` に他の値が混ざっていたらエラーにする。
@@ -26,6 +27,10 @@ OIDC と WebAuthn は、仕様の MUST だけでなくセキュリティ上の S
 - トークンレスポンスには `Cache-Control: no-store` を付ける。
 - `redirect_uri` へのリダイレクトには 307 を使わない（303 か 302）。
 - サインイン画面と登録画面は、クリックジャッキングと CSRF の対策をする。
+
+**意図的に従わない SHOULD**
+
+- 認可コードの再利用は検知しない。RFC 6749 §4.1.2 は、再利用されたらそのコードで発行したトークンを失効させるべき（SHOULD）としているが、コードは `DELETE … RETURNING` で消費するので 2 回目は単に見つからず、アクセストークンはステートレスな短命の JWT なので失効させる手段もない。コードの有効期限 60 秒、PKCE、client への紐付け、トークンの短い有効期限で、再利用されたときの影響を抑える。
 
 **WebAuthn で守ること**
 

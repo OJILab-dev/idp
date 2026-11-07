@@ -16,6 +16,7 @@
 - [ ] リクエストの `state` を、成功・エラーどちらのレスポンスにもそのまま返す（RFC 6749 §4.1.2）
 - [ ] `client_id` と `redirect_uri` の検証後に起きたエラーは、検証済みの `redirect_uri` に `error` を付けて返す。アクセス権のないユーザーには `access_denied` を返す
 - [ ] `/authorize` は GET と POST の両方を受け付ける
+- [ ] `scope` に `openid` を含まない認可リクエストは、検証済みの `redirect_uri` に `invalid_scope` を返して拒否する（OIDC 専用の IdP なので、素の OAuth 2.0 としては扱わない）
 - [ ] `prompt=login` と `max_age` で、パスキーによる再認証を強制できる。`prompt=none` に他の値が混ざっていればエラーにする
 - [ ] `display`、`ui_locales`、`claims_locales`、`acr_values` を送られてもエラーにしない
 - [ ] `request`、`request_uri`、`registration` には、それぞれ `request_not_supported`、`request_uri_not_supported`、`registration_not_supported` を返す
@@ -30,7 +31,7 @@
 
 **パスキー**
 
-- [ ] チャレンジは 256 bit、5 分、ユーザーと用途に紐付け、`DELETE … RETURNING` で原子的に消費する
+- [ ] チャレンジは 256 bit、5 分で、用途ごとに発行元へ紐付ける（登録は登録トークン、サインインは認可リクエストの Cookie）。verify で紐付けを確認し、`DELETE … RETURNING` で原子的に消費する。別の登録トークンや別のブラウザの Cookie で発行されたチャレンジは使えない
 - [ ] ユーザー検証（UV）を必須にし、origin と RP ID を固定する
 - [ ] `crossOrigin` が true の `clientDataJSON` を拒否する
 - [ ] BE / BS フラグの不正な組み合わせを拒否する
@@ -43,7 +44,7 @@
 
 **セッションと通信**
 
-- [ ] Cookie は `__Host-`、Secure、HttpOnly、SameSite=Lax にする
+- [ ] Cookie は `__Host-`、Secure、HttpOnly、SameSite=Lax にする。クロスサイトの `POST /authorize` にはセッションが付かず、必ずパスキーのサインインに進む
 - [ ] セッショントークンはハッシュで保存し、サインインのたびに作り直す
 - [ ] `POST /logout`、`session_revoke`、`user_disable`、`passkey_revoke` で、対象のセッション行を削除する
 - [ ] issuer、RP ID、origin は設定値から導き、リクエストの `Host` ヘッダーからは作らない
