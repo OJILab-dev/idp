@@ -7,7 +7,7 @@
 | OIDC（discovery / JWKS / authorize / token / userinfo） | 作る | 認可コード + PKCE S256 のみ |
 | パスキーの登録・サインイン | 作る | 唯一の認証手段 |
 | IdP からのサインアウト（POST /logout）とセッション失効 | 作る | 共用の端末で使ったあと、次の人が確認なしでサインインできてしまうのを防ぐ |
-| アプリ単位のアクセス可否（認可レベル 1） | 作る | `client_access` テーブルで管理 |
+| アプリ単位のアクセス可否（認可レベル 1） | 作る | ユーザーとグループを同じ主体として `client_access` テーブルで管理（[データモデル](data-model.md)） |
 | 管理 CLI（`idpctl`） | 作る | Go 製。後から MCP でも操作可能にする |
 | ネイティブアプリ・CLI（public client） | 作る | RFC 8252 に沿い、PKCE とループバックなどの redirect で守る。サインインは毎回パスキー（[クライアントの種類](clients.md)参照） |
 | 管理 Web UI | 作らない | CLI で代替し、管理面をインターネットに出さない |

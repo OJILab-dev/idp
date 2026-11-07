@@ -14,13 +14,19 @@
 
 **操作の一覧**
 
-- 読み取り：`users_list`、`user_get`、`clients_list`、`grants_list`、`access_check`、`audit_tail`
-- 書き込み：`user_create`、`user_disable`、`enroll_link_issue`、`passkey_revoke`、`session_revoke`、`client_create`（public client は `--public`）、`client_set_redirects`、`client_rotate_secret`、`grant_add`、`grant_remove`
+- 読み取り：`users_list`、`user_get`、`clients_list`、`groups_list`、`grants_list`、`access_check`、`audit_tail`
+- 書き込み：`user_create`、`user_disable`、`enroll_link_issue`、`passkey_revoke`、`session_revoke`、`client_create`（public client は `--public`）、`client_set_redirects`、`client_rotate_secret`、`group_create`、`group_delete`、`group_member_add`、`group_member_remove`、`grant_add`、`grant_remove`
 - CLI 専用（MCP には出さない）：ユーザーの完全削除など、取り返しのつかない操作
 
-`access_check(user, client)` は、許可か拒否かに加えて、どの grant にマッチしたか（または何が足りないか）を返す。
+`access_check(user, client)` は、許可か拒否かに加えて、どの grant にマッチしたか（直接付与か、どのグループ経由か。または何が足りないか）を返す。
 
-`grant_add` で `group:<name>` を指定したとき、そのグループに属するユーザーが 0 人なら警告を出す。グループ名の打ち間違いで、誰にもマッチしない grant が黙って作られるのを防ぐため。
+ユーザーとグループは同じ主体として扱う（[認可](authorization.md)参照）。
+
+- `grant_add(principal, client)` と `grant_remove(principal, client)` は、主体を `user:<id>` か `group:<name>` で受け取る。どちらも同じ操作で、`idpctl` が主体の ID に解決してから `client_access` に書く。
+- `grant_add` と `group_member_add` で存在しない主体やグループを指定すると、解決の段階か外部キーの制約で失敗する。打ち間違えた名前で、誰にもマッチしない grant が黙って作られることはない。
+- `grant_add` と `group_member_add` は、新たに使えるようになるユーザーと client の組を結果に含める。グループへの grant やメンバーの追加は複数の人の権限をまとめて広げるので、MCP 経由の確認でも影響の範囲が見えるようにするため。
+- `group_create` は、メンバーと grant が 0 件のグループを作れる。`groups_list` は、グループごとにメンバーと client の一覧を返す。
+- ユーザーとグループの削除は `principals` の行を消し、外部キーの連鎖で所属と grant も消す。
 
 **秘密の扱い**
 
