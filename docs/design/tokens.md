@@ -6,8 +6,8 @@
 | --- | --- | --- | --- |
 | ID トークン | JWT（`typ: JWT`、RS256） | 常に `iss`、`sub`、`aud`（client\_id）、`exp`、`iat`、`auth_time`、`nonce`（要求時）。スコープに応じて `name`（profile） | 5 分 |
 | アクセストークン | JWT（`typ: at+jwt`、RS256） | `iss`、`sub`、`aud`（issuer）、`client_id`、`scope`、`exp`、`iat`、`jti` | 5 分 |
-| 認可コード | 不透明な値（ハッシュ保存） | client、redirect\_uri、PKCE、nonce に紐付け | 60 秒 |
-| セッション | `__Host-` Cookie（ハッシュ保存） | ユーザー、`auth_time` | サインインから 1 時間（絶対期限。延長しない） |
+| 認可コード | 不透明な値（ハッシュ保存） | client、redirect\_uri、PKCE、nonce、発行の根拠になったセッションに紐付け | 60 秒 |
+| セッション | `__Host-` Cookie（ハッシュ保存） | ユーザー、サインインに使ったパスキー（credential ID）、`auth_time` | サインインから 1 時間（絶対期限。延長しない） |
 | 登録リンクのトークン | 256 bit の乱数をフラグメントに入れる（ハッシュ保存） | ユーザー | 発行から 10 分。1 回だけ使える |
 | リフレッシュトークン | 発行しない | — | — |
 

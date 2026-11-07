@@ -20,7 +20,7 @@ Cloudflare Workers の無料枠だけで動く、パスキー専用の最小構�
 
 | 要素 | 役割 |
 | --- | --- |
-| Worker（TypeScript + Hono） | インターネットに公開する唯一の要素。OIDC エンドポイント、パスキー API、サインイン・登録ページを提供する |
+| Worker（TypeScript + Hono） | インターネットに公開する唯一の要素。OIDC エンドポイント、パスキー API、サインイン・登録・アカウントページを提供する |
 | D1 | IdP の全状態を置くデータベース |
 | `idpctl`（Go） | 手元で動かす管理 CLI。D1 REST API で直接操作し、同じバイナリに stdio の MCP サーバーを同梱する |
 

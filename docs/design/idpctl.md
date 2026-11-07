@@ -17,7 +17,7 @@
 書き込みの操作は、[認可](authorization.md)の管理の関心事で分類する。基盤の操作（署名鍵、API トークン、デプロイ）は `idpctl` の対象外。
 
 - 読み取り：`users_list`、`user_get`、`clients_list`、`groups_list`、`grants_list`、`access_check`、`audit_tail`
-- ユーザーの管理：`user_create`、`user_disable`、`enroll_link_issue`、`passkey_revoke`、`session_revoke`、`group_create`、`group_delete`、`group_member_add`、`group_member_remove`
+- ユーザーの管理：`user_create`、`user_rename`、`user_disable`、`user_delete`、`enroll_link_issue`、`passkey_revoke`、`session_revoke`、`group_create`、`group_rename`、`group_delete`、`group_member_add`、`group_member_remove`
 - RP の管理：`client_create`（public client は `--public`）、`client_set_redirects`、`client_rotate_secret`
 - アクセスの管理：`grant_add`、`grant_remove`
 
@@ -26,13 +26,21 @@
 AI は操作している人の代理として扱い、役割では区別しない。MCP に出すかどうかは、操作の性質と[操作とリスク](operations-and-risks.md)の影響の広さで決める。
 
 - 書き込みは、すべて毎回人間の確認を必要とする（上記）。
-- 取り返しのつかない操作（ユーザーの完全削除など）は CLI 専用にする。
+- 取り返しのつかない操作（`user_delete`）は CLI 専用にする。
 - 本人性を確定させる操作（`enroll_link_issue`）は CLI 専用にする。1 人のユーザーとしてその人の全 RP に入れる強さを持つうえ、登録リンクは対面で渡すので操作する人間はその場にいて、AI に任せる利点がない。
 - 読み取りは MCP に出す。IdP が持つ個人情報は表示名だけで、メールアドレスは持たない（[トークン設計](tokens.md)参照）。
 
 `audit_tail` は監査ログを新しい順に返し、対象（`user:<id>` など）で絞り込める。管理者はこれで、本人によるパスキーの追加と失効を含む出来事をいつでも確認できる。
 
-`user_get` は、ユーザーのパスキーの一覧（credential ID、作成日時、最終使用日時、追加の経路、同期型かどうか）を返す。`passkey_revoke` はパスキーを 1 本ずつ失効させる（[認証フロー](authentication.md)の復旧を参照）。
+`user_get` は、ユーザーのパスキーの一覧（credential ID、作成日時、最終使用日時、追加の経路、同期型かどうか）を返す。`passkey_revoke` はパスキーを 1 本ずつ失効させ、そのパスキーから作ったセッションだけを外部キーの連鎖で消す（[認証フロー](authentication.md)の復旧を参照）。本人による失効と同じく、最後の 1 本は失効できない。本数の確認は削除と同じ文の条件で行い、人の操作の誤りでユーザーを 0 本にしない。ユーザーを完全に締め出すときは `user_disable` か `user_delete` を使う。
+
+`enroll_link_issue` は、発行の時点でパスキーの本数を確かめ、パスキーの上限（[TypeScript と Go の契約](cross-language-contract.md)参照）に達しているユーザーには発行しない。本人の目の前ではなく、管理者の側で失敗させるためである。無効化されたユーザーにも発行しない。発行から使用までの間に本人が追加することもあるので、Worker も登録の verify で上限を確かめる。
+
+ユーザーとグループの名前と削除は、次のように扱う。
+
+- `user_rename` は表示名（`users.name`）を、`group_rename` はグループ名（`groups.name`）を変える。ID は変わらないので、`sub`、所属、grant はそのまま残る。変更前と変更後の名前を `detail_json` に残す。
+- `user_delete` は、ユーザーを `principals` の行ごと消す。外部キーの連鎖で、パスキー、セッション、所属、grant、登録トークン、チャレンジ、認可コードも消える。消えた所属と grant は `detail_json` に残すので戻せるが、ユーザーとパスキーは戻せない（`sub` は再利用しないので、同じ人を作り直しても別のユーザーになる）。そのため CLI 専用にする。止めるだけなら、元に戻せる `user_disable` を使う。
+- これらも他の書き込みと同じく、監査ログに 1 行を書く。
 
 `access_check(user, client)` は、許可か拒否かに加えて、どの grant にマッチしたか（直接付与か、どのグループ経由か。または何が足りないか）を返す。
 
@@ -49,4 +57,5 @@ AI は操作している人の代理として扱い、役割では区別しな�
 - シークレットや登録トークンは `crypto/rand` で生成し、D1 にはハッシュだけを書く。
 - 平文は戻り値に含めず、権限 `0600` のファイルに書き出してパスだけを返す。MCP 化しても、秘密が AI のコンテキストに流れない。
 - 登録リンクは発行から 10 分で切れるので、管理者は本人に渡すその場で `enroll_link_issue` を実行し、メールではなく対面など信頼できる経路で渡す（[認証フロー](authentication.md)参照）。
-- 監査ログには管理操作を記録し、操作者（`cli` か `mcp`）を残す。本人のパスキー操作（登録リンクによる登録、本人による追加と失効）は Worker が同じ表に書く。セッション ID、トークン、シークレット、登録トークンは書かない（スキーマは[データモデル](data-model.md)参照）。操作者は `idpctl` の自己申告で、API トークンを持つ人は任意の行を書けるため、改ざんの検知はできない。家族規模の運用では、この限界を受け入れる。
+- 監査ログには管理操作を記録し、操作者（`cli` か `mcp`）を残す。本人のパスキー操作（登録リンクによる登録、本人による追加と失効）は Worker が同じ表に書く。セッション ID、トークン、シークレット、登録トークンは書かない（スキーマは[データモデル](data-model.md)参照）。失敗した操作も `failure` の行として記録する（Worker は成功の行だけを書く）。操作者は `idpctl` の自己申告で、API トークンを持つ人は任意の行を書けるため、改ざんの検知はできない。
+- **受け入れるリスク**：D1 の API トークンを持つ人は、`actor` が `user` の行（本人によるパスキーの追加と失効）も偽造でき、行を消すこともできる。この行は、本人への通知をしない NIST の通知要件の例外を補う手段（[認証フロー](authentication.md)参照）なので、API トークンを持つ人に対しては、その補いが効かない。ただし API トークンはそれだけで全ユーザーの全操作ができる基盤の権限であり（[操作とリスク](operations-and-risks.md)参照）、監査ログでそれを防ぐことはもともとできない。家族規模の運用では、この限界を受け入れる。
