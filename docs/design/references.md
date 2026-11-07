@@ -40,6 +40,8 @@
 - [Workers の料金（上限に数えられるリクエスト）](https://developers.cloudflare.com/workers/platform/pricing/)
 - [WAF のレート制限ルール（プラン別の制約）](https://developers.cloudflare.com/waf/rate-limiting-rules/)
 - [D1 の料金と無料枠](https://developers.cloudflare.com/d1/platform/pricing/)
+- [D1 の Time Travel（常に有効、追加費用なし）](https://developers.cloudflare.com/d1/reference/time-travel/)
+- [D1 の制限（Time Travel の保持期間）](https://developers.cloudflare.com/d1/platform/limits/)
 - [D1 REST API（raw query）](https://developers.cloudflare.com/api/operations/cloudflare-d1-raw-database-query)
 
 **言語・ライブラリ**

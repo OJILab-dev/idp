@@ -76,12 +76,12 @@ flowchart LR
 | [認証フロー](authentication.md) | 認可コードフローでのサインイン、パスキーの登録、サインアウトの手順 |
 | [認可](authorization.md) | IdP が持つ認可は「誰がどのアプリを使えるか」だけ。判定の場所と反映の遅れ |
 | [クライアントの種類](clients.md) | Web アプリ（confidential）とネイティブアプリ・CLI（public）の 2 種類と、新しいアプリのつなぎ方 |
-| [トークン設計](tokens.md) | 短命トークンのみでリフレッシュトークンは発行しない。各トークンの形式と中身 |
+| [トークン設計](tokens.md) | 短命トークンのみでリフレッシュトークンは発行しない。各トークンの形式と中身、署名鍵のローテーションと生成・バックアップ |
 | [標準準拠](standards-compliance.md) | OIDC・OAuth・JWT・WebAuthn の準拠ポイントと、適合性テストによる確認方法 |
 | [セキュリティ要件チェックリスト](security-checklist.md) | e2e の攻撃ケースとして実装する要件の一覧（実際の CVE 事例付き） |
 | [管理 CLI / MCP（idpctl）](idpctl.md) | 手元の Go 製 CLI から D1 を直接操作する管理の仕組みと、秘密の扱い |
 | [TypeScript と Go の契約](cross-language-contract.md) | Worker と idpctl をつなぐ SQL・エンコーディング・テストベクタの取り決め |
-| [デプロイと設定](deployment.md) | ホスト名を設定値で与える仕組み、変更時の影響、IdP 専用アカウントと API トークンの扱い |
+| [デプロイと設定](deployment.md) | ホスト名を設定値で与える仕組み、変更時の影響、IdP 専用アカウントと API トークンの扱い、署名鍵と D1 のバックアップ |
 | [無料枠の見積もりと制約](free-tier.md) | Workers と D1 の無料枠に対する見込みと、最初に確定すべき制約 |
 | [将来拡張](future-extensions.md) | ledger / entitlements、管理コンソールなど、IdP の外側に足す拡張 |
 | [Rust 移行計画](rust-migration.md) | Worker を Rust に置き換える条件、今のうちに守る書き方、段階移行の順番 |
