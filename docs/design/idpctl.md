@@ -14,9 +14,21 @@
 
 **操作の一覧**
 
+書き込みの操作は、[認可](authorization.md)の管理の関心事で分類する。基盤の操作（署名鍵、API トークン、デプロイ）は `idpctl` の対象外。
+
 - 読み取り：`users_list`、`user_get`、`clients_list`、`groups_list`、`grants_list`、`access_check`、`audit_tail`
-- 書き込み：`user_create`、`user_disable`、`enroll_link_issue`、`passkey_revoke`、`session_revoke`、`client_create`（public client は `--public`）、`client_set_redirects`、`client_rotate_secret`、`group_create`、`group_delete`、`group_member_add`、`group_member_remove`、`grant_add`、`grant_remove`
-- CLI 専用（MCP には出さない）：ユーザーの完全削除など、取り返しのつかない操作
+- ユーザーの管理：`user_create`、`user_disable`、`enroll_link_issue`、`passkey_revoke`、`session_revoke`、メールアドレスと `email_verified` の設定、`group_create`、`group_delete`、`group_member_add`、`group_member_remove`
+- RP の管理：`client_create`（public client は `--public`）、`client_set_redirects`、`client_rotate_secret`
+- アクセスの管理：`grant_add`、`grant_remove`
+
+**MCP に出す範囲**
+
+AI は操作している人の代理として扱い、役割では区別しない。MCP に出すかどうかは、操作の性質と[操作とリスク](operations-and-risks.md)の影響の広さで決める。
+
+- 書き込みは、すべて毎回人間の確認を必要とする（上記）。
+- 取り返しのつかない操作（ユーザーの完全削除など）は CLI 専用にする。
+- 本人性や属性の事実を人間が確かめて確定させる操作（`enroll_link_issue`、`email_verified` を `true` にする操作）は CLI 専用にする。どちらも 1 人のユーザーとしてその人の全 RP に入れる強さを持つ。さらに、登録リンクは対面で渡し、メールアドレスは本人のものかを人間が確かめるので、操作する人間はその場にいて、AI に任せる利点がない。
+- 読み取りは MCP に出す。名前とメールアドレスが AI のコンテキストに入るが、秘密ではなく、家族規模の運用ではこれを受け入れる。管理の権限を人ごとに分けるときに見直す。
 
 `access_check(user, client)` は、許可か拒否かに加えて、どの grant にマッチしたか（直接付与か、どのグループ経由か。または何が足りないか）を返す。
 

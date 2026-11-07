@@ -20,7 +20,7 @@
 
 - 署名鍵は、運用者が AI や MCP のセッションの外で手作業で生成する。エージェントは署名鍵の生成、読み出し、登録、受け渡しを行ってはいけない。
 - 秘密（署名鍵、API トークン、client secret、登録トークンなど）を AI のコンテキストに入れてはいけない。`idpctl` は平文を戻り値に含めず、権限 `0600` のファイルに書き出してパスだけを返す設計であり、これを崩してはいけない。
-- MCP 経由の書き込み操作は、Claude Code の permissions で毎回人間の確認を必要とする設定にする。取り返しのつかない操作は MCP に出さない。
+- MCP 経由の書き込み操作は、Claude Code の permissions で毎回人間の確認を必要とする設定にする。取り返しのつかない操作と、本人性や属性の事実を確定させる操作（登録リンクの発行、`email_verified` を `true` にする操作）は MCP に出さない。
 
 詳細は [管理 CLI / MCP（idpctl）](docs/design/idpctl.md)、[トークン設計](docs/design/tokens.md)、[デプロイと設定](docs/design/deployment.md) を参照してください。
 

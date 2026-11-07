@@ -74,7 +74,8 @@ flowchart LR
 | [技術選定](technology.md) | TypeScript + Hono の Worker と Go の idpctl を選んだ理由、Rust と他候補を外した理由 |
 | [データモデル](data-model.md) | D1 の 12 テーブルと監査ログのテーブル、アクセス判定を一元化する `effective_access` ビュー |
 | [認証フロー](authentication.md) | 認可コードフローでのサインイン、パスキーの登録、サインアウトの手順 |
-| [認可](authorization.md) | IdP が持つ認可は「誰がどのアプリを使えるか」だけ。判定の場所と反映の遅れ |
+| [認可](authorization.md) | IdP が持つ認可は「誰がどのアプリを使えるか」だけ。判定の場所と反映の遅れ、ユーザーとグループを分けるレイヤー、管理の関心事 |
+| [操作とリスク](operations-and-risks.md) | IdP を通じてできる行為ごとの目的、悪用や誤りの影響、今の対策と、影響の広さによる分類 |
 | [クライアントの種類](clients.md) | Web アプリ（confidential）とネイティブアプリ・CLI（public）の 2 種類と、新しいアプリのつなぎ方 |
 | [トークン設計](tokens.md) | 短命トークンのみでリフレッシュトークンは発行しない。各トークンの形式と中身、署名鍵のローテーションと生成・バックアップ |
 | [標準準拠](standards-compliance.md) | OIDC・OAuth・JWT・WebAuthn の準拠ポイントと、適合性テストによる確認方法 |
