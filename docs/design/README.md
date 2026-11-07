@@ -93,5 +93,5 @@ flowchart LR
 | [無料枠の見積もりと制約](free-tier.md) | Workers と D1 の無料枠に対する見込みと、最初に確定すべき制約 |
 | [将来拡張](future-extensions.md) | ledger / entitlements、管理権限の分離、MCP など、IdP の外側に足す拡張 |
 | [Rust 移行計画](rust-migration.md) | IdP の Worker を Rust に置き換える条件、今のうちに守る書き方、共有コアの扱い、段階移行の順番 |
-| [未決事項・要検証](open-questions.md) | 作りながら実測で確かめること（実装前に決めることは各ドキュメントに記録済み） |
+| [未決事項・要検証](open-questions.md) | 実装の前に確かめる前提と、作りながら実測で確かめること（実装前に決めることは各ドキュメントに記録済み） |
 | [参考資料](references.md) | 標準規格、先行事例、CVE、Cloudflare、ライブラリへのリンク |

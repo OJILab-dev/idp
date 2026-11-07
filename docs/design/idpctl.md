@@ -60,6 +60,8 @@ D1 を手元から直接操作する形（D1 REST API）をやめ、管理 API �
 
 **操作の一覧**
 
+CLI のサブコマンドは操作名をそのまま使う（`idpctl client_create --public`、`idpctl grant_add group:family <client_id>` など）。操作名は共有コアのユースケースの名前と同じで、監査ログの `operation` にも同じ値が入るので、呼び方を 1 つに揃える。
+
 書き込みの操作は、[認可](authorization.md)の管理の関心事で分類する。基盤の操作（署名鍵、Cloudflare の API トークンと証明書の発行、許可リストの変更、デプロイ）は `idpctl` の対象外。
 
 - 読み取り：`users_list`、`user_get`、`clients_list`、`groups_list`、`grants_list`、`access_check`、`audit_tail`
