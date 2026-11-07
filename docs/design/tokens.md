@@ -4,13 +4,18 @@
 
 | 種類 | 形式 | 主な中身 | 有効期限 |
 | --- | --- | --- | --- |
-| ID トークン | JWT（`typ: JWT`、RS256） | 常に `iss`、`sub`、`aud`（client\_id）、`exp`、`iat`、`auth_time`、`nonce`（要求時）。スコープに応じて `email` と `email_verified`（email）、`name`（profile） | 10 分程度 |
-| アクセストークン | JWT（`typ: at+jwt`、RS256） | `iss`、`sub`、`aud`（issuer）、`client_id`、`scope`、`exp`、`iat`、`jti` | 5〜10 分 |
+| ID トークン | JWT（`typ: JWT`、RS256） | 常に `iss`、`sub`、`aud`（client\_id）、`exp`、`iat`、`auth_time`、`nonce`（要求時）。スコープに応じて `email` と `email_verified`（email）、`name`（profile） | 5 分 |
+| アクセストークン | JWT（`typ: at+jwt`、RS256） | `iss`、`sub`、`aud`（issuer）、`client_id`、`scope`、`exp`、`iat`、`jti` | 5 分 |
 | 認可コード | 不透明な値（ハッシュ保存） | client、redirect\_uri、PKCE、nonce に紐付け | 60 秒 |
-| セッション | `__Host-` Cookie（ハッシュ保存） | ユーザー、`auth_time` | 未決（[未決事項](open-questions.md)参照） |
+| セッション | `__Host-` Cookie（ハッシュ保存） | ユーザー、`auth_time` | サインインから 1 時間（絶対期限。延長しない） |
+| 登録リンクのトークン | 256 bit の乱数をフラグメントに入れる（ハッシュ保存） | ユーザー | 発行から 10 分。1 回だけ使える |
 | リフレッシュトークン | 発行しない | — | — |
 
-- `sub` は不変のランダム ID で、メールアドレスは使わない。将来 ledger などの外部サービスと結合するときのキー（`iss` + `sub`）になる。
+- ID トークンとアクセストークンの有効期限は、どちらも 5 分にする。仕様は値を定めていないので、短いほうを選ぶ。ネイティブアプリ・CLI の再認証が増えることは許容する（[クライアントの種類](clients.md)参照）。
+- セッションはサインインから 1 時間の絶対期限にし、使っても延長しない（スライディングにしない）。そのため、セッションを使うたびに D1 へ書く必要がない。NIST SP 800-63B-4 の AAL2 は、全体の再認証タイムアウトを設けなければならず（SHALL）24 時間以内にすべき（SHOULD）とし、無操作のタイムアウトは 1 時間以内にすべき（SHOULD）としている。固定の 1 時間はどちらも満たす。同期型のパスキーも AAL2 で使える（Appendix B）。
+- 1 時間を過ぎると、RP から新たにリダイレクトされたときに、もう一度パスキーでサインインする。RP 側のセッションは各 RP が管理し、IdP のセッションが切れても終わらない。
+- 登録リンクは発行から 10 分で切れ、1 回だけ使える。根拠は[認証フロー](authentication.md)を参照。
+- `sub` は不変のランダム ID（UUIDv4）で、メールアドレスは使わない。将来 ledger などの外部サービスと結合するときのキー（`iss` + `sub`）になる。
 - アクセストークンの `aud` は issuer にする。RFC 9068 §3 では `resource` の指定がなければ既定のリソースを `aud` に入れ、v1 でアクセストークンを受け取るのは IdP の `/userinfo` だけなので、既定のリソースを issuer とする。IdP の中で issuer あてのアクセストークンを受け付けるのは `/userinfo` だけにする。
 - 複数の client が同じ IdP を使っても、どの client 向けのトークンかは `client_id` クレームで表す。`/userinfo` はこれを使って、その client に対するアクセス可否を判定する。
 - 将来 API（認可レベル 3）を足すときは、resource ごとに登録した URI を `aud` にし、issuer あてのトークンでは API を呼べないようにする。
