@@ -44,8 +44,8 @@ flowchart LR
 
   subgraph worker["Worker（TypeScript）"]
     oidc["OIDC エンドポイント<br/>discovery · jwks · authorize · token · userinfo · logout"]
-    static["静的アセット<br/>サインイン・登録ページ（HTML / JS）"]
-    passkey["パスキー API<br/>登録・サインイン、チャレンジ検証"]
+    static["静的アセット<br/>サインイン・登録・アカウントページ（HTML / JS）"]
+    passkey["パスキー API<br/>登録・サインイン、本人による追加・失効、チャレンジ検証"]
   end
 
   idpctl["idpctl（Go）<br/>CLI と MCP を同梱<br/>D1 REST API で操作"]
@@ -65,7 +65,7 @@ flowchart LR
   class claude later
 ```
 
-ブラウザは静的アセットのページからパスキー API を呼び、`/authorize` と `/logout` にもアクセスする。RP アプリはブラウザを `/authorize` にリダイレクトし、自身は discovery、JWKS、`/token`、`/userinfo` とだけ通信する。署名鍵を使うのは OIDC エンドポイントだけ。破線の Claude Code（MCP）は後から追加する要素で、ledger や管理コンソールも同じく Worker の外に別の Worker として足す。
+ブラウザは静的アセットのページ（サインイン、登録、アカウント）からパスキー API を呼び、`/authorize` と `/logout` にもアクセスする。アカウントページは、サインイン中の本人が自分のパスキーを一覧し、追加し、失効させるためのページで、サインインは常に RP からの `/authorize` を経由する。RP アプリはブラウザを `/authorize` にリダイレクトし、自身は discovery、JWKS、`/token`、`/userinfo` とだけ通信する。署名鍵を使うのは OIDC エンドポイントだけ。破線の Claude Code（MCP）は後から追加する要素で、ledger や管理コンソールも同じく Worker の外に別の Worker として足す。
 
 ## ドキュメント一覧
 
@@ -74,7 +74,7 @@ flowchart LR
 | [スコープ](scope.md) | 作るもの・作らないもの・後回しにするものと、その理由 |
 | [技術選定](technology.md) | TypeScript + Hono の Worker と Go の idpctl を選んだ理由、Rust と他候補を外した理由 |
 | [データモデル](data-model.md) | D1 の 12 テーブルと監査ログのテーブル、アクセス判定を一元化する `effective_access` ビュー |
-| [認証フロー](authentication.md) | 認可コードフローでのサインイン、パスキーの登録、サインアウトの手順 |
+| [認証フロー](authentication.md) | 認可コードフローでのサインイン、パスキーの登録、アカウントページでの本人によるパスキーの追加と失効、管理者による復旧、サインアウトの手順 |
 | [認可](authorization.md) | IdP が持つ認可は「誰がどのアプリを使えるか」だけ。判定の場所と反映の遅れ、ユーザーとグループを分けるレイヤー、管理の関心事 |
 | [操作とリスク](operations-and-risks.md) | IdP を通じてできる行為ごとの目的、悪用や誤りの影響、今の対策と、影響の広さによる分類 |
 | [クライアントの種類](clients.md) | Web アプリ（confidential）とネイティブアプリ・CLI（public）の 2 種類と、新しいアプリのつなぎ方 |

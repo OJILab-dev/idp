@@ -1,6 +1,6 @@
 # データモデル
 
-状態はすべて D1 に置く。下の 12 テーブルと、管理操作を記録する監査ログのテーブル 1 つ（末尾を参照）からなり、アクセス可否の判定は `effective_access` ビュー 1 つに集約する。Worker と `idpctl` は同じビューを読むので、判定結果が食い違わない。
+状態はすべて D1 に置く。下の 12 テーブルと、管理操作と本人のパスキー操作を記録する監査ログのテーブル 1 つ（末尾を参照）からなり、アクセス可否の判定は `effective_access` ビュー 1 つに集約する。Worker と `idpctl` は同じビューを読むので、判定結果が食い違わない。
 
 ```sql
 -- 付与の主体。user と group の共通の親で、grant はどちらにも同じ形（principal × client）で付ける。
@@ -68,16 +68,6 @@ CREATE TABLE client_access (
 CREATE TABLE enroll_tokens (token_hash TEXT PRIMARY KEY,
                             user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                             expires_at INTEGER NOT NULL);  -- 発行から 10 分。1 回だけ使える
--- チャレンジは用途ごとに発行元へ紐付ける。登録は登録トークン、サインインは認可リクエスト（Cookie）、
--- 本人による追加（直前の再認証と登録の両方）と失効はセッション。失効はさらに対象の credential ID にも紐付ける。
--- サインインは discoverable credential を使うので、options の時点ではユーザーが分からない
-CREATE TABLE challenges    (challenge TEXT PRIMARY KEY, user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
-                            purpose TEXT NOT NULL,
-                            enroll_token_hash TEXT,          -- 登録のときだけ持つ
-                            authorize_request_id_hash TEXT,  -- サインインのときだけ持つ（authorize_requests.id_hash）
-                            session_token_hash TEXT,         -- 本人による追加と失効のときだけ持つ（sessions.token_hash）
-                            target_credential_id TEXT,       -- 本人による失効のときだけ持つ（失効させる credentials.id）
-                            expires_at INTEGER NOT NULL);
 -- セッションの根拠はサインインに使ったパスキーなので、パスキーを失効させるとセッションも連鎖で消える。
 -- 認可コードは発行したセッションに紐付け、セッションが消えれば未使用のコードも連鎖で消える（authentication.md 参照）
 CREATE TABLE sessions      (token_hash TEXT PRIMARY KEY,
@@ -98,6 +88,29 @@ CREATE TABLE authorize_requests (id_hash TEXT PRIMARY KEY,
                             prompt_login INTEGER NOT NULL, max_age INTEGER, id_token_hint_sub TEXT,
                             created_at INTEGER NOT NULL,  -- prompt=login の再認証は auth_time >= created_at で判定する
                             expires_at INTEGER NOT NULL);
+-- チャレンジは用途ごとに発行元へ紐付ける。登録は登録トークン、サインインは認可リクエスト（Cookie）、
+-- 本人による追加（直前の再認証と登録の両方）と失効はセッション。失効はさらに対象の credential ID にも紐付ける。
+-- 用途ごとに持つ紐付けの列を CHECK で固定し、足りない列や余計な列を持つ行は作れない。
+-- 紐付け先の行が消えれば、チャレンジも外部キーの連鎖で消える。そのため、チャレンジは紐付け先より先に消費する
+-- （登録トークンや失効させるパスキーを先に消すと、チャレンジが連鎖で消えて消費に失敗する）。
+-- サインインは discoverable credential を使うので、options の時点ではユーザーが分からず、user_id を持たない。
+-- purpose は enroll（登録リンクによる登録）、sign_in（サインイン）、add_reauth（本人による追加の直前の再認証）、
+-- add_register（本人による追加の登録）、revoke（本人による失効の直前の再認証）のどれか
+CREATE TABLE challenges (
+  challenge                 TEXT PRIMARY KEY,
+  purpose                   TEXT NOT NULL CHECK (purpose IN ('enroll', 'sign_in', 'add_reauth', 'add_register', 'revoke')),
+  user_id                   TEXT REFERENCES users(id) ON DELETE CASCADE,                           -- sign_in 以外で持つ
+  enroll_token_hash         TEXT REFERENCES enroll_tokens(token_hash) ON DELETE CASCADE,          -- enroll だけが持つ
+  authorize_request_id_hash TEXT REFERENCES authorize_requests(id_hash) ON DELETE CASCADE,        -- sign_in だけが持つ
+  session_token_hash        TEXT REFERENCES sessions(token_hash) ON DELETE CASCADE,               -- add_reauth、add_register、revoke だけが持つ
+  target_credential_id      TEXT REFERENCES credentials(id) ON DELETE CASCADE,                    -- revoke だけが持つ（失効させるパスキー）
+  expires_at                INTEGER NOT NULL,
+  CHECK ((user_id IS NULL) = (purpose = 'sign_in')),
+  CHECK ((enroll_token_hash IS NOT NULL) = (purpose = 'enroll')),
+  CHECK ((authorize_request_id_hash IS NOT NULL) = (purpose = 'sign_in')),
+  CHECK ((session_token_hash IS NOT NULL) = (purpose IN ('add_reauth', 'add_register', 'revoke'))),
+  CHECK ((target_credential_id IS NOT NULL) = (purpose = 'revoke'))
+);
 
 -- 期限切れの行を消すバッチが、テーブル全体を走査しないようにする（D1 は走査した行数を読み取りとして数える）
 CREATE INDEX enroll_tokens_expires_at      ON enroll_tokens (expires_at);
@@ -106,12 +119,18 @@ CREATE INDEX sessions_expires_at           ON sessions (expires_at);
 CREATE INDEX auth_codes_expires_at         ON auth_codes (expires_at);
 CREATE INDEX authorize_requests_expires_at ON authorize_requests (expires_at);
 
--- ユーザー単位の削除（session_revoke、user_disable、passkey_revoke）も、テーブル全体を走査しないようにする（理由は上と同じ）
+-- ユーザー単位のセッションの削除（session_revoke、user_disable）と、ユーザーのパスキーの数え上げ
+-- （パスキーの上限、最後の 1 本の確認、user_get とアカウントページの一覧）も、テーブル全体を走査しないようにする（理由は上と同じ）
 CREATE INDEX sessions_user_id    ON sessions (user_id);
 CREATE INDEX credentials_user_id ON credentials (user_id);
--- 外部キーの連鎖（パスキーの失効 → セッション → 認可コード）も、テーブル全体を走査しないようにする
-CREATE INDEX sessions_credential_id        ON sessions (credential_id);
-CREATE INDEX auth_codes_session_token_hash ON auth_codes (session_token_hash);
+-- 外部キーの連鎖（パスキーの失効 → セッション → 認可コードとチャレンジ、紐付け先 → チャレンジ）も、
+-- テーブル全体を走査しないようにする
+CREATE INDEX sessions_credential_id                ON sessions (credential_id);
+CREATE INDEX auth_codes_session_token_hash         ON auth_codes (session_token_hash);
+CREATE INDEX challenges_enroll_token_hash          ON challenges (enroll_token_hash);
+CREATE INDEX challenges_authorize_request_id_hash  ON challenges (authorize_request_id_hash);
+CREATE INDEX challenges_session_token_hash         ON challenges (session_token_hash);
+CREATE INDEX challenges_target_credential_id       ON challenges (target_credential_id);
 
 -- アクセス判定の唯一の定義
 CREATE VIEW effective_access AS
@@ -148,12 +167,14 @@ CREATE INDEX audit_log_target      ON audit_log (target, occurred_at);  -- audit
 
 - 記録するのは書き込みの操作で、読み取りの操作（`users_list`、`audit_tail` など）は記録しない。
 - Worker が書くのは、本人のパスキー操作だけにする。登録リンクによる登録は `passkey_enroll`、本人による追加は `passkey_add`、本人による失効は `passkey_self_revoke` とし、`actor` は `user`、`target` は `user:<id>`、`detail_json` に credential ID を入れる。本人への通知の代わりに、認証器が増えたり減ったりしたことを管理者が監査ログで確認できるようにする（[認証フロー](authentication.md)参照）。
-- 成功した操作は、操作と同じバッチで 1 行を書く。失敗した操作は、バッチが丸ごとロールバックされるので、その後に別の書き込みで `failure` の行を書く。
+- 成功した操作は、操作と同じバッチで 1 行を書く。`idpctl` は、失敗した操作も記録する。バッチが丸ごとロールバックされるので、その後に別の書き込みで `failure` の行を書く。
+- Worker は `success` の行だけを書き、失敗や拒否は Worker のログに任せる。Worker のエンドポイントは認証前のリクエストからも呼べるので、失敗の行を書くと、誰でも D1 の 1 日の書き込み上限を監査ログの行で消費させられるため（[無料枠](free-tier.md)参照）。
+- Worker の行は、`credentials` への書き込みと同じ条件を付けて、同じバッチに置く。登録と追加は、挿入と同じ条件（ユーザーが無効化されていない、パスキーの本数が[上限](cross-language-contract.md)未満）を付けた `INSERT … SELECT` で書く。本人による失効は、削除と同じ条件（対象がそのユーザーのパスキーで、2 本以上ある）を付けた `INSERT … SELECT` を削除の直前の文に置く。条件が成り立たず書き込みが起きなければ、監査ログの行も書かれない。拒否されたのに成功の行が残ることはない。
 - グループは名前を変えられるので、`target` には ID（`group:<id>`）を入れ、操作時点の名前を `detail_json` に残す。
 - 対象が 2 つある操作は、`grant_add` などでは client を、`group_member_add` などではグループを `target` に入れ、もう一方（`user:<id>` や `group:<id>`）を `detail_json` に入れる。
 - 権限を広げる操作（`grant_add`、`group_member_add`）は、新たに使えるようになったユーザーと client の組を `detail_json` に残す。
-- 外部キーの連鎖で所属や grant も消える操作（`group_delete`、ユーザーの完全削除）は、消えた行を `detail_json` に残し、監査ログから元に戻せるようにする。
+- 外部キーの連鎖で所属や grant も消える操作（`group_delete`、`user_delete`）は、消えた行を `detail_json` に残し、監査ログから元に戻せるようにする。
 - OWASP の「記録から除くデータ」に従い、セッション ID、トークン、シークレット、登録トークンは書かない。`detail_json` にも入れず、登録リンクの発行では有効期限だけを残す。
 - 行は削除しない。家族規模の件数なら、無料枠の DB サイズ（500 MB）に対して十分小さい。
 
-サインインのたびに D1 へは書かず、Worker のログに任せる。期限切れの行は発行時に片付けるので、Cron は使わない。有効かどうかは取り出すときに必ず `expires_at` で判定するので、片付けが遅れても安全性は変わらない（容量にだけ影響する）。
+サインインは監査ログに書かず、Worker のログに任せる（サインイン自体はチャレンジ、セッション、sign count を D1 に書く）。期限切れの行は発行時に片付けるので、Cron は使わない。有効かどうかは取り出すときに必ず `expires_at` で判定するので、片付けが遅れても安全性は変わらない（容量にだけ影響する）。

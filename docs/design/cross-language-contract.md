@@ -18,8 +18,10 @@ Go が書いた値を TypeScript が読むので、両者の間の取り決め�
 | 秘密鍵の JWK | `alg: RS256` と `use: sig` を持たせる |
 | JWKS に載せる値 | 公開鍵のメンバー（`kty`、`n`、`e`）と、`kid`、`alg`、`use` だけ |
 | トークンのクレーム | `contract.md` に一覧として明記する |
-| 監査ログ | 管理操作は `idpctl` が、本人のパスキー操作は Worker が書くので、両者で同じ形にする。`actor` は `cli`・`mcp`（`idpctl`）か `user`（Worker）、`writer_version` は書き込んだ `idpctl` か Worker のバージョン、`operation` は操作名（`idpctl` の操作名か、`passkey_enroll`・`passkey_add`・`passkey_self_revoke`）、`target` は `user:<id>`・`client:<id>`・`group:<id>` のどれか、`result` は `success` か `failure`、`detail_json` は JSON オブジェクトの文字列。セッション ID、トークン、シークレット、登録トークンは書かない（[データモデル](data-model.md)参照） |
+| パスキーの上限 | 1 人あたりのパスキーの上限を、名前の付いた共有の値 `max_passkeys_per_user` として 1 か所で定める。今の値は 10。Worker の本人による追加と登録リンクによる登録の確認、`idpctl` の `enroll_link_issue` の確認は、どれもこの値を使う。仕様が定める値ではない（NIST SP 800-63B-4 §4.1.2.1 は複数の認証器の結び付けを許可しなければならない（SHALL）とするが、上限は定めていない）ので、暫定の値として扱う。ほかのドキュメントは数を書かず、この行を参照する |
+| 監査ログ | 管理操作は `idpctl` が、本人のパスキー操作は Worker が書くので、両者で同じ形にする。`actor` は `cli`・`mcp`（`idpctl`）か `user`（Worker）、`writer_version` は書き込んだ `idpctl` か Worker のバージョン、`operation` は操作名（`idpctl` の操作名か、`passkey_enroll`・`passkey_add`・`passkey_self_revoke`）、`target` は `user:<id>`・`client:<id>`・`group:<id>` のどれか、`result` は `success` か `failure`（Worker は `success` だけを書く）、`detail_json` は JSON オブジェクトの文字列。セッション ID、トークン、シークレット、登録トークンは書かない（[データモデル](data-model.md)参照） |
 
-- `contract/testdata/vectors.json` に共通のテストベクタ（入力とハッシュ結果など）を置き、TypeScript と Go の両方のテストで検証する。
+- `contract/testdata/vectors.json` に共通のテストベクタ（入力とハッシュ結果など）を置き、TypeScript と Go の両方のテストで検証する。パスキーの上限の値もここに置き、両方のテストで同じ値を使っていることを確かめる。
+- パスキーの上限を変えるときは、この契約の値を変え、Worker と `idpctl` を同時に更新する。下げても既存のパスキーは消さない。新しい上限を超えているユーザーは今のパスキーをそのまま使え、それ以上の追加と登録リンクの発行は拒否され、失効は（最後の 1 本は失効できない規則のもとで）これまでどおりできる。上げるときはマイグレーションが要らない。
 - 入力の検証（redirect URI の形式、グループ名など）は書き込みを行う Go 側だけで行う。Worker は保存された値と完全一致で比べ、壊れた行は拒否する。
 - Worker を将来 Rust で書き直しても、この契約が変わらなければ `idpctl` は影響を受けない。
