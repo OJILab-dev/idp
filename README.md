@@ -92,3 +92,7 @@ GITHUB_TOKEN="$(gh auth token)" mise run actions:check
 - `jq`
 - `mise`
 - `op`
+
+Cloudflare の CLI `cf`（ベータ）は、mise が `mise.toml` に固定したバージョンを入れます。`mise install` のあとに `mise exec -- cf` で使います。
+`cf` の依存関係は `mise.lock` と `.mise/locks/` に integrity 付きで固定されています。
+`cf auth login` は運用者が自分で実行します。

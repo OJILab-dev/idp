@@ -1,5 +1,9 @@
+[settings]
+npm.package_manager = "aube"
+
 [tools]
 actionlint = "1.7.12"
+"npm:cf" = "1.0.0-beta.21"
 pinact = "4.1.1"
 shellcheck = "0.11.0"
 

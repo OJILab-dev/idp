@@ -49,6 +49,12 @@ url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_
 url_api = "https://api.github.com/repos/rhysd/actionlint/releases/assets/384924919"
 provenance = "github-attestations"
 
+[[tools."npm:cf"]]
+version = "1.0.0-beta.21"
+aube = { path = ".mise/locks/npm-cf/1.0.0-beta.21", digest = "sha256:8c9f2bf5e0b46ae3acae5e716ad2a2804b7d6415b581c297bd2174d8adfe0255" }
+backend = "npm:cf"
+specifiers = ["1.0.0-beta.21"]
+
 [[tools.pinact]]
 version = "4.1.1"
 backend = "aqua:suzuki-shunsuke/pinact"

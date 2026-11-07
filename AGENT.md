@@ -38,6 +38,12 @@ GITHUB_TOKEN="$(gh auth token)" mise run actions:pin
 GITHUB_TOKEN="$(gh auth token)" mise run actions:check
 ```
 
+## Cloudflare CLI
+
+Cloudflare の操作には、mise が固定した `cf` CLI を `mise exec -- cf` で使います。グローバルに入れた `cf` に頼ってはいけません。
+`cf` のバージョンを変えるときは `mise.toml` を書き換えて `mise lock` を実行し、`mise.lock` と `.mise/locks/` をまとめてコミットします。
+`cf auth login` は運用者が実行します。エージェントは Cloudflare の認証情報を作成、読み出し、受け渡ししてはいけません。
+
 ## Repository settings
 
 GitHub 上の設定を適用する場合は、リポジトリのルートで次を実行します。
