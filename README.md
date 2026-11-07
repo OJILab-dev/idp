@@ -1,58 +1,64 @@
-# OJILab Cloudflare stack template
+# idp
 
-OJILabでCloudflare上へデプロイするリポジトリの共通設定、GitHub Actions運用契約、1Password Environments連携の標準形を提供するテンプレートです。
+Cloudflare Workers の無料枠だけで動く、パスキー専用の最小構成 OIDC IdP です。
+対象は自分と家族のセルフホストアプリで、管理は手元の CLI から行います。
 
-## このテンプレートが定めること
+## 現在の状態
 
-- GitHub ActionsはKVM不要のjobでTakumi Runnerを使用する
-- npm依存を取得するjobではTakumi Guardを依存取得前に設定する
-- 外部Actionとreusable workflowはpinactでcommit SHAへ固定する
-- CI/CD用Secretの正本を1Password Environmentに置く
-- Organization共通の1Password Workload Identity Providerを使う
-- GitHub OIDCのrepository、workflow、branch、GitHub Environmentを接続条件にする
-- GitHubには1Password Integration Key以外の長寿命Secretを保存しない
-- 人間向けVaultとworkload向けEnvironmentのアクセス境界を分離する
+設計段階です。実装はまだありません。
+設計は [docs/design/](docs/design/README.md) に記録しています。
 
-## 1Password命名規則
+## ゴール
 
-本番Environmentは次の名前で作成します。
+- Cloudflare Workers と D1 の無料枠の範囲で常時稼働する
+- ユーザーの認証手段はパスキーだけにし、OIDC と WebAuthn の標準に厳格に準拠する
+- アプリ単位で「誰が使えるか」を管理できる
+- 管理操作は手元の CLI から行い、後から MCP でも操作できる
+- 将来、Worker を Rust で書き直せる余地を残す
 
-```text
-<stack-name>-prod
+## 構成
+
+| 要素 | 役割 |
+| --- | --- |
+| Worker（TypeScript + Hono） | インターネットに公開する唯一の要素。OIDC エンドポイント、パスキー API、サインイン・登録ページを提供する |
+| D1 | IdP の全状態を置くデータベース |
+| `idpctl`（Go） | 手元で動かす管理 CLI。D1 REST API で直接操作し、同じバイナリに stdio の MCP サーバーを同梱する |
+
+Worker には管理用のエンドポイントや管理 UI を置きません。
+設計原則、全体構成の図、各トピックの設計は [設計ドキュメントの索引](docs/design/README.md) を参照してください。
+
+## ドキュメント
+
+| ドキュメント | 内容 |
+| --- | --- |
+| [docs/design/README.md](docs/design/README.md) | IdP の設計ドキュメントの索引。概要、ゴール、設計原則、全体構成 |
+| [docs/philosophy/README.md](docs/philosophy/README.md) | OJILab の設計思想とエンジニアリング原則 |
+| [docs/deployment/secret.md](docs/deployment/secret.md) | 1Password Environments と GitHub Actions による CD 用 Secret の扱い |
+| [AGENT.md](AGENT.md) | このリポジトリを変更するエージェントの契約 |
+
+## リポジトリの運用
+
+### Repository settings
+
+GitHub 上のリポジトリ設定を適用します。
+
+```sh
+./setup-repository.sh
 ```
 
-実例:
+設定を変更せずドリフトだけを確認する場合:
 
-```text
-cloudflare-dns-prod
-cloudflare-zero-trust-prod
+```sh
+./setup-repository.sh --check
 ```
 
-Environment内の変数名は、deploy toolがそのまま参照する環境変数名に揃えます。
+### 1Password Environments による CD
 
-```text
-CLOUDFLARE_API_TOKEN
-CLOUDFLARE_ACCOUNT_ID
-```
+CD 用 Secret の正本は 1Password Environment に置き、GitHub Actions の OIDC token を 1Password が検証して、許可された job にだけ実行時に渡します。
+GitHub には 1Password Integration Key 以外の長寿命 Secret を保存しません。
+Environment と GitHub Actions destination の作成手順、命名規則、権限、ローテーションは [docs/deployment/secret.md](docs/deployment/secret.md) を参照してください。
 
-GitHub repositoryには次の値を登録します。
-
-```text
-Repository variable: OP_WORKLOAD_ID
-Repository variable: OP_ENVIRONMENT_ID
-Repository secret:   OP_INTEGRATION_KEY
-```
-
-`OP_INTEGRATION_KEY`はOrganization共通Providerのkeyですが、keyだけではEnvironmentを読み取れません。
-Environmentごとに作成するGitHub Actions destinationの条件とOIDC tokenが一致して初めてアクセスできます。
-
-詳細な作成手順、権限、移行、ローテーション方法は[docs/deployment/secret.md](docs/deployment/secret.md)を参照してください。
-
-## GitHub Actionsへ導入する
-
-[examples/github-actions/deploy.yml](examples/github-actions/deploy.yml)を、生成したリポジトリの`.github/workflows/deploy.yml`へコピーし、パッケージマネージャーとdeploy commandをプロジェクトに合わせて変更します。
-
-1Password側でEnvironmentとGitHub Actions destinationを作成した後、表示されたWorkload IDとEnvironment IDを使ってGitHub側を設定します。
+1Password 側で作成した Workload ID と Environment ID を GitHub 側へ設定します。
 
 ```sh
 OP_WORKLOAD_ID='<workload-id>' \
@@ -60,30 +66,22 @@ OP_ENVIRONMENT_ID='<environment-id>' \
 ./setup-1password-integration.sh
 ```
 
-設定値を変更せず確認する場合:
+設定を変更せずドリフトだけを確認する場合:
 
 ```sh
 ./setup-1password-integration.sh --check
 ```
 
-外部ActionのSHAを更新・検証します。
+deploy workflow の雛形は [examples/github-actions/deploy.yml](examples/github-actions/deploy.yml) にあります。
+
+### GitHub Actions の pin
+
+外部 Action と reusable workflow は、mise で管理する pinact で commit SHA に固定します。
 
 ```sh
 mise install
 GITHUB_TOKEN="$(gh auth token)" mise run actions:pin
 GITHUB_TOKEN="$(gh auth token)" mise run actions:check
-```
-
-## Repository settings
-
-```sh
-./setup-repository.sh
-```
-
-設定変更を行わずドリフトだけを確認する場合:
-
-```sh
-./setup-repository.sh --check
 ```
 
 ## 前提コマンド
@@ -92,5 +90,3 @@ GITHUB_TOKEN="$(gh auth token)" mise run actions:check
 - `jq`
 - `mise`
 - `op`
-
-生成後は、このREADMEと`AGENT.md`にプロジェクト固有の目的、Setup、Build、Test、Check、Deployコマンドを追記してください。
