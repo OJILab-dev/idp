@@ -4,7 +4,7 @@
 
 **サインイン（認可コードフロー）**
 
-1. RP アプリが `/authorize` にリダイレクトする。Worker は最初に `client_id` と `redirect_uri`（完全一致。ループバックだけポートを問わない）を検証し、不一致ならリダイレクトせずエラーページを返す。続いて `scope` に `openid` が含まれるかを確認し、なければ検証済みの `redirect_uri` に `invalid_scope` を返す。OIDC 専用の IdP なので、素の OAuth 2.0 のリクエストとしては扱わない（設計原則 4）。
+1. RP アプリが `/authorize` にリダイレクトする。Worker は最初に `client_id` と `redirect_uri`（完全一致。ループバックだけポートを問わない）を検証し、不一致ならリダイレクトせずエラーページを返す。続いて `scope` に `openid` が含まれるかを確認し、なければ検証済みの `redirect_uri` に `invalid_scope` を返す。`openid` がないときの動作は仕様で規定されていない（OIDC Core §3.1.2.1）ので、仕様の要求ではなく fail-closed（設計原則 4）の方針として拒否する。
 2. `effective_access` で、セッションのユーザーがこのクライアントを使えるか確認する（セッションがなければ手順 4 へ。public client は、セッションがあっても `prompt=login` と同じに扱って手順 4 へ）。使えなければ、検証済みの `redirect_uri` に `access_denied` を返す。セッションの Cookie は SameSite=Lax なので、クロスサイトからの `POST /authorize` にはセッションが付かず、常に手順 4 のパスキーのサインインに進む。安全側に倒れる、意図した動作である。
 3. アクセスが許可されていれば、認可コード（60 秒、ハッシュ保存）を発行して `redirect_uri` に戻す。`prompt=none` のとき、セッションがないか public client からの要求なら、検証済みの `redirect_uri` にだけ `login_required` を返す。
 4. セッションがない、または `prompt=login` や `max_age` で再認証が必要なら、検証済みのリクエストを `authorize_requests` に保存し（5 分）、その ID を `__Host-` Cookie に入れて、静的アセットのサインインページを表示する。ページは `/webauthn/auth/options` でチャレンジ（256 bit、5 分、D1 に保存）を受け取り、ブラウザでパスキーの署名を作る。discoverable credential を使うのでこの時点ではユーザーが分からず、チャレンジは Cookie の認可リクエスト（`authorize_request_id_hash`）に紐付けて保存する。

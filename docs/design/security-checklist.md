@@ -16,7 +16,7 @@
 - [ ] リクエストの `state` を、成功・エラーどちらのレスポンスにもそのまま返す（RFC 6749 §4.1.2）
 - [ ] `client_id` と `redirect_uri` の検証後に起きたエラーは、検証済みの `redirect_uri` に `error` を付けて返す。アクセス権のないユーザーには `access_denied` を返す
 - [ ] `/authorize` は GET と POST の両方を受け付ける
-- [ ] `scope` に `openid` を含まない認可リクエストは、検証済みの `redirect_uri` に `invalid_scope` を返して拒否する（OIDC 専用の IdP なので、素の OAuth 2.0 としては扱わない）
+- [ ] `scope` に `openid` を含まない認可リクエストは、検証済みの `redirect_uri` に `invalid_scope` を返して拒否する（仕様では動作が未規定。fail-closed の方針として拒否する）
 - [ ] `prompt=login` と `max_age` で、パスキーによる再認証を強制できる。`prompt=none` に他の値が混ざっていればエラーにする
 - [ ] `display`、`ui_locales`、`claims_locales`、`acr_values` を送られてもエラーにしない
 - [ ] `request`、`request_uri`、`registration` には、それぞれ `request_not_supported`、`request_uri_not_supported`、`registration_not_supported` を返す
