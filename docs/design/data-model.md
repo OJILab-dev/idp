@@ -1,6 +1,6 @@
 # データモデル
 
-状態はすべて D1 に置く。下の 9 テーブルと、管理操作を記録する監査ログのテーブル 1 つ（末尾を参照）からなり、アクセス可否の判定は `effective_access` ビュー 1 つに集約する。Worker と `idpctl` は同じビューを読むので、判定結果が食い違わない。
+状態はすべて D1 に置く。下の 12 テーブルと、管理操作を記録する監査ログのテーブル 1 つ（末尾を参照）からなり、アクセス可否の判定は `effective_access` ビュー 1 つに集約する。Worker と `idpctl` は同じビューを読むので、判定結果が食い違わない。
 
 ```sql
 -- 利用者とパスキー
@@ -11,7 +11,6 @@ CREATE TABLE users (
   email_key      TEXT UNIQUE,             -- ASCII 小文字化した検索キー。NULL 同士は重複とみなさない
   email_verified INTEGER NOT NULL DEFAULT 0, -- 管理者が明示的に確認したときだけ 1
   name           TEXT NOT NULL,
-  groups_json    TEXT NOT NULL DEFAULT '[]',
   disabled       INTEGER NOT NULL DEFAULT 0,
   created_at     INTEGER NOT NULL,        -- UNIX 秒
   CHECK ((email IS NULL) = (email_key IS NULL)),
@@ -35,10 +34,28 @@ CREATE TABLE clients (
   redirect_uris_json TEXT NOT NULL,    -- 完全一致で比較する URI の配列（ループバックはポート以外を比較）
   CHECK ((client_type = 'confidential') = (secret_hash IS NOT NULL))
 );
-CREATE TABLE client_access (
+-- グループは 1 つ以上の client の集合で、ネストしない。client が 0 個のグループを作らない不変条件は idpctl が守る
+-- （グループの作成、client の除外、client の削除で確認する）。0 個になっても誰にも許可が出ないだけで、安全側に倒れる
+CREATE TABLE groups (
+  name       TEXT PRIMARY KEY,         -- 形式は idpctl が検証する（cross-language-contract.md）
+  created_at INTEGER NOT NULL
+);
+CREATE TABLE group_members (
+  user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  group_name TEXT NOT NULL REFERENCES groups(name) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, group_name)    -- アクセス判定はユーザーから引くので user_id を先にする
+);
+-- 付与先ごとにテーブルを分け、どちらの列も NOT NULL の外部キーにする。
+-- 1 テーブルに NULL 可の 2 列を置くと、SQLite では NULL を含む主キーの重複を防げない
+CREATE TABLE client_user_access (
+  user_id   TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
-  subject   TEXT NOT NULL,             -- 'user:<id>' | 'group:<name>'
-  PRIMARY KEY (client_id, subject)
+  PRIMARY KEY (user_id, client_id)
+);
+CREATE TABLE client_group_access (
+  group_name TEXT NOT NULL REFERENCES groups(name) ON DELETE CASCADE,
+  client_id  TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+  PRIMARY KEY (group_name, client_id)
 );
 
 -- 使い捨ての値（すべて DELETE … RETURNING で消費する。トークンとコードはハッシュで保存する。
@@ -85,11 +102,15 @@ CREATE INDEX credentials_user_id ON credentials (user_id);
 
 -- アクセス判定の唯一の定義
 CREATE VIEW effective_access AS
-SELECT DISTINCT u.id AS user_id, a.client_id
+SELECT u.id AS user_id, a.client_id
 FROM users u
-JOIN client_access a
-  ON a.subject = 'user:' || u.id
-  OR a.subject IN (SELECT 'group:' || value FROM json_each(u.groups_json))
+JOIN client_user_access a ON a.user_id = u.id
+WHERE u.disabled = 0
+UNION
+SELECT u.id AS user_id, a.client_id
+FROM users u
+JOIN group_members m       ON m.user_id = u.id
+JOIN client_group_access a ON a.group_name = m.group_name
 WHERE u.disabled = 0;
 
 -- 管理操作の監査ログ（idpctl だけが書く。OWASP Logging Cheat Sheet の when / where / who / what）
@@ -107,11 +128,12 @@ CREATE TABLE audit_log (
 CREATE INDEX audit_log_occurred_at ON audit_log (occurred_at);  -- audit_tail で新しい順に読む
 ```
 
-上の 9 テーブルのほかに監査ログ用のテーブル `audit_log` を 1 つ置き、管理操作だけを記録する。カラムは OWASP Logging Cheat Sheet の「いつ、どこで、誰が、何を」に対応させ、値の形は [TypeScript と Go の契約](cross-language-contract.md)で固定する。
+上の 12 テーブルのほかに監査ログ用のテーブル `audit_log` を 1 つ置き、管理操作だけを記録する。カラムは OWASP Logging Cheat Sheet の「いつ、どこで、誰が、何を」に対応させ、値の形は [TypeScript と Go の契約](cross-language-contract.md)で固定する。
 
 - 記録するのは書き込みの操作で、読み取りの操作（`users_list`、`audit_tail` など）は記録しない。
 - 成功した操作は、操作と同じバッチで 1 行を書く。失敗した操作は、バッチが丸ごとロールバックされるので、その後に別の書き込みで `failure` の行を書く。
-- 対象が 2 つある操作（`grant_add` など）は、client を `target` に入れ、もう一方（`user:<id>` や `group:<name>`）を `detail_json` に入れる。
+- 対象が 2 つある操作は、`grant_add` などでは client を、`group_member_add` などではグループを `target` に入れ、もう一方（`user:<id>` や `group:<name>`）を `detail_json` に入れる。
+- `group_delete` は外部キーの連鎖で所属と grant も消えるので、消えたメンバーと client の一覧を `detail_json` に残し、監査ログから元に戻せるようにする。
 - OWASP の「記録から除くデータ」に従い、セッション ID、トークン、シークレット、登録トークンは書かない。`detail_json` にも入れず、登録リンクの発行では有効期限だけを残す。
 - 行は削除しない。家族規模の件数なら、無料枠の DB サイズ（500 MB）に対して十分小さい。
 

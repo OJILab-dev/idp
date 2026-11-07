@@ -10,7 +10,7 @@ Go が書いた値を TypeScript が読むので、両者の間の取り決め�
 | ハッシュ | SHA-256 のダイジェストを base64url（パディングなし）にする。仕様で決まっている形ではないが、トークン・シークレット、PKCE の S256（RFC 7636）、署名鍵の `kid`（RFC 7638）と揃える |
 | ID | 利用者の ID（`users.id`、OIDC の `sub`）は UUIDv4（RFC 9562）を小文字のハイフン区切りで書く。OIDC Core §2 は `sub` の形式を定めず（発行者の中で一意、再割り当てしない、255 文字以内の ASCII、大文字と小文字を区別）、RFC 9562 §8 はセキュリティに関わる用途の UUID には v4 を使うべき（SHOULD）としている。client ID と WebAuthn の credential ID はこの対象外 |
 | 時刻 | UNIX 秒の整数 |
-| JSON カラム | redirect URI やグループは JSON 配列の文字列で持つ |
+| JSON カラム | redirect URI は JSON 配列の文字列で持つ。グループの所属はテーブル（`group_members`）で持つ |
 | メールアドレスの検索キー | ASCII の小文字化 |
 | パスキー | WebAuthn 仕様どおりの値（COSE 公開鍵の生バイトなど） |
 | 署名鍵 | JWK で Worker Secret に置く。運用者が生成し、Worker が読む |
