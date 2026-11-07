@@ -47,5 +47,5 @@ OIDC と WebAuthn は、仕様の MUST だけでなくセキュリティ上の S
 **準拠の確認方法**
 
 - OpenID Foundation がホストする適合性テスト（certification.openid.net、無料アカウントで実行可能）で、Basic OP と Config OP のテストプランを流す。Basic OP には `prompt=login` や `max_age` の確認も含まれる。
-- 正式な認定（OpenID Certified）の取得は費用がかかるので任意とし、テストの全項目合格を必須条件にする。
-- WebAuthn は、仕様のテストベクタと仮想オーセンティケータを使った e2e テストで確認する。
+- 正式な認定（OpenID Certified）は、費用がかかるので取得しない。認定を取らなくても、Basic OP と Config OP のテストプランの全項目合格は必須条件にする。
+- WebAuthn は、仕様のテストベクタと、Playwright で仮想オーセンティケータを使う e2e テストで確認する。

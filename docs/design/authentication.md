@@ -8,7 +8,7 @@
 2. `effective_access` で、セッションのユーザーがこのクライアントを使えるか確認する（セッションがなければ手順 4 へ。public client は、セッションがあっても `prompt=login` と同じに扱って手順 4 へ）。使えなければ、検証済みの `redirect_uri` に `access_denied` を返す。セッションの Cookie は SameSite=Lax なので、クロスサイトからの `POST /authorize` にはセッションが付かず、常に手順 4 のパスキーのサインインに進む。安全側に倒れる、意図した動作である。
 3. アクセスが許可されていれば、認可コード（60 秒、ハッシュ保存）を発行して `redirect_uri` に戻す。`prompt=none` のとき、セッションがないか public client からの要求なら、検証済みの `redirect_uri` にだけ `login_required` を返す。
 4. セッションがない、または `prompt=login` や `max_age` で再認証が必要なら、検証済みのリクエストを `authorize_requests` に保存し（15 分。そこから発行するチャレンジより先に切れないよう、10 分のセレモニーにページ読み込みの余裕を足す）、その ID を `__Host-` Cookie に入れて、静的アセットのサインインページを表示する。ページは `/webauthn/auth/options` でチャレンジ（256 bit、10 分、D1 に保存）を受け取り、ブラウザでパスキーの署名を作る。discoverable credential を使うのでこの時点ではユーザーが分からず、チャレンジは Cookie の認可リクエスト（`authorize_request_id_hash`）に紐付けて保存する。
-5. `/webauthn/auth/verify` でユーザー検証（UV）必須、origin と RP ID 固定で署名を検証し、チャレンジが同じ Cookie の認可リクエストに紐付いていることを確認してから、チャレンジを原子的に消費する。成功したら古いセッションを破棄して新しいセッションを作り、ページは `/authorize/resume` に移る。
+5. `/webauthn/auth/verify` でユーザー検証（UV）必須、origin と RP ID 固定で署名を検証し、チャレンジが同じ Cookie の認可リクエストに紐付いていることを確認してから、チャレンジを原子的に消費する。成功したら古いセッションを破棄して新しいセッション（サインインから 1 時間の絶対期限で、延長しない）を作り、ページは `/authorize/resume` に移る。
 6. `/authorize/resume` は Cookie の ID で `authorize_requests` の行を `DELETE … RETURNING` で一度だけ取り出し、Cookie を消す。行がない、または期限切れならエラーページを返す。client と `redirect_uri` が今も登録どおりか、アクセス可否、`prompt=login` または public client ならセッションの `auth_time` が行の `created_at` 以降か、`max_age` と `id_token_hint` の条件を確認し直してから、手順 3 と同じく認可コードを発行する。
 7. RP アプリが `/token` を呼ぶ。クライアント認証（`client_secret_basic`。public client は認証せず `client_id` だけを送る）、PKCE、redirect\_uri、ユーザーの現在のアクセス可否をすべて検証してから、認可コードを原子的に消費し、ID トークンとアクセストークンを返す。
 8. `/userinfo` は、`typ` が `at+jwt` で `aud` が issuer のアクセストークンだけを受け付ける。毎回 D1 からユーザーを読み直し、無効化されたユーザーと、トークンの `client_id` を使えなくなったユーザーは拒否する。
@@ -21,11 +21,17 @@
 
 **パスキーの登録**
 
-1. 管理者が `idpctl` でユーザーを作成し、登録リンク（`/enroll#<token>`）を発行する。トークンは URL のフラグメントに入れ、サーバーのログに残さない。
+1. 管理者が `idpctl` でユーザーを作成し、登録リンク（`/enroll#<token>`。256 bit、発行から 10 分、1 回だけ使える）を発行する。リンクは本人に渡すその場で発行し、メールではなく、対面など信頼できる経路で渡す。トークンは URL のフラグメントに入れ、サーバーのログに残さない。
 2. 登録ページはフラグメントからトークンを読み、`/webauthn/register/options` でチャレンジを受け取る。チャレンジは登録トークンに紐付けて保存する。
 3. `/webauthn/register/verify` で、チャレンジとトークンの紐付けを確認してからトークンを消費し、パスキーを `credentials` に保存する。
 
 パスキーを失くした場合は、管理者が新しい登録リンクを発行する。2 本目のパスキー（スマホと PC など）の登録を推奨する。
+
+**登録リンクの有効期限**
+
+- 登録リンクは、管理者のもとで発行した値を本人の端末に持ち込み、パスキーを結び付けるためのものなので、NIST SP 800-63B-4 の「Binding Across Endpoints」の binding code の上限に合わせる。binding code は 1 回しか使えず（SHALL）、有効期間は最大 10 分で（SHALL）、メールのような安全でない経路で伝えてはならない（SHALL NOT）。
+- 10 分は、パスキーを失くしたときの復旧として見た場合の、§4.2 の recovery code の上限のうち厳しいほう（SMS や音声で送るときの 10 分）にも収まる。
+- トークンは 256 bit の乱数で、求められる強度を大きく上回る。
 
 **サインアウト**
 
