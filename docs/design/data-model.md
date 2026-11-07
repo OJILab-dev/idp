@@ -42,7 +42,8 @@ CREATE TABLE client_access (
 );
 
 -- 使い捨ての値（すべて DELETE … RETURNING で消費する。トークンとコードはハッシュで保存する。
--- チャレンジは秘密ではないのでそのまま保存する（WebAuthn §13.4.3）。
+-- チャレンジはセレモニーが終わるまでサーバー側に一時保存し、タイムアウトの推奨上限と同程度（10 分）有効にする（WebAuthn §13.4.3）。
+-- チャレンジは秘密ではないので、ハッシュにせずそのまま保存する。
 -- 期限切れの行は、新しい値を発行するときの同じバッチで削除する）
 CREATE TABLE enroll_tokens (token_hash TEXT PRIMARY KEY,
                             user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -62,7 +63,7 @@ CREATE TABLE auth_codes    (code_hash TEXT PRIMARY KEY,
                             user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                             redirect_uri TEXT NOT NULL, code_challenge TEXT NOT NULL, nonce TEXT, scope TEXT,
                             auth_time INTEGER NOT NULL, expires_at INTEGER NOT NULL);
--- サインインを挟む間だけ保持する、検証済みの認可リクエスト（5 分）。ID は __Host- Cookie でブラウザに渡す
+-- サインインを挟む間だけ保持する、検証済みの認可リクエスト（15 分。チャレンジの 10 分より先に切れないようにする）。ID は __Host- Cookie でブラウザに渡す
 CREATE TABLE authorize_requests (id_hash TEXT PRIMARY KEY,
                             client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
                             redirect_uri TEXT NOT NULL,
