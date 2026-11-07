@@ -16,7 +16,6 @@
 
 - 読み取り：`users_list`、`user_get`、`clients_list`、`grants_list`、`access_check`、`audit_tail`
 - 書き込み：`user_create`、`user_disable`、`enroll_link_issue`、`passkey_revoke`、`session_revoke`、`client_create`（public client は `--public`）、`client_set_redirects`、`client_rotate_secret`、`grant_add`、`grant_remove`
-- 鍵の生成：`signing_key_generate`（RS256 の鍵ペアを作り、秘密鍵の JWK を下の「秘密の扱い」と同じくファイルに書き出す。D1 には書かない。保存と登録の手順は[トークン設計](tokens.md)参照）
 - CLI 専用（MCP には出さない）：ユーザーの完全削除など、取り返しのつかない操作
 
 `access_check(user, client)` は、許可か拒否かに加えて、どの grant にマッチしたか（または何が足りないか）を返す。

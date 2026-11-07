@@ -28,5 +28,6 @@
 
 **署名鍵の生成とバックアップ**
 
-- `idpctl` が RS256 の鍵ペアを生成し、秘密鍵の JWK を権限 `0600` のファイルに書き出してパスだけを返す。他の秘密と同じ扱いで、MCP 経由で使っても秘密鍵が AI のコンテキストに流れない（[管理 CLI / MCP](idpctl.md)参照）。
-- 運用者は秘密鍵を 1Password の Vault のアイテムに保存し、そこから Worker Secret に登録してから、手元のファイルを削除する。Worker Secret は書き込み専用で読み出せないので、バックアップと正本は 1Password のアイテムとする（[デプロイと設定](deployment.md)参照）。
+- 鍵の形式（RSA 2048 bit、`kid` は JWK thumbprint など）は [TypeScript と Go の契約](cross-language-contract.md)で固定する。形式が契約で決まっているので、生成に使う道具は問わない。
+- 運用者が、AI や MCP のセッションの外で、標準的な道具を使って手作業で生成する。`idpctl` は鍵を生成しない。
+- 秘密鍵は標準入力で 1Password の Vault のアイテムと Worker Secret に渡し、平文のままディスクに書かない。Worker Secret は書き込み専用で読み出せないので、バックアップと正本は 1Password のアイテムとする（[デプロイと設定](deployment.md)参照）。
