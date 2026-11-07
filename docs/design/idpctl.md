@@ -20,13 +20,13 @@
 
 `access_check(user, client)` は、許可か拒否かに加えて、どの grant にマッチしたか（直接付与か、どのグループ経由か。または何が足りないか）を返す。
 
-グループは常に 1 つ以上の client を含む（[認可](authorization.md)参照）。この不変条件は、書き込みを行う `idpctl` が操作ごとに同じバッチの中で守る。
+ユーザーとグループは同じ主体として扱う（[認可](authorization.md)参照）。
 
-- `group_create` は、グループ名と 1 つ以上の client を受け取り、グループと grant を 1 回のバッチで作る。
-- `grant_remove` は、グループの最後の client を外す操作なら拒否する。グループごと不要なら `group_delete` を使う。
-- client を削除する操作（CLI 専用）は、その client が最後の 1 つになっているグループがあれば拒否し、該当するグループを示す。
-- `grant_add` と `group_member_add` で存在しないグループを指定すると、外部キーの制約で失敗する。グループ名の打ち間違いで、誰にもマッチしない grant が黙って作られることはない。
-- `groups_list` は、グループごとに client とメンバーの一覧を返す。メンバーが 0 人のグループは、そのまま一覧に出る。
+- `grant_add(principal, client)` と `grant_remove(principal, client)` は、主体を `user:<id>` か `group:<name>` で受け取る。どちらも同じ操作で、`idpctl` が主体の ID に解決してから `client_access` に書く。
+- `grant_add` と `group_member_add` で存在しない主体やグループを指定すると、解決の段階か外部キーの制約で失敗する。打ち間違えた名前で、誰にもマッチしない grant が黙って作られることはない。
+- `grant_add` と `group_member_add` は、新たに使えるようになるユーザーと client の組を結果に含める。グループへの grant やメンバーの追加は複数の人の権限をまとめて広げるので、MCP 経由の確認でも影響の範囲が見えるようにするため。
+- `group_create` は、メンバーと grant が 0 件のグループを作れる。`groups_list` は、グループごとにメンバーと client の一覧を返す。
+- ユーザーとグループの削除は `principals` の行を消し、外部キーの連鎖で所属と grant も消す。
 
 **秘密の扱い**
 
