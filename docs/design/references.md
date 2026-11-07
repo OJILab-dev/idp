@@ -4,6 +4,12 @@
 
 - [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html)
 - [OpenID Connect Discovery 1.0](https://openid.net/specs/openid-connect-discovery-1_0.html)
+- [OpenID Connect Dynamic Client Registration 1.0（§2 の `id_token_signed_response_alg` の既定）](https://openid.net/specs/openid-connect-registration-1_0.html)
+- [RFC 9864：Fully-Specified Algorithms for JOSE and COSE（`Ed25519` の登録と `EdDSA` の非推奨化）](https://www.rfc-editor.org/rfc/rfc9864.html)
+- [RFC 8037：CFRG Elliptic Curves for JOSE（OKP の鍵と thumbprint）](https://www.rfc-editor.org/rfc/rfc8037.html)
+- [RFC 8032：EdDSA](https://www.rfc-editor.org/rfc/rfc8032.html)
+- [RFC 7518：JSON Web Algorithms（§3.3 の RSA の鍵の長さ）](https://www.rfc-editor.org/rfc/rfc7518.html)
+- [RFC 6749：OAuth 2.0](https://www.rfc-editor.org/rfc/rfc6749.html)
 - [RFC 9700：OAuth 2.0 Security Best Current Practice](https://datatracker.ietf.org/doc/html/rfc9700)
 - [RFC 7636：PKCE](https://datatracker.ietf.org/doc/html/rfc7636)
 - [RFC 9207：認可レスポンスの iss](https://datatracker.ietf.org/doc/html/rfc9207)

@@ -22,7 +22,11 @@
 - [ ] `request`、`request_uri`、`registration` には、それぞれ `request_not_supported`、`request_uri_not_supported`、`registration_not_supported` を返す
 - [ ] `id_token_hint` は自分が発行したものか検証し、セッションのユーザーと違えば `login_required` を返す
 - [ ] トークンレスポンスに `Cache-Control: no-store` を付け、`redirect_uri` へのリダイレクトに 307 を使わない
-- [ ] JWT の `alg` は RS256 の許可リストで固定し、`typ` で ID トークンとアクセストークンを区別する
+- [ ] JWT の `alg` は許可リスト（`Ed25519` と、RS256 を有効にしたときの `RS256`）で固定し、`typ` で ID トークンとアクセストークンを区別する
+- [ ] JWT の検証で `alg` と鍵の種類を結び付ける。`Ed25519` は `kty: OKP` / `crv: Ed25519` の鍵とだけ、`RS256` は RSA の鍵とだけ受け付け、`EdDSA`、`none`、鍵の種類と合わない `alg` は拒否する（RFC 8725 §3.1、RFC 9864 §4.1.2）
+- [ ] `/userinfo` は `alg` が `Ed25519` のアクセストークンだけを受け付ける。`id_token_hint` は `Ed25519` と `RS256` の ID トークンを受け付ける
+- [ ] discovery の `id_token_signing_alg_values_supported` と JWKS は設定された鍵から導き、RSA の鍵がないデプロイでは `RS256` を載せない。JWKS には公開鍵のメンバーと `kid`、`alg`、`use` だけを載せる
+- [ ] RS256 が無効な間は、管理用の Worker が client への `RS256` の登録を拒否する。`RS256` を登録した client があるのに RSA の鍵がなければ、その client へのトークンの発行を失敗させ、別のアルゴリズムで署名して返さない
 - [ ] クレームは要求されたスコープの分だけ返す
 - [ ] `/token` と `/userinfo` で、無効化されたユーザーとアクセス可否を再確認する（Pocket ID CVE-2026-43983 の教訓）
 - [ ] `/userinfo` は `typ: at+jwt` かつ `aud` が issuer のトークンだけを受け付け、ID トークンや他の `aud` のトークンは拒否する。トークンの `client_id` に対するアクセス可否も確認する

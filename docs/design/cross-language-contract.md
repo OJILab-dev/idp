@@ -18,11 +18,12 @@ D1 に保存する値の形と、管理 API の形を、どの実装からも独
 | 時刻 | UNIX 秒の整数 |
 | JSON カラム | redirect URI は JSON 配列の文字列で持つ。グループの所属はテーブル（`group_members`）で持つ |
 | パスキー | WebAuthn 仕様どおりの値（COSE 公開鍵の生バイトなど） |
-| 署名鍵 | JWK で Worker Secret に置く。運用者が生成し、IdP の Worker が読む |
-| 署名鍵の種類 | RS256 用の RSA 鍵で、モジュラスは 2048 bit。RFC 7518 §3.3 は 2048 bit 以上を求めており、無料枠の CPU 時間に収めるため下限の 2048 bit にする |
-| 署名鍵の `kid` | RFC 7638 の JWK thumbprint（SHA-256、base64url でパディングなし） |
-| 秘密鍵の JWK | `alg: RS256` と `use: sig` を持たせる |
-| JWKS に載せる値 | 公開鍵のメンバー（`kty`、`n`、`e`）と、`kid`、`alg`、`use` だけ |
+| 署名鍵 | JWK で Worker Secret に置く。運用者が生成し、IdP の Worker が読む。鍵の種類ごとに current と previous を持つ（[トークン設計](tokens.md)参照） |
+| 署名鍵の種類 | Ed25519 の鍵（`kty: OKP`、`crv: Ed25519`）を常に持つ。RS256 を有効にするときだけ、RSA の鍵を足す。RSA のモジュラスは 4096 bit。RFC 7518 §3.3 は 2048 bit 以上を求めている（MUST）。NIST SP 800-57 Part 1 Rev. 5 §5.6.1.1 の Table 2 では、RSA の 2048 bit のセキュリティ強度は 112 bit、3072 bit は 128 bit で、4096 bit は表にない（3072 bit と 192 bit に当たる 7680 bit の間にあり、128 bit 以上）。RSA の署名は Ed25519 より重いが、RSA を使うのは `RS256` を登録した client の ID トークンだけなので、その分の CPU 時間だけを受け入れる（[未決事項](open-questions.md)で実測する） |
+| 署名鍵の `kid` | RFC 7638 の JWK thumbprint（SHA-256、base64url でパディングなし）。必須のメンバーは、Ed25519 では `crv`、`kty`、`x`（RFC 8037 §2）、RSA では `e`、`kty`、`n`（RFC 7638 §3.2） |
+| 秘密鍵の JWK | `use: sig` と、Ed25519 の鍵には `alg: Ed25519`、RSA の鍵には `alg: RS256` を持たせる。`alg: EdDSA` の鍵は不正として拒否する |
+| JWKS に載せる値 | 鍵ごとに、公開鍵のメンバー（Ed25519 は `kty`、`crv`、`x`（RFC 8037 §2）、RSA は `kty`、`n`、`e`）と、`kid`、`alg`、`use` だけ。秘密鍵のメンバー（`d` など）は載せない |
+| ID トークンの署名アルゴリズム | `clients.id_token_signed_response_alg` に `Ed25519` か `RS256` のどちらかを必ず持つ。省略時の既定（OIDC Dynamic Client Registration 1.0 §2 では RS256）には頼らない。アクセストークンは常に `Ed25519` |
 | トークンのクレーム | `contract.md` に一覧として明記する |
 | パスキーの上限 | 1 人あたりのパスキーの上限を、名前の付いた共有の値 `max_passkeys_per_user` として 1 か所で定める。今の値は 10。IdP の Worker の本人による追加と登録リンクによる登録の確認、管理用の Worker の `enroll_link_issue` の確認は、どれもこの値を使う。仕様が定める値ではない（NIST SP 800-63B-4 §4.1.2.1 は複数の認証器の結び付けを許可しなければならない（SHALL）とするが、上限は定めていない）ので、暫定の値として扱う。ほかのドキュメントは数を書かず、この行を参照する |
 | 監査ログ | 管理操作は管理用の Worker が、本人のパスキー操作は IdP の Worker が書くので、両者で同じ形にする。`actor` は `admin`（管理用の Worker）か `user`（IdP の Worker）。`admin` の行は、許可リストで確定した管理者の名前を `admin_name` に、使われたクライアント証明書の SHA-256 フィンガープリントを `admin_cert_sha256` に必ず持ち、`user` の行はどちらも持たない。`writer_version` は書き込んだ Worker のバージョン、`operation` は操作名（`idpctl` の操作名か、`passkey_enroll`・`passkey_add`・`passkey_self_revoke`）、`target` は `user:<id>`・`client:<id>`・`group:<id>` のどれか、`result` は `success` か `failure`（`user` の行は `success` だけ）、`detail_json` は JSON オブジェクトの文字列。セッション ID、トークン、シークレット、登録トークンは書かない（[データモデル](data-model.md)参照） |

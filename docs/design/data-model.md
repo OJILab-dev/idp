@@ -39,6 +39,9 @@ CREATE TABLE clients (
   client_type        TEXT NOT NULL CHECK (client_type IN ('confidential', 'public')),  -- RFC 6749 の client type
   secret_hash        TEXT,             -- SHA-256。confidential のときだけ持つ
   redirect_uris_json TEXT NOT NULL,    -- 完全一致で比較する URI の配列（ループバックはポート以外を比較）
+  -- ID トークンの署名アルゴリズム。登録の仕様の省略時の既定（RS256）に頼らず、必ず明示して持つ。
+  -- RS256 は RSA の署名鍵を設定したデプロイでだけ登録できる（tokens.md 参照）
+  id_token_signed_response_alg TEXT NOT NULL CHECK (id_token_signed_response_alg IN ('Ed25519', 'RS256')),
   CHECK ((client_type = 'confidential') = (secret_hash IS NOT NULL))
 );
 -- グループは 0 人以上のユーザーの集合で、ネストしない（メンバーは users だけを参照する）。

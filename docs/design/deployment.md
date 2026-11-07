@@ -42,6 +42,9 @@
 **署名鍵**
 
 - Worker Secret は書き込み専用で、登録した値を読み出せない。署名鍵の正本とバックアップは 1Password の Vault のアイテムに置き、Worker Secret にはそこから登録する。鍵は運用者が AI のセッションの外で生成し、秘密鍵は標準入力で渡して平文のままディスクに書かない（[トークン設計](tokens.md)参照）。
+- Worker Secret は、Ed25519 の鍵の current と previous の 2 つを常に置く。RS256 を有効にするときだけ、RSA の鍵（4096 bit）の current と previous を足して 4 つにする。既定のデプロイは RSA の鍵を持たない（[トークン設計](tokens.md)参照）。
+- RS256 を有効にするのも無効にするのも、運用者が RSA の Secret を登録するか外してデプロイすることで行う。無効にするのは、`RS256` を登録した client がないことを `idpctl clients_list` で確かめてからにする。
+- 管理用の Worker は署名鍵をバインドしない。RS256 が有効かどうかは、IdP の Worker への Service Binding で discovery を読んで判断する。
 - 再設定や別アカウントへの移行のときは、1Password のアイテムから登録し直す。
 
 **D1 のバックアップ**
