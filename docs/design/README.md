@@ -16,12 +16,12 @@ Cloudflare Workers の無料枠だけで動く、パスキー専用の最小構�
 - 無料枠の範囲で常時稼働する
 - ユーザーの認証手段はパスキーだけにし、OIDC と WebAuthn の標準に厳格に準拠する
 - アプリ単位で「誰が使えるか」を管理できる
-- 管理操作は手元の CLI から行い、後から MCP でも操作できる
+- 管理操作は手元の CLI から行い、管理者は IdP 自身ではなく mTLS で確かめる
 - 将来、Worker を Rust で書き直せる余地を残す
 
 **設計原則**
 
-1. 攻撃面を小さくする（Secure by Design）。インターネットに出すのは OIDC とパスキーのエンドポイントだけで、管理 UI は作らない。
+1. 攻撃面を小さくする（Secure by Design）。IdP の Worker がインターネットに出すのは OIDC とパスキーのエンドポイントだけで、管理 UI は作らない。管理 API は別のホスト名の管理用の Worker にだけ置き、エッジの mTLS で、管理者の証明書を持たないリクエストを Worker に届く前に止める。IdP の Worker のコードには管理系のユースケースを含めない。
 2. 既定値は常に安全側に倒す（Secure by Default）。例：リフレッシュトークンを発行しない、PKCE とユーザー検証（UV）を必須にする、クレームは要求されたスコープの分だけ渡す。
 3. OIDC と WebAuthn は標準規格に厳格に準拠する。独自拡張や仕様の緩い解釈はせず、仕様が選択を委ねている箇所は安全側を選ぶ（[標準準拠](standards-compliance.md)参照）。
 4. 迷ったら拒否する（fail-closed）。
@@ -31,24 +31,30 @@ Cloudflare Workers の無料枠だけで動く、パスキー専用の最小構�
 
 ## 全体構成
 
-インターネットに公開するのは Worker 1 本だけで、状態はすべて D1 に置く。管理系の書き込みは手元の `idpctl` が D1 REST API で直接行い、Worker には管理用のエンドポイントを置かない。
+利用者と RP に公開するのは IdP の Worker 1 本だけで、状態はすべて D1 に置く。管理操作は、別のホスト名の管理用の Worker が mTLS で管理者を確かめてから行い、手元の `idpctl` はその管理 API を呼ぶだけにする。2 つの Worker は同じ D1 をバインドし、D1 を操作するロジックは TypeScript の共有コアの 1 か所に置く（[技術選定](technology.md)参照）。IdP の Worker には管理用のエンドポイントを置かない。
 
 ```mermaid
 ---
-title: 公開するのは Worker だけ、管理は手元から D1 を直接操作する
+title: 利用者向けは IdP の Worker、管理は mTLS で守る別ホスト名の管理用の Worker
 ---
 flowchart LR
   browser["ブラウザ<br/>パスキー（WebAuthn）"]
   rp["RP アプリ<br/>Grafana など OIDC 対応"]
-  claude["Claude Code<br/>手元の端末から・後で追加<br/>MCP（stdio）で操作"]
 
-  subgraph worker["Worker（TypeScript）"]
+  subgraph worker["IdP の Worker（TypeScript）"]
     oidc["OIDC エンドポイント<br/>discovery · jwks · authorize · token · userinfo · logout"]
     static["静的アセット<br/>サインイン・登録・アカウントページ（HTML / JS）"]
     passkey["パスキー API<br/>登録・サインイン、本人による追加・失効、チャレンジ検証"]
   end
 
-  idpctl["idpctl（Go）<br/>CLI と MCP を同梱<br/>D1 REST API で操作"]
+  idpctl["idpctl（Go）<br/>管理 API の薄いクライアント<br/>管理者のクライアント証明書"]
+  waf["WAF のカスタムルール<br/>有効で失効していない証明書だけを通す"]
+
+  subgraph admin["管理用の Worker（TypeScript、別ホスト名）"]
+    adminapi["管理 API<br/>証明書の再確認と許可リスト<br/>idpctl の全操作"]
+  end
+
+  core["共有コア（packages/core）<br/>規則・検証・SQL・ユースケース"]
   secret["Worker Secret<br/>署名鍵（RS256 JWK）"]
   d1[("D1<br/>全状態（APAC に配置）")]
 
@@ -57,22 +63,22 @@ flowchart LR
   browser -->|"authorize · logout"| oidc
   rp -->|"discovery · jwks · token · userinfo"| oidc
   oidc --> secret
+  idpctl -->|"HTTPS（mTLS）"| waf
+  waf --> adminapi
+  worker -.->|"利用者向けと共有のモジュールだけ"| core
+  admin -.->|"管理系と共有のモジュール"| core
   worker --> d1
-  claude -.-> idpctl
-  idpctl --> d1
-
-  classDef later stroke-dasharray: 4 4
-  class claude later
+  admin --> d1
 ```
 
-ブラウザは静的アセットのページ（サインイン、登録、アカウント）からパスキー API を呼び、`/authorize` と `/logout` にもアクセスする。アカウントページは、サインイン中の本人が自分のパスキーを一覧し、追加し、失効させるためのページで、サインインは常に RP からの `/authorize` を経由する。RP アプリはブラウザを `/authorize` にリダイレクトし、自身は discovery、JWKS、`/token`、`/userinfo` とだけ通信する。署名鍵を使うのは OIDC エンドポイントだけ。破線の Claude Code（MCP）は後から追加する要素で、ledger や管理コンソールも同じく Worker の外に別の Worker として足す。
+ブラウザは静的アセットのページ（サインイン、登録、アカウント）からパスキー API を呼び、`/authorize` と `/logout` にもアクセスする。アカウントページは、サインイン中の本人が自分のパスキーを一覧し、追加し、失効させるためのページで、サインインは常に RP からの `/authorize` を経由する。RP アプリはブラウザを `/authorize` にリダイレクトし、自身は discovery、JWKS、`/token`、`/userinfo` とだけ通信する。署名鍵を使うのは OIDC エンドポイントだけ。`idpctl` は管理者のクライアント証明書で管理用のホスト名に接続し、WAF のカスタムルールを通ったリクエストだけが管理用の Worker に届く。管理用の Worker は証明書を自分でも確かめ直し、フィンガープリントの許可リストで管理者を確定してから操作する。破線は共有コアへの依存で、IdP の Worker は管理系のモジュールに依存しない。ledger や MCP などの拡張も、IdP の Worker の外に足す（[将来拡張](future-extensions.md)参照）。
 
 ## ドキュメント一覧
 
 | ドキュメント | 内容 |
 | --- | --- |
 | [スコープ](scope.md) | 作るもの・作らないもの・後回しにするものと、その理由 |
-| [技術選定](technology.md) | TypeScript + Hono の Worker と Go の idpctl を選んだ理由、Rust と他候補を外した理由 |
+| [技術選定](technology.md) | TypeScript の共有コアと 2 つの Worker、Go の薄いクライアント `idpctl` を選んだ理由、利用者向けと管理系の境界、Rust と他候補を外した理由 |
 | [データモデル](data-model.md) | D1 の 12 テーブルと監査ログのテーブル、アクセス判定を一元化する `effective_access` ビュー |
 | [認証フロー](authentication.md) | 認可コードフローでのサインイン、パスキーの登録、アカウントページでの本人によるパスキーの追加と失効、管理者による復旧、サインアウトの手順 |
 | [認可](authorization.md) | IdP が持つ認可は「誰がどのアプリを使えるか」だけ。判定の場所と反映の遅れ、ユーザーとグループを分けるレイヤー、管理の関心事 |
@@ -81,11 +87,11 @@ flowchart LR
 | [トークン設計](tokens.md) | 短命トークンのみでリフレッシュトークンは発行しない。各トークンの形式と中身、署名鍵のローテーションと生成・バックアップ |
 | [標準準拠](standards-compliance.md) | OIDC・OAuth・JWT・WebAuthn の準拠ポイントと、適合性テストによる確認方法 |
 | [セキュリティ要件チェックリスト](security-checklist.md) | e2e の攻撃ケースとして実装する要件の一覧（実際の CVE 事例付き） |
-| [管理 CLI / MCP（idpctl）](idpctl.md) | 手元の Go 製 CLI から D1 を直接操作する管理の仕組みと、秘密の扱い |
-| [TypeScript と Go の契約](cross-language-contract.md) | Worker と idpctl をつなぐ SQL・エンコーディング・テストベクタの取り決め |
-| [デプロイと設定](deployment.md) | ホスト名を設定値で与える仕組み、変更時の影響、IdP 専用アカウントと API トークンの扱い、署名鍵と D1 のバックアップ |
+| [管理 CLI と管理用の Worker（idpctl）](idpctl.md) | 別ホスト名の管理用の Worker と Go の `idpctl` による管理、mTLS と許可リストによる管理者の確定、IdP が発行する秘密の扱い、break-glass |
+| [実装に依存しない契約](cross-language-contract.md) | SQL・エンコーディング・ID・鍵の形式・テストベクタと、Go と TypeScript をつなぐ管理 API の仕様の取り決め |
+| [デプロイと設定](deployment.md) | ホスト名を設定値で与える仕組み、変更時の影響、IdP 専用アカウント、管理用の Worker、break-glass 用の API トークンの扱い、署名鍵と D1 のバックアップ |
 | [無料枠の見積もりと制約](free-tier.md) | Workers と D1 の無料枠に対する見込みと、最初に確定すべき制約 |
-| [将来拡張](future-extensions.md) | ledger / entitlements、管理コンソールなど、IdP の外側に足す拡張 |
-| [Rust 移行計画](rust-migration.md) | Worker を Rust に置き換える条件、今のうちに守る書き方、段階移行の順番 |
-| [未決事項・要検証](open-questions.md) | 作りながら実測で確かめること（実装前に決めることは各ドキュメントに記録済み） |
+| [将来拡張](future-extensions.md) | ledger / entitlements、管理権限の分離、MCP など、IdP の外側に足す拡張 |
+| [Rust 移行計画](rust-migration.md) | IdP の Worker を Rust に置き換える条件、今のうちに守る書き方、共有コアの扱い、段階移行の順番 |
+| [未決事項・要検証](open-questions.md) | 実装の前に確かめる前提と、作りながら実測で確かめること（実装前に決めることは各ドキュメントに記録済み） |
 | [参考資料](references.md) | 標準規格、先行事例、CVE、Cloudflare、ライブラリへのリンク |

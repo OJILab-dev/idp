@@ -18,11 +18,13 @@
 
 ## セキュリティ
 
-- 署名鍵は、運用者が AI や MCP のセッションの外で手作業で生成する。エージェントは署名鍵の生成、読み出し、登録、受け渡しを行ってはいけない。
-- 秘密（署名鍵、API トークン、client secret、登録トークンなど）を AI のコンテキストに入れてはいけない。`idpctl` は平文を戻り値に含めず、権限 `0600` のファイルに書き出してパスだけを返す設計であり、これを崩してはいけない。
-- MCP 経由の書き込み操作は、Claude Code の permissions で毎回人間の確認を必要とする設定にする。取り返しのつかない操作と、本人性を確定させる操作（登録リンクの発行）は MCP に出さない。
+- 署名鍵は、運用者が AI のセッションの外で手作業で生成する。エージェントは署名鍵の生成、読み出し、登録、受け渡しを行ってはいけない。
+- 管理者の秘密鍵（mTLS）は、管理者が自分で生成し 1Password で管理する。エージェントは管理者の秘密鍵の生成、読み出し、受け渡しを行ってはいけない。
+- 秘密（署名鍵、管理者の秘密鍵、API トークン、IdP が発行するクライアントシークレットと登録トークンなど）を AI のコンテキストに入れてはいけない。IdP が発行する秘密は、管理用の Worker が応答で 1 回だけ返し、`idpctl` が権限 `0600` のファイルに書き出してパスだけを表示する設計であり、これを崩してはいけない。
+- 管理操作は管理用の Worker の管理 API だけに置き、IdP の Worker には置かない。IdP の Worker から共有コアの管理系のモジュールを import してはいけない。
+- 今は MCP を提供しない。追加する場合は、先に [将来拡張](docs/design/future-extensions.md) の MCP の節を見直す。
 
-詳細は [管理 CLI / MCP（idpctl）](docs/design/idpctl.md)、[トークン設計](docs/design/tokens.md)、[デプロイと設定](docs/design/deployment.md) を参照してください。
+詳細は [管理 CLI と管理用の Worker（idpctl）](docs/design/idpctl.md)、[トークン設計](docs/design/tokens.md)、[デプロイと設定](docs/design/deployment.md) を参照してください。
 
 ## GitHub Actions
 
@@ -74,4 +76,5 @@ OP_ENVIRONMENT_ID='<environment-id>' \
 ## Project commands
 
 実装はまだありません。
-Worker（pnpm）、`idpctl`（Go）、e2e（Playwright）を追加したら、それぞれの Setup、Build、Test、Check の正規コマンドをこの節へ記録してください。
+共有コアと 2 つの Worker（pnpm の workspace：`packages/core`、`apps/worker`、`apps/admin-worker`）、`idpctl`（Go）、e2e（Playwright）を追加したら、それぞれの Setup、Build、Test、Check の正規コマンドをこの節へ記録してください。
+Check には、IdP の Worker が管理系のモジュールに依存しないことの lint とビルド成果物の検査、管理 API の仕様と Go の生成物のずれの検出、D1 アダプタの適合テストを含めます。

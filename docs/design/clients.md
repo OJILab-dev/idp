@@ -18,6 +18,6 @@
 **新しいアプリを足すとき**
 
 1. 上の表で種類を決める。SPA なら BFF を置いて Web アプリにする。
-2. `idpctl client create` で登録する。ネイティブアプリなら `--public` を付ける。Web アプリのシークレットは 0600 のファイルに書き出される。
-3. `idpctl grant add group:family <client_id>` などで、使える人を決める。
+2. `idpctl client_create` で登録する。ネイティブアプリなら `--public` を付ける。Web アプリのシークレットは 0600 のファイルに書き出される。
+3. `idpctl grant_add group:family <client_id>` などで、使える人を決める。
 4. アプリに Discovery の URL（`https://<IdP のホスト>/.well-known/openid-configuration`）と `client_id` を設定し、標準の OIDC ライブラリでつなぐ。IdP 専用の SDK は作らない。

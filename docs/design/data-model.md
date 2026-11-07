@@ -1,6 +1,6 @@
 # データモデル
 
-状態はすべて D1 に置く。下の 12 テーブルと、管理操作と本人のパスキー操作を記録する監査ログのテーブル 1 つ（末尾を参照）からなり、アクセス可否の判定は `effective_access` ビュー 1 つに集約する。Worker と `idpctl` は同じビューを読むので、判定結果が食い違わない。
+状態はすべて D1 に置く。下の 12 テーブルと、管理操作と本人のパスキー操作を記録する監査ログのテーブル 1 つ（末尾を参照）からなり、アクセス可否の判定は `effective_access` ビュー 1 つに集約する。IdP の Worker と管理用の Worker は、共有コアの同じ SQL でこのビューを読むので、判定結果が食い違わない。
 
 ```sql
 -- 付与の主体。user と group の共通の親で、grant はどちらにも同じ形（principal × client）で付ける。
@@ -46,7 +46,7 @@ CREATE TABLE clients (
 CREATE TABLE groups (
   id         TEXT PRIMARY KEY,         -- UUIDv4。名前を変えても grant と所属は ID でつながったまま
   kind       TEXT NOT NULL DEFAULT 'group' CHECK (kind = 'group'),
-  name       TEXT NOT NULL UNIQUE,     -- idpctl で指定する名前（group:<name>）。形式は idpctl が検証する
+  name       TEXT NOT NULL UNIQUE,     -- 管理操作で指定する名前（group:<name>）。形式は共有コアの入力の検証で確かめる
   created_at INTEGER NOT NULL,
   FOREIGN KEY (id, kind) REFERENCES principals (id, kind) ON DELETE CASCADE
 );
@@ -146,30 +146,37 @@ JOIN group_members m ON m.user_id = u.id
 JOIN client_access a ON a.principal_id = m.group_id
 WHERE u.disabled = 0;
 
--- 監査ログ（OWASP Logging Cheat Sheet の when / where / who / what）。管理操作は idpctl が、
--- 本人のパスキー操作（登録リンクによる登録、本人による追加と失効）は Worker が書く
+-- 監査ログ（OWASP Logging Cheat Sheet の when / where / who / what）。管理操作は管理用の Worker が、
+-- 本人のパスキー操作（登録リンクによる登録、本人による追加と失効）は IdP の Worker が書く
 -- セッション ID、トークン、シークレット、登録トークンは、平文もハッシュも記録しない
 CREATE TABLE audit_log (
   id             INTEGER PRIMARY KEY,     -- D1 が採番する。同じ秒の行も書き込んだ順に並ぶ
   occurred_at    INTEGER NOT NULL,        -- UNIX 秒（when）
-  actor          TEXT NOT NULL CHECK (actor IN ('cli', 'mcp', 'user')),  -- 操作者（who）。cli と mcp は idpctl の自己申告、user は Worker が書く本人の操作
-  writer_version TEXT NOT NULL,           -- 書き込んだ idpctl か Worker のバージョン（where）
+  actor          TEXT NOT NULL CHECK (actor IN ('admin', 'user')),  -- 操作者の種類（who）。admin は管理用の Worker が書く管理操作、user は IdP の Worker が書く本人の操作
+  admin_name     TEXT,                    -- 管理者の名前。管理用の Worker が、許可リストでクライアント証明書のフィンガープリントから解決した値（自己申告ではない）
+  admin_cert_sha256 TEXT,                 -- 操作に使ったクライアント証明書の SHA-256 フィンガープリント。同じ管理者の証明書のどれが使われたかを追える
+  writer_version TEXT NOT NULL,           -- 書き込んだ Worker（IdP か管理用）のバージョン（where）
   operation      TEXT NOT NULL,           -- 操作名（user_create、passkey_add など。what）
   target         TEXT NOT NULL,           -- 'user:<id>' | 'client:<id>' | 'group:<id>'
   result         TEXT NOT NULL CHECK (result IN ('success', 'failure')),
-  detail_json    TEXT NOT NULL DEFAULT '{}'  -- 操作ごとの補足（変更した値、失敗の理由など）を JSON オブジェクトで持つ
+  detail_json    TEXT NOT NULL DEFAULT '{}',  -- 操作ごとの補足（変更した値、失敗の理由など）を JSON オブジェクトで持つ
+  -- 管理操作の行は管理者の名前と証明書を必ず持ち、本人の操作の行は持たない
+  CHECK ((actor = 'admin' AND admin_name IS NOT NULL AND admin_cert_sha256 IS NOT NULL)
+      OR (actor = 'user' AND admin_name IS NULL AND admin_cert_sha256 IS NULL)),
+  CHECK (actor = 'admin' OR result = 'success')  -- IdP の Worker は成功の行だけを書く（下記）
 );
 CREATE INDEX audit_log_occurred_at ON audit_log (occurred_at);  -- audit_tail で新しい順に読む
 CREATE INDEX audit_log_target      ON audit_log (target, occurred_at);  -- audit_tail を対象で絞り込む
 ```
 
-上の 12 テーブルのほかに監査ログ用のテーブル `audit_log` を 1 つ置き、管理操作と本人のパスキー操作を記録する。カラムは OWASP Logging Cheat Sheet の「いつ、どこで、誰が、何を」に対応させ、値の形は [TypeScript と Go の契約](cross-language-contract.md)で固定する。管理者は `idpctl` の `audit_tail` で、いつでも新しい順に読める。
+上の 12 テーブルのほかに監査ログ用のテーブル `audit_log` を 1 つ置き、管理操作と本人のパスキー操作を記録する。カラムは OWASP Logging Cheat Sheet の「いつ、どこで、誰が、何を」に対応させ、値の形は [実装に依存しない契約](cross-language-contract.md)で固定する。管理者は `idpctl` の `audit_tail` で、いつでも新しい順に読める。
 
+- 管理操作の行の操作者は、管理用の Worker が mTLS のクライアント証明書のフィンガープリントを許可リストで解決した管理者の名前で、操作する側の自己申告ではない（[管理 CLI と管理用の Worker](idpctl.md)参照）。
 - 記録するのは書き込みの操作で、読み取りの操作（`users_list`、`audit_tail` など）は記録しない。
-- Worker が書くのは、本人のパスキー操作だけにする。登録リンクによる登録は `passkey_enroll`、本人による追加は `passkey_add`、本人による失効は `passkey_self_revoke` とし、`actor` は `user`、`target` は `user:<id>`、`detail_json` に credential ID を入れる。本人への通知の代わりに、認証器が増えたり減ったりしたことを管理者が監査ログで確認できるようにする（[認証フロー](authentication.md)参照）。
-- 成功した操作は、操作と同じバッチで 1 行を書く。`idpctl` は、失敗した操作も記録する。バッチが丸ごとロールバックされるので、その後に別の書き込みで `failure` の行を書く。
-- Worker は `success` の行だけを書き、失敗や拒否は Worker のログに任せる。Worker のエンドポイントは認証前のリクエストからも呼べるので、失敗の行を書くと、誰でも D1 の 1 日の書き込み上限を監査ログの行で消費させられるため（[無料枠](free-tier.md)参照）。
-- Worker の行は、`credentials` への書き込みと同じ条件を付けて、同じバッチに置く。登録と追加は、挿入と同じ条件（ユーザーが無効化されていない、パスキーの本数が[上限](cross-language-contract.md)未満）を付けた `INSERT … SELECT` で書く。本人による失効は、削除と同じ条件（対象がそのユーザーのパスキーで、2 本以上ある）を付けた `INSERT … SELECT` を削除の直前の文に置く。条件が成り立たず書き込みが起きなければ、監査ログの行も書かれない。拒否されたのに成功の行が残ることはない。
+- IdP の Worker が書くのは、本人のパスキー操作だけにする。登録リンクによる登録は `passkey_enroll`、本人による追加は `passkey_add`、本人による失効は `passkey_self_revoke` とし、`actor` は `user`、`target` は `user:<id>`、`detail_json` に credential ID を入れる。本人への通知の代わりに、認証器が増えたり減ったりしたことを管理者が監査ログで確認できるようにする（[認証フロー](authentication.md)参照）。
+- 成功した操作は、操作と同じバッチで 1 行を書く。管理用の Worker は、失敗した操作も記録する。バッチが丸ごとロールバックされるので、その後に別の書き込みで `failure` の行を書く。失敗の行を書くのは、許可リストで管理者が確定した後の失敗だけにする。証明書の検証や許可リストで拒否したリクエストは、監査ログではなく管理用の Worker のログに残す。
+- IdP の Worker は `success` の行だけを書き、失敗や拒否は IdP の Worker のログに任せる。IdP の Worker のエンドポイントは認証前のリクエストからも呼べるので、失敗の行を書くと、誰でも D1 の 1 日の書き込み上限を監査ログの行で消費させられるため（[無料枠](free-tier.md)参照）。
+- IdP の Worker の行は、`credentials` への書き込みと同じ条件を付けて、同じバッチに置く。登録と追加は、挿入と同じ条件（ユーザーが無効化されていない、パスキーの本数が[上限](cross-language-contract.md)未満）を付けた `INSERT … SELECT` で書く。本人による失効は、削除と同じ条件（対象がそのユーザーのパスキーで、2 本以上ある）を付けた `INSERT … SELECT` を削除の直前の文に置く。条件が成り立たず書き込みが起きなければ、監査ログの行も書かれない。拒否されたのに成功の行が残ることはない。
 - グループは名前を変えられるので、`target` には ID（`group:<id>`）を入れ、操作時点の名前を `detail_json` に残す。
 - 対象が 2 つある操作は、`grant_add` などでは client を、`group_member_add` などではグループを `target` に入れ、もう一方（`user:<id>` や `group:<id>`）を `detail_json` に入れる。
 - 権限を広げる操作（`grant_add`、`group_member_add`）は、新たに使えるようになったユーザーと client の組を `detail_json` に残す。
@@ -177,4 +184,4 @@ CREATE INDEX audit_log_target      ON audit_log (target, occurred_at);  -- audit
 - OWASP の「記録から除くデータ」に従い、セッション ID、トークン、シークレット、登録トークンは書かない。`detail_json` にも入れず、登録リンクの発行では有効期限だけを残す。
 - 行は削除しない。家族規模の件数なら、無料枠の DB サイズ（500 MB）に対して十分小さい。
 
-サインインは監査ログに書かず、Worker のログに任せる（サインイン自体はチャレンジ、セッション、sign count を D1 に書く）。期限切れの行は発行時に片付けるので、Cron は使わない。有効かどうかは取り出すときに必ず `expires_at` で判定するので、片付けが遅れても安全性は変わらない（容量にだけ影響する）。
+サインインは監査ログに書かず、IdP の Worker のログに任せる（サインイン自体はチャレンジ、セッション、sign count を D1 に書く）。期限切れの行は発行時に片付けるので、Cron は使わない。有効かどうかは取り出すときに必ず `expires_at` で判定するので、片付けが遅れても安全性は変わらない（容量にだけ影響する）。
