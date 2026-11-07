@@ -14,9 +14,25 @@
 
 **操作の一覧**
 
+書き込みの操作は、[認可](authorization.md)の管理の関心事で分類する。基盤の操作（署名鍵、API トークン、デプロイ）は `idpctl` の対象外。
+
 - 読み取り：`users_list`、`user_get`、`clients_list`、`groups_list`、`grants_list`、`access_check`、`audit_tail`
-- 書き込み：`user_create`、`user_disable`、`enroll_link_issue`、`passkey_revoke`、`session_revoke`、`client_create`（public client は `--public`）、`client_set_redirects`、`client_rotate_secret`、`group_create`、`group_delete`、`group_member_add`、`group_member_remove`、`grant_add`、`grant_remove`
-- CLI 専用（MCP には出さない）：ユーザーの完全削除など、取り返しのつかない操作
+- ユーザーの管理：`user_create`、`user_disable`、`enroll_link_issue`、`passkey_revoke`、`session_revoke`、`group_create`、`group_delete`、`group_member_add`、`group_member_remove`
+- RP の管理：`client_create`（public client は `--public`）、`client_set_redirects`、`client_rotate_secret`
+- アクセスの管理：`grant_add`、`grant_remove`
+
+**MCP に出す範囲**
+
+AI は操作している人の代理として扱い、役割では区別しない。MCP に出すかどうかは、操作の性質と[操作とリスク](operations-and-risks.md)の影響の広さで決める。
+
+- 書き込みは、すべて毎回人間の確認を必要とする（上記）。
+- 取り返しのつかない操作（ユーザーの完全削除など）は CLI 専用にする。
+- 本人性を確定させる操作（`enroll_link_issue`）は CLI 専用にする。1 人のユーザーとしてその人の全 RP に入れる強さを持つうえ、登録リンクは対面で渡すので操作する人間はその場にいて、AI に任せる利点がない。
+- 読み取りは MCP に出す。IdP が持つ個人情報は表示名だけで、メールアドレスは持たない（[トークン設計](tokens.md)参照）。
+
+`audit_tail` は監査ログを新しい順に返し、対象（`user:<id>` など）で絞り込める。管理者はこれで、本人によるパスキーの追加と失効を含む出来事をいつでも確認できる。
+
+`user_get` は、ユーザーのパスキーの一覧（credential ID、作成日時、最終使用日時、追加の経路、同期型かどうか）を返す。`passkey_revoke` はパスキーを 1 本ずつ失効させる（[認証フロー](authentication.md)の復旧を参照）。
 
 `access_check(user, client)` は、許可か拒否かに加えて、どの grant にマッチしたか（直接付与か、どのグループ経由か。または何が足りないか）を返す。
 
@@ -33,4 +49,4 @@
 - シークレットや登録トークンは `crypto/rand` で生成し、D1 にはハッシュだけを書く。
 - 平文は戻り値に含めず、権限 `0600` のファイルに書き出してパスだけを返す。MCP 化しても、秘密が AI のコンテキストに流れない。
 - 登録リンクは発行から 10 分で切れるので、管理者は本人に渡すその場で `enroll_link_issue` を実行し、メールではなく対面など信頼できる経路で渡す（[認証フロー](authentication.md)参照）。
-- 監査ログには管理操作だけを記録し、操作者（`cli` か `mcp`）を残す。セッション ID、トークン、シークレット、登録トークンは書かない（スキーマは[データモデル](data-model.md)参照）。操作者は `idpctl` の自己申告で、API トークンを持つ人は任意の行を書けるため、改ざんの検知はできない。家族規模の運用では、この限界を受け入れる。
+- 監査ログには管理操作を記録し、操作者（`cli` か `mcp`）を残す。本人のパスキー操作（登録リンクによる登録、本人による追加と失効）は Worker が同じ表に書く。セッション ID、トークン、シークレット、登録トークンは書かない（スキーマは[データモデル](data-model.md)参照）。操作者は `idpctl` の自己申告で、API トークンを持つ人は任意の行を書けるため、改ざんの検知はできない。家族規模の運用では、この限界を受け入れる。

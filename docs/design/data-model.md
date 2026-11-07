@@ -17,14 +17,9 @@ CREATE TABLE users (
   id             TEXT PRIMARY KEY,        -- 不変のランダム ID（OIDC の sub）。UUIDv4 で、再利用しない
   kind           TEXT NOT NULL DEFAULT 'user' CHECK (kind = 'user'),
   user_handle    BLOB NOT NULL UNIQUE,    -- WebAuthn の user.id。64 バイトの乱数で、個人情報を含めない
-  email          TEXT,                    -- 任意。管理者だけが設定する
-  email_key      TEXT UNIQUE,             -- ASCII 小文字化した検索キー。NULL 同士は重複とみなさない
-  email_verified INTEGER NOT NULL DEFAULT 0, -- 管理者が明示的に確認したときだけ 1
-  name           TEXT NOT NULL,
+  name           TEXT NOT NULL,           -- 表示名。本名でなくてよい。メールアドレスなどの個人情報は持たない
   disabled       INTEGER NOT NULL DEFAULT 0,
   created_at     INTEGER NOT NULL,        -- UNIX 秒
-  CHECK ((email IS NULL) = (email_key IS NULL)),
-  CHECK (email_verified = 0 OR email IS NOT NULL), -- アドレスのない「確認済み」を作らない
   FOREIGN KEY (id, kind) REFERENCES principals (id, kind) ON DELETE CASCADE
 );
 CREATE TABLE credentials (             -- WebAuthn 仕様どおりの値をそのまま保存
@@ -33,7 +28,8 @@ CREATE TABLE credentials (             -- WebAuthn 仕様どおりの値をそ�
   public_key      BLOB NOT NULL,       -- COSE 形式の公開鍵の生バイト（アルゴリズムもここに含まれる）
   sign_count      INTEGER NOT NULL,
   backup_eligible INTEGER NOT NULL, backup_state INTEGER NOT NULL,
-  created_at      INTEGER NOT NULL, last_used_at INTEGER
+  created_at      INTEGER NOT NULL, last_used_at INTEGER,
+  created_via     TEXT NOT NULL CHECK (created_via IN ('enroll', 'self'))  -- 登録リンクか、サインイン中の本人による追加か
 );
 
 -- クライアントとアクセス可否（PKCE は全クライアントで必須。認証方法は client_type で決まる）
@@ -72,19 +68,26 @@ CREATE TABLE client_access (
 CREATE TABLE enroll_tokens (token_hash TEXT PRIMARY KEY,
                             user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                             expires_at INTEGER NOT NULL);  -- 発行から 10 分。1 回だけ使える
--- チャレンジは用途ごとに発行元へ紐付ける。登録は登録トークン、サインインは認可リクエスト（Cookie）。
+-- チャレンジは用途ごとに発行元へ紐付ける。登録は登録トークン、サインインは認可リクエスト（Cookie）、
+-- 本人による追加（直前の再認証と登録の両方）と失効はセッション。失効はさらに対象の credential ID にも紐付ける。
 -- サインインは discoverable credential を使うので、options の時点ではユーザーが分からない
 CREATE TABLE challenges    (challenge TEXT PRIMARY KEY, user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
                             purpose TEXT NOT NULL,
                             enroll_token_hash TEXT,          -- 登録のときだけ持つ
                             authorize_request_id_hash TEXT,  -- サインインのときだけ持つ（authorize_requests.id_hash）
+                            session_token_hash TEXT,         -- 本人による追加と失効のときだけ持つ（sessions.token_hash）
+                            target_credential_id TEXT,       -- 本人による失効のときだけ持つ（失効させる credentials.id）
                             expires_at INTEGER NOT NULL);
+-- セッションの根拠はサインインに使ったパスキーなので、パスキーを失効させるとセッションも連鎖で消える。
+-- 認可コードは発行したセッションに紐付け、セッションが消えれば未使用のコードも連鎖で消える（authentication.md 参照）
 CREATE TABLE sessions      (token_hash TEXT PRIMARY KEY,
                             user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                            credential_id TEXT NOT NULL REFERENCES credentials(id) ON DELETE CASCADE,  -- サインインに使ったパスキー
                             auth_time INTEGER NOT NULL, expires_at INTEGER NOT NULL);  -- auth_time から 1 時間。延長しない
 CREATE TABLE auth_codes    (code_hash TEXT PRIMARY KEY,
                             client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
                             user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                            session_token_hash TEXT NOT NULL REFERENCES sessions(token_hash) ON DELETE CASCADE,  -- 発行の根拠になったセッション
                             redirect_uri TEXT NOT NULL, code_challenge TEXT NOT NULL, nonce TEXT, scope TEXT,
                             auth_time INTEGER NOT NULL, expires_at INTEGER NOT NULL);
 -- サインインを挟む間だけ保持する、検証済みの認可リクエスト（15 分。チャレンジの 10 分より先に切れないようにする）。ID は __Host- Cookie でブラウザに渡す
@@ -106,6 +109,9 @@ CREATE INDEX authorize_requests_expires_at ON authorize_requests (expires_at);
 -- ユーザー単位の削除（session_revoke、user_disable、passkey_revoke）も、テーブル全体を走査しないようにする（理由は上と同じ）
 CREATE INDEX sessions_user_id    ON sessions (user_id);
 CREATE INDEX credentials_user_id ON credentials (user_id);
+-- 外部キーの連鎖（パスキーの失効 → セッション → 認可コード）も、テーブル全体を走査しないようにする
+CREATE INDEX sessions_credential_id        ON sessions (credential_id);
+CREATE INDEX auth_codes_session_token_hash ON auth_codes (session_token_hash);
 
 -- アクセス判定の唯一の定義
 CREATE VIEW effective_access AS
@@ -121,24 +127,27 @@ JOIN group_members m ON m.user_id = u.id
 JOIN client_access a ON a.principal_id = m.group_id
 WHERE u.disabled = 0;
 
--- 管理操作の監査ログ（idpctl だけが書く。OWASP Logging Cheat Sheet の when / where / who / what）
+-- 監査ログ（OWASP Logging Cheat Sheet の when / where / who / what）。管理操作は idpctl が、
+-- 本人のパスキー操作（登録リンクによる登録、本人による追加と失効）は Worker が書く
 -- セッション ID、トークン、シークレット、登録トークンは、平文もハッシュも記録しない
 CREATE TABLE audit_log (
   id             INTEGER PRIMARY KEY,     -- D1 が採番する。同じ秒の行も書き込んだ順に並ぶ
   occurred_at    INTEGER NOT NULL,        -- UNIX 秒（when）
-  actor          TEXT NOT NULL CHECK (actor IN ('cli', 'mcp')),  -- 操作者（who）。idpctl の自己申告
-  idpctl_version TEXT NOT NULL,           -- 書き込んだ idpctl のバージョン（where）
-  operation      TEXT NOT NULL,           -- idpctl の操作名（user_create など。what）
+  actor          TEXT NOT NULL CHECK (actor IN ('cli', 'mcp', 'user')),  -- 操作者（who）。cli と mcp は idpctl の自己申告、user は Worker が書く本人の操作
+  writer_version TEXT NOT NULL,           -- 書き込んだ idpctl か Worker のバージョン（where）
+  operation      TEXT NOT NULL,           -- 操作名（user_create、passkey_add など。what）
   target         TEXT NOT NULL,           -- 'user:<id>' | 'client:<id>' | 'group:<id>'
   result         TEXT NOT NULL CHECK (result IN ('success', 'failure')),
   detail_json    TEXT NOT NULL DEFAULT '{}'  -- 操作ごとの補足（変更した値、失敗の理由など）を JSON オブジェクトで持つ
 );
 CREATE INDEX audit_log_occurred_at ON audit_log (occurred_at);  -- audit_tail で新しい順に読む
+CREATE INDEX audit_log_target      ON audit_log (target, occurred_at);  -- audit_tail を対象で絞り込む
 ```
 
-上の 12 テーブルのほかに監査ログ用のテーブル `audit_log` を 1 つ置き、管理操作だけを記録する。カラムは OWASP Logging Cheat Sheet の「いつ、どこで、誰が、何を」に対応させ、値の形は [TypeScript と Go の契約](cross-language-contract.md)で固定する。
+上の 12 テーブルのほかに監査ログ用のテーブル `audit_log` を 1 つ置き、管理操作と本人のパスキー操作を記録する。カラムは OWASP Logging Cheat Sheet の「いつ、どこで、誰が、何を」に対応させ、値の形は [TypeScript と Go の契約](cross-language-contract.md)で固定する。管理者は `idpctl` の `audit_tail` で、いつでも新しい順に読める。
 
 - 記録するのは書き込みの操作で、読み取りの操作（`users_list`、`audit_tail` など）は記録しない。
+- Worker が書くのは、本人のパスキー操作だけにする。登録リンクによる登録は `passkey_enroll`、本人による追加は `passkey_add`、本人による失効は `passkey_self_revoke` とし、`actor` は `user`、`target` は `user:<id>`、`detail_json` に credential ID を入れる。本人への通知の代わりに、認証器が増えたり減ったりしたことを管理者が監査ログで確認できるようにする（[認証フロー](authentication.md)参照）。
 - 成功した操作は、操作と同じバッチで 1 行を書く。失敗した操作は、バッチが丸ごとロールバックされるので、その後に別の書き込みで `failure` の行を書く。
 - グループは名前を変えられるので、`target` には ID（`group:<id>`）を入れ、操作時点の名前を `detail_json` に残す。
 - 対象が 2 つある操作は、`grant_add` などでは client を、`group_member_add` などではグループを `target` に入れ、もう一方（`user:<id>` や `group:<id>`）を `detail_json` に入れる。
