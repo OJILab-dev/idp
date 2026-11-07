@@ -69,13 +69,14 @@ CREATE TABLE enroll_tokens (token_hash TEXT PRIMARY KEY,
                             user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                             expires_at INTEGER NOT NULL);  -- 発行から 10 分。1 回だけ使える
 -- チャレンジは用途ごとに発行元へ紐付ける。登録は登録トークン、サインインは認可リクエスト（Cookie）、
--- 本人による追加（直前の再認証と登録の両方）はセッション。
+-- 本人による追加（直前の再認証と登録の両方）と失効はセッション。失効はさらに対象の credential ID にも紐付ける。
 -- サインインは discoverable credential を使うので、options の時点ではユーザーが分からない
 CREATE TABLE challenges    (challenge TEXT PRIMARY KEY, user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
                             purpose TEXT NOT NULL,
                             enroll_token_hash TEXT,          -- 登録のときだけ持つ
                             authorize_request_id_hash TEXT,  -- サインインのときだけ持つ（authorize_requests.id_hash）
-                            session_token_hash TEXT,         -- 本人による追加のときだけ持つ（sessions.token_hash）
+                            session_token_hash TEXT,         -- 本人による追加と失効のときだけ持つ（sessions.token_hash）
+                            target_credential_id TEXT,       -- 本人による失効のときだけ持つ（失効させる credentials.id）
                             expires_at INTEGER NOT NULL);
 CREATE TABLE sessions      (token_hash TEXT PRIMARY KEY,
                             user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -120,7 +121,7 @@ JOIN client_access a ON a.principal_id = m.group_id
 WHERE u.disabled = 0;
 
 -- 監査ログ（OWASP Logging Cheat Sheet の when / where / who / what）。管理操作は idpctl が、
--- パスキーの結び付け（登録リンクによる登録と本人による追加）は Worker が書く
+-- 本人のパスキー操作（登録リンクによる登録、本人による追加と失効）は Worker が書く
 -- セッション ID、トークン、シークレット、登録トークンは、平文もハッシュも記録しない
 CREATE TABLE audit_log (
   id             INTEGER PRIMARY KEY,     -- D1 が採番する。同じ秒の行も書き込んだ順に並ぶ
@@ -136,10 +137,10 @@ CREATE INDEX audit_log_occurred_at ON audit_log (occurred_at);  -- audit_tail �
 CREATE INDEX audit_log_target      ON audit_log (target, occurred_at);  -- audit_tail を対象で絞り込む
 ```
 
-上の 12 テーブルのほかに監査ログ用のテーブル `audit_log` を 1 つ置き、管理操作とパスキーの結び付けを記録する。カラムは OWASP Logging Cheat Sheet の「いつ、どこで、誰が、何を」に対応させ、値の形は [TypeScript と Go の契約](cross-language-contract.md)で固定する。管理者は `idpctl` の `audit_tail` で、いつでも新しい順に読める。
+上の 12 テーブルのほかに監査ログ用のテーブル `audit_log` を 1 つ置き、管理操作と本人のパスキー操作を記録する。カラムは OWASP Logging Cheat Sheet の「いつ、どこで、誰が、何を」に対応させ、値の形は [TypeScript と Go の契約](cross-language-contract.md)で固定する。管理者は `idpctl` の `audit_tail` で、いつでも新しい順に読める。
 
 - 記録するのは書き込みの操作で、読み取りの操作（`users_list`、`audit_tail` など）は記録しない。
-- Worker が書くのは、パスキーを結び付ける操作だけにする。登録リンクによる登録は `passkey_enroll`、本人による追加は `passkey_add` とし、`actor` は `user`、`target` は `user:<id>`、`detail_json` に credential ID を入れる。ユーザーの認証器が増える経路はこの 2 つしかないので、本人への通知の代わりに、管理者が監査ログで確認できるようにする（[認証フロー](authentication.md)参照）。
+- Worker が書くのは、本人のパスキー操作だけにする。登録リンクによる登録は `passkey_enroll`、本人による追加は `passkey_add`、本人による失効は `passkey_self_revoke` とし、`actor` は `user`、`target` は `user:<id>`、`detail_json` に credential ID を入れる。本人への通知の代わりに、認証器が増えたり減ったりしたことを管理者が監査ログで確認できるようにする（[認証フロー](authentication.md)参照）。
 - 成功した操作は、操作と同じバッチで 1 行を書く。失敗した操作は、バッチが丸ごとロールバックされるので、その後に別の書き込みで `failure` の行を書く。
 - グループは名前を変えられるので、`target` には ID（`group:<id>`）を入れ、操作時点の名前を `detail_json` に残す。
 - 対象が 2 つある操作は、`grant_add` などでは client を、`group_member_add` などではグループを `target` に入れ、もう一方（`user:<id>` や `group:<id>`）を `detail_json` に入れる。
