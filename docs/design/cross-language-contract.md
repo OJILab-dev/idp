@@ -18,7 +18,7 @@ Go が書いた値を TypeScript が読むので、両者の間の取り決め�
 | 秘密鍵の JWK | `alg: RS256` と `use: sig` を持たせる |
 | JWKS に載せる値 | 公開鍵のメンバー（`kty`、`n`、`e`）と、`kid`、`alg`、`use` だけ |
 | トークンのクレーム | `contract.md` に一覧として明記する |
-| 監査ログ | `idpctl` が書く。`actor` は `cli` か `mcp`、`idpctl_version` は書き込んだバイナリのバージョン、`operation` は `idpctl` の操作名、`target` は `user:<id>`・`client:<id>`・`group:<id>` のどれか、`result` は `success` か `failure`、`detail_json` は JSON オブジェクトの文字列。セッション ID、トークン、シークレット、登録トークンは書かない（[データモデル](data-model.md)参照） |
+| 監査ログ | 管理操作は `idpctl` が、パスキーの結び付けは Worker が書くので、両者で同じ形にする。`actor` は `cli`・`mcp`（`idpctl`）か `user`（Worker）、`writer_version` は書き込んだ `idpctl` か Worker のバージョン、`operation` は操作名（`idpctl` の操作名か、`passkey_enroll`・`passkey_add`）、`target` は `user:<id>`・`client:<id>`・`group:<id>` のどれか、`result` は `success` か `failure`、`detail_json` は JSON オブジェクトの文字列。セッション ID、トークン、シークレット、登録トークンは書かない（[データモデル](data-model.md)参照） |
 
 - `contract/testdata/vectors.json` に共通のテストベクタ（入力とハッシュ結果など）を置き、TypeScript と Go の両方のテストで検証する。
 - 入力の検証（redirect URI の形式、グループ名など）は書き込みを行う Go 側だけで行う。Worker は保存された値と完全一致で比べ、壊れた行は拒否する。

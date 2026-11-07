@@ -28,7 +28,8 @@ CREATE TABLE credentials (             -- WebAuthn 仕様どおりの値をそ�
   public_key      BLOB NOT NULL,       -- COSE 形式の公開鍵の生バイト（アルゴリズムもここに含まれる）
   sign_count      INTEGER NOT NULL,
   backup_eligible INTEGER NOT NULL, backup_state INTEGER NOT NULL,
-  created_at      INTEGER NOT NULL, last_used_at INTEGER
+  created_at      INTEGER NOT NULL, last_used_at INTEGER,
+  created_via     TEXT NOT NULL CHECK (created_via IN ('enroll', 'self'))  -- 登録リンクか、サインイン中の本人による追加か
 );
 
 -- クライアントとアクセス可否（PKCE は全クライアントで必須。認証方法は client_type で決まる）
@@ -67,12 +68,14 @@ CREATE TABLE client_access (
 CREATE TABLE enroll_tokens (token_hash TEXT PRIMARY KEY,
                             user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                             expires_at INTEGER NOT NULL);  -- 発行から 10 分。1 回だけ使える
--- チャレンジは用途ごとに発行元へ紐付ける。登録は登録トークン、サインインは認可リクエスト（Cookie）。
+-- チャレンジは用途ごとに発行元へ紐付ける。登録は登録トークン、サインインは認可リクエスト（Cookie）、
+-- 本人による追加（直前の再認証と登録の両方）はセッション。
 -- サインインは discoverable credential を使うので、options の時点ではユーザーが分からない
 CREATE TABLE challenges    (challenge TEXT PRIMARY KEY, user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
                             purpose TEXT NOT NULL,
                             enroll_token_hash TEXT,          -- 登録のときだけ持つ
                             authorize_request_id_hash TEXT,  -- サインインのときだけ持つ（authorize_requests.id_hash）
+                            session_token_hash TEXT,         -- 本人による追加のときだけ持つ（sessions.token_hash）
                             expires_at INTEGER NOT NULL);
 CREATE TABLE sessions      (token_hash TEXT PRIMARY KEY,
                             user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -116,24 +119,27 @@ JOIN group_members m ON m.user_id = u.id
 JOIN client_access a ON a.principal_id = m.group_id
 WHERE u.disabled = 0;
 
--- 管理操作の監査ログ（idpctl だけが書く。OWASP Logging Cheat Sheet の when / where / who / what）
+-- 監査ログ（OWASP Logging Cheat Sheet の when / where / who / what）。管理操作は idpctl が、
+-- パスキーの結び付け（登録リンクによる登録と本人による追加）は Worker が書く
 -- セッション ID、トークン、シークレット、登録トークンは、平文もハッシュも記録しない
 CREATE TABLE audit_log (
   id             INTEGER PRIMARY KEY,     -- D1 が採番する。同じ秒の行も書き込んだ順に並ぶ
   occurred_at    INTEGER NOT NULL,        -- UNIX 秒（when）
-  actor          TEXT NOT NULL CHECK (actor IN ('cli', 'mcp')),  -- 操作者（who）。idpctl の自己申告
-  idpctl_version TEXT NOT NULL,           -- 書き込んだ idpctl のバージョン（where）
-  operation      TEXT NOT NULL,           -- idpctl の操作名（user_create など。what）
+  actor          TEXT NOT NULL CHECK (actor IN ('cli', 'mcp', 'user')),  -- 操作者（who）。cli と mcp は idpctl の自己申告、user は Worker が書く本人の操作
+  writer_version TEXT NOT NULL,           -- 書き込んだ idpctl か Worker のバージョン（where）
+  operation      TEXT NOT NULL,           -- 操作名（user_create、passkey_add など。what）
   target         TEXT NOT NULL,           -- 'user:<id>' | 'client:<id>' | 'group:<id>'
   result         TEXT NOT NULL CHECK (result IN ('success', 'failure')),
   detail_json    TEXT NOT NULL DEFAULT '{}'  -- 操作ごとの補足（変更した値、失敗の理由など）を JSON オブジェクトで持つ
 );
 CREATE INDEX audit_log_occurred_at ON audit_log (occurred_at);  -- audit_tail で新しい順に読む
+CREATE INDEX audit_log_target      ON audit_log (target, occurred_at);  -- audit_tail を対象で絞り込む
 ```
 
-上の 12 テーブルのほかに監査ログ用のテーブル `audit_log` を 1 つ置き、管理操作だけを記録する。カラムは OWASP Logging Cheat Sheet の「いつ、どこで、誰が、何を」に対応させ、値の形は [TypeScript と Go の契約](cross-language-contract.md)で固定する。
+上の 12 テーブルのほかに監査ログ用のテーブル `audit_log` を 1 つ置き、管理操作とパスキーの結び付けを記録する。カラムは OWASP Logging Cheat Sheet の「いつ、どこで、誰が、何を」に対応させ、値の形は [TypeScript と Go の契約](cross-language-contract.md)で固定する。管理者は `idpctl` の `audit_tail` で、いつでも新しい順に読める。
 
 - 記録するのは書き込みの操作で、読み取りの操作（`users_list`、`audit_tail` など）は記録しない。
+- Worker が書くのは、パスキーを結び付ける操作だけにする。登録リンクによる登録は `passkey_enroll`、本人による追加は `passkey_add` とし、`actor` は `user`、`target` は `user:<id>`、`detail_json` に credential ID を入れる。ユーザーの認証器が増える経路はこの 2 つしかないので、本人への通知の代わりに、管理者が監査ログで確認できるようにする（[認証フロー](authentication.md)参照）。
 - 成功した操作は、操作と同じバッチで 1 行を書く。失敗した操作は、バッチが丸ごとロールバックされるので、その後に別の書き込みで `failure` の行を書く。
 - グループは名前を変えられるので、`target` には ID（`group:<id>`）を入れ、操作時点の名前を `detail_json` に残す。
 - 対象が 2 つある操作は、`grant_add` などでは client を、`group_member_add` などではグループを `target` に入れ、もう一方（`user:<id>` や `group:<id>`）を `detail_json` に入れる。
