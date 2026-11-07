@@ -18,6 +18,7 @@ OIDC と WebAuthn は、仕様の MUST だけでなくセキュリティ上の S
 **OIDC Core で守ること**
 
 - `/authorize` は GET と POST の両方を受け付ける。
+- `scope` に `openid` がない認可リクエストは、`invalid_scope` で拒否する。OIDC Core §3.1.2.1 は `openid` がないときの動作を規定していないので、仕様の要求ではなく、fail-closed（設計原則 4）による方針として決める。
 - リクエストに `state` があれば、成功・エラーどちらのレスポンスにもその値をそのまま返す。
 - Core 15.1 の必須機能を満たす。`prompt`（`none` / `login`）と `max_age` を正しく処理し、`max_age` があれば ID トークンに `auth_time` を入れる（`max_age=0` は `prompt=login` と同じ扱い）。`display`、`ui_locales`、`claims_locales`、`acr_values` は、送られてもエラーにしない（値は無視してよい）。
 - `prompt=none` に他の値が混ざっていたらエラーにする。
@@ -26,6 +27,10 @@ OIDC と WebAuthn は、仕様の MUST だけでなくセキュリティ上の S
 - トークンレスポンスには `Cache-Control: no-store` を付ける。
 - `redirect_uri` へのリダイレクトには 307 を使わない（303 か 302）。
 - サインイン画面と登録画面は、クリックジャッキングと CSRF の対策をする。
+
+**認可コードの再利用（RFC 6749 §4.1.2）**
+
+- 再利用されたコードは拒否しなければならず（MUST）、可能なら発行済みのトークンを失効させるべき（SHOULD）とされている。コードは `DELETE … RETURNING` で消費するので、2 回目は行が見つからず拒否され、MUST を満たす。アクセストークンはステートレスな JWT で失効させる手段がないため、「可能なら」が条件の SHOULD は対象にならず、準拠している。再利用されたときの影響は、トークンの短い有効期限と PKCE で抑える。
 
 **WebAuthn で守ること**
 

@@ -1,6 +1,6 @@
 # データモデル
 
-状態はすべて D1 の 9 テーブルに置き、アクセス可否の判定は `effective_access` ビュー 1 つに集約する。Worker と `idpctl` は同じビューを読むので、判定結果が食い違わない。
+状態はすべて D1 に置く。下の 9 テーブルと、管理操作を記録する監査ログのテーブル 1 つ（末尾を参照）からなり、アクセス可否の判定は `effective_access` ビュー 1 つに集約する。Worker と `idpctl` は同じビューを読むので、判定結果が食い違わない。
 
 ```sql
 -- 利用者とパスキー
@@ -44,16 +44,28 @@ CREATE TABLE client_access (
 -- 使い捨ての値（すべて DELETE … RETURNING で消費する。トークンとコードはハッシュで保存する。
 -- チャレンジは秘密ではないのでそのまま保存する（WebAuthn §13.4.3）。
 -- 期限切れの行は、新しい値を発行するときの同じバッチで削除する）
-CREATE TABLE enroll_tokens (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL, expires_at INTEGER NOT NULL);
-CREATE TABLE challenges    (challenge TEXT PRIMARY KEY, user_id TEXT, purpose TEXT NOT NULL,
-                            enroll_token_hash TEXT, expires_at INTEGER NOT NULL);
-CREATE TABLE sessions      (token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL,
+CREATE TABLE enroll_tokens (token_hash TEXT PRIMARY KEY,
+                            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                            expires_at INTEGER NOT NULL);
+-- チャレンジは用途ごとに発行元へ紐付ける。登録は登録トークン、サインインは認可リクエスト（Cookie）。
+-- サインインは discoverable credential を使うので、options の時点ではユーザーが分からない
+CREATE TABLE challenges    (challenge TEXT PRIMARY KEY, user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+                            purpose TEXT NOT NULL,
+                            enroll_token_hash TEXT,          -- 登録のときだけ持つ
+                            authorize_request_id_hash TEXT,  -- サインインのときだけ持つ（authorize_requests.id_hash）
+                            expires_at INTEGER NOT NULL);
+CREATE TABLE sessions      (token_hash TEXT PRIMARY KEY,
+                            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                             auth_time INTEGER NOT NULL, expires_at INTEGER NOT NULL);
-CREATE TABLE auth_codes    (code_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, user_id TEXT NOT NULL,
+CREATE TABLE auth_codes    (code_hash TEXT PRIMARY KEY,
+                            client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+                            user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                             redirect_uri TEXT NOT NULL, code_challenge TEXT NOT NULL, nonce TEXT, scope TEXT,
                             auth_time INTEGER NOT NULL, expires_at INTEGER NOT NULL);
 -- サインインを挟む間だけ保持する、検証済みの認可リクエスト（5 分）。ID は __Host- Cookie でブラウザに渡す
-CREATE TABLE authorize_requests (id_hash TEXT PRIMARY KEY, client_id TEXT NOT NULL, redirect_uri TEXT NOT NULL,
+CREATE TABLE authorize_requests (id_hash TEXT PRIMARY KEY,
+                            client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+                            redirect_uri TEXT NOT NULL,
                             state TEXT, nonce TEXT, code_challenge TEXT NOT NULL, scope TEXT NOT NULL,
                             prompt_login INTEGER NOT NULL, max_age INTEGER, id_token_hint_sub TEXT,
                             created_at INTEGER NOT NULL,  -- prompt=login の再認証は auth_time >= created_at で判定する
@@ -66,6 +78,10 @@ CREATE INDEX sessions_expires_at           ON sessions (expires_at);
 CREATE INDEX auth_codes_expires_at         ON auth_codes (expires_at);
 CREATE INDEX authorize_requests_expires_at ON authorize_requests (expires_at);
 
+-- ユーザー単位の削除（session_revoke、user_disable、passkey_revoke）も、テーブル全体を走査しないようにする（理由は上と同じ）
+CREATE INDEX sessions_user_id    ON sessions (user_id);
+CREATE INDEX credentials_user_id ON credentials (user_id);
+
 -- アクセス判定の唯一の定義
 CREATE VIEW effective_access AS
 SELECT DISTINCT u.id AS user_id, a.client_id
@@ -76,4 +92,4 @@ JOIN client_access a
 WHERE u.disabled = 0;
 ```
 
-このほかに監査ログ用のテーブルを 1 つ置き、管理操作だけを記録する（操作者が `cli` か `mcp` か）。サインインのたびに D1 へは書かず、Worker のログに任せる。期限切れの行は発行時に片付けるので、Cron は使わない。有効かどうかは取り出すときに必ず `expires_at` で判定するので、片付けが遅れても安全性は変わらない（容量にだけ影響する）。
+上の 9 テーブルのほかに監査ログ用のテーブルを 1 つ置き、管理操作だけを記録する（操作者が `cli` か `mcp` か）。スキーマは他のテーブルと同じくマイグレーションを正とする契約（[TypeScript と Go の契約](cross-language-contract.md)）の一部なので、実装前に決める（[未決事項](open-questions.md)参照）。サインインのたびに D1 へは書かず、Worker のログに任せる。期限切れの行は発行時に片付けるので、Cron は使わない。有効かどうかは取り出すときに必ず `expires_at` で判定するので、片付けが遅れても安全性は変わらない（容量にだけ影響する）。

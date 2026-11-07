@@ -72,7 +72,7 @@ flowchart LR
 | --- | --- |
 | [スコープ](scope.md) | 作るもの・作らないもの・後回しにするものと、その理由 |
 | [技術選定](technology.md) | TypeScript + Hono の Worker と Go の idpctl を選んだ理由、Rust と他候補を外した理由 |
-| [データモデル](data-model.md) | D1 の 9 テーブルと、アクセス判定を一元化する `effective_access` ビュー |
+| [データモデル](data-model.md) | D1 の 9 テーブルと監査ログのテーブル、アクセス判定を一元化する `effective_access` ビュー |
 | [認証フロー](authentication.md) | 認可コードフローでのサインイン、パスキーの登録、サインアウトの手順 |
 | [認可](authorization.md) | IdP が持つ認可は「誰がどのアプリを使えるか」だけ。判定の場所と反映の遅れ |
 | [クライアントの種類](clients.md) | Web アプリ（confidential）とネイティブアプリ・CLI（public）の 2 種類と、新しいアプリのつなぎ方 |
