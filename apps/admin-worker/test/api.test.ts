@@ -63,8 +63,12 @@ describe("users", () => {
   });
 
   it("pages with limit and the cursor the previous page returned", async () => {
-    // Created within one second, so the order is the ID's (created_at, then ID).
-    const ids = [await createUser(f(), "A"), await createUser(f(), "B"), await createUser(f(), "C")].sort();
+    // The list order is (created_at, ID), and the creations may or may not share a second, so the expected order is
+    // the one an unpaged list returns.
+    for (const name of ["A", "B", "C"]) await createUser(f(), name);
+    const all = (await (await call(f(), "GET", "/v1/users")).json()) as { items: { user_id: string }[] };
+    const ids = all.items.map((u) => u.user_id);
+    expect(ids).toHaveLength(3);
     const first = (await (await call(f(), "GET", "/v1/users?limit=2")).json()) as { items: { user_id: string }[]; next_cursor: string };
     expect(first.items.map((u) => u.user_id)).toEqual(ids.slice(0, 2));
     const second = await call(f(), "GET", `/v1/users?limit=2&cursor=${encodeURIComponent(first.next_cursor)}`);
@@ -213,6 +217,42 @@ describe("request bodies", () => {
       400,
     );
     expect(body["errors"]).toEqual(["/user_id"]);
+  });
+});
+
+describe("prototype keys", () => {
+  it.each(["__proto__", "constructor", "prototype"])("rejects a body member named %s and records the failure", async (key) => {
+    const alice = await createUser(f(), "Alice");
+    const bob = await createUser(f(), "Bob");
+    // A raw body, since JSON.stringify of an object literal would not emit __proto__ as an own member.
+    const rawBody = `{"name":"Eve","${key}":{"user_id":"${bob}"}}`;
+    const res = await call(f(), "PUT", `/v1/users/${alice}/name`, { rawBody, headers: { "content-type": "application/json" } });
+    const body = await expectProblem(res, "validation-failed", 400);
+    expect(body["errors"]).toEqual([`/${key}`]);
+    const rows = await auditRows(f());
+    expect(rows.at(-1)).toMatchObject({ operation: "user_rename", result: "failure", target: `user:${alice}` });
+    const got = (await (await call(f(), "GET", `/v1/users/${alice}`)).json()) as { name: string };
+    expect(got.name).toBe("Alice");
+  });
+
+  it("rejects __proto__ in an enablement-events body", async () => {
+    const id = await createUser(f());
+    const rawBody = `{"enablement":"disabled","__proto__":{"enablement":"enabled"}}`;
+    const res = await call(f(), "POST", `/v1/users/${id}/enablement-events`, { rawBody, headers: { "content-type": "application/json", ...idempotent() } });
+    const body = await expectProblem(res, "validation-failed", 400);
+    expect(body["errors"]).toEqual(["/__proto__"]);
+  });
+
+  it.each(["__proto__", "constructor", "prototype"])("rejects a query parameter named %s", async (key) => {
+    const body = await expectProblem(await call(f(), "GET", `/v1/users?${key}=x`), "validation-failed", 400);
+    expect(body["errors"]).toEqual([`/${key}`]);
+  });
+
+  it("treats __proto__ as a path value like any other invalid ID", async () => {
+    const body = await expectProblem(await call(f(), "GET", "/v1/users/__proto__"), "validation-failed", 400);
+    expect(body["errors"]).toEqual(["/user_id"]);
+    const grant = await expectProblem(await call(f(), "PUT", "/v1/clients/grafana/grants/__proto__"), "validation-failed", 400);
+    expect(grant["errors"]).toEqual(["/principal"]);
   });
 });
 
