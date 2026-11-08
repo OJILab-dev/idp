@@ -308,7 +308,6 @@ describe("the IdP host exposes nothing else", () => {
     ["POST", "/v1/clients"],
     ["GET", "/admin"],
     ["POST", "/.well-known/openid-configuration"],
-    ["GET", "/webauthn/auth/options"],
   ])("%s %s is 404", async (method, path) => {
     const res = await call(fixture(), method, path, { headers: { origin: "https://app.example.com" } });
     expect(res.status).toBe(404);

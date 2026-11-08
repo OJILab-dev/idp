@@ -116,7 +116,13 @@ export async function api(method: "GET" | "POST", path: string, body?: unknown):
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
   const text = await response.text();
-  const json: unknown = text === "" ? null : JSON.parse(text);
+  let json: unknown = null;
+  try {
+    json = text === "" ? null : JSON.parse(text);
+  } catch {
+    // A 500 from the Worker is plain text; it is still reported by its status below.
+    if (response.ok) throw new ApiError(response.status, "invalid_response");
+  }
   if (!response.ok) {
     const error = typeof json === "object" && json !== null ? (json as Record<string, unknown>)["error"] : undefined;
     throw new ApiError(response.status, typeof error === "string" && /^[a-z0-9_-]{1,64}$/.test(error) ? error : `http_${response.status}`);

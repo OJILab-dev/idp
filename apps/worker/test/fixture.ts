@@ -3,6 +3,8 @@
 import { afterEach, beforeEach, expect } from "vitest";
 import { createFixture, type Fixture as CoreFixture } from "../../../packages/core/test/oidc-fixture.js";
 import { generateEd25519Jwk } from "../../../packages/core/test/keys.js";
+import { generateCredential, type SoftCredential } from "../../../packages/core/test/webauthn-authenticator.js";
+import { base64urlEncode } from "../../../packages/core/src/shared/index.js";
 import { createHandler } from "../src/index.js";
 import type { Env } from "../src/config.js";
 
@@ -13,6 +15,9 @@ export const USER = "00000000-0000-4000-8000-000000000001";
 export const CREDENTIAL = "Y3JlZGVudGlhbC0wMDAx";
 export const CLIENT = "app";
 export const REDIRECT_URI = "https://app.example.com/callback";
+export const VERSION_ID = "00000000-0000-4000-8000-0000000000bb";
+/** The RP the software authenticator signs for: the issuer's. */
+export const RP = { rpId: "idp.example.com", origin: ISSUER } as const;
 
 let ed25519Jwk: Promise<string> | undefined;
 
@@ -38,7 +43,12 @@ export function useFixture(): () => Fixture {
   let f: Fixture | undefined;
   beforeEach(async () => {
     const core = await createFixture();
-    const env: Env = { DB: core.t.db, ISSUER, SIGNING_KEY_ED25519_CURRENT: await testSigningKey() };
+    const env: Env = {
+      DB: core.t.db,
+      ISSUER,
+      SIGNING_KEY_ED25519_CURRENT: await testSigningKey(),
+      CF_VERSION_METADATA: { id: VERSION_ID, tag: "", timestamp: "" },
+    };
     f = { core, env, handler: createHandler({ clock: core.clock, random: core.random }) };
   });
   afterEach(async () => {
@@ -58,6 +68,26 @@ export async function seedAccess(f: Fixture, client: Partial<Parameters<CoreFixt
   await f.core.grant(USER, client.id ?? CLIENT);
 }
 
+/**
+ * Generates a software passkey for a seeded user (with the user's stored handle) and stores its public key, as an
+ * enrollment would have.
+ *
+ * @returns The credential; the test signs with it.
+ */
+export async function addSoftPasskey(f: Fixture, userId: string, createdAt: number): Promise<SoftCredential> {
+  const [row] = await f.core.query("SELECT user_handle FROM users WHERE id = ?", userId);
+  const credential = await generateCredential(-8, { userHandle: row?.["user_handle"] as Uint8Array });
+  await f.core.run(
+    `INSERT INTO credentials (id, user_id, public_key, sign_count, backup_eligible, backup_state, created_at, created_via)
+     VALUES (?, ?, ?, 0, 1, 1, ?, 'enroll')`,
+    base64urlEncode(credential.id),
+    userId,
+    credential.cosePublicKey,
+    createdAt,
+  );
+  return credential;
+}
+
 /** What a test request carries besides its method and path. */
 export type CallOptions = {
   readonly headers?: Readonly<Record<string, string>>;
@@ -65,6 +95,8 @@ export type CallOptions = {
   readonly cookies?: Readonly<Record<string, string>>;
   /** A form body, sent as application/x-www-form-urlencoded. */
   readonly form?: Readonly<Record<string, string>>;
+  /** A body serialised as JSON and sent as application/json. */
+  readonly json?: unknown;
   /** Replaces the environment. */
   readonly env?: Env;
   /** The URL origin; defaults to the issuer. */
@@ -85,6 +117,10 @@ export async function call(f: Fixture, method: string, path: string, options: Ca
   if (options.form !== undefined) {
     body = new URLSearchParams(options.form).toString();
     headers.set("content-type", "application/x-www-form-urlencoded");
+  }
+  if (options.json !== undefined) {
+    body = JSON.stringify(options.json);
+    if (!headers.has("content-type")) headers.set("content-type", "application/json");
   }
   const request = new Request(`${options.origin ?? ISSUER}${path}`, { method, headers, redirect: "manual", ...(body === undefined ? {} : { body }) });
   const response = await f.handler.fetch(request, options.env ?? f.env, {

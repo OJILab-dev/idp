@@ -78,6 +78,42 @@ export function isSameOrigin(request: Request, issuer: Issuer): boolean {
 }
 
 /**
+ * The stricter check for a cookie-authenticated GET (`/webauthn/credentials`): only `Sec-Fetch-Site: same-origin`
+ * passes. `Origin` cannot stand in for it, because a same-origin GET may carry none (authentication.md, the account
+ * page).
+ *
+ * @returns Whether the request may proceed.
+ */
+export function isSameOriginFetch(request: Request): boolean {
+  return request.headers.get("sec-fetch-site") === "same-origin";
+}
+
+// A WebAuthn response is a few kilobytes at most; anything far larger is not one of the pages' requests.
+const JSON_BODY_LIMIT = 64 * 1024;
+
+/**
+ * Reads an `application/json` body that is a JSON object.
+ *
+ * @returns The object, or `undefined` when the body has another media type, exceeds the limit, does not parse, or is
+ *   not an object.
+ */
+export async function readJsonObject(request: Request): Promise<Readonly<Record<string, unknown>> | undefined> {
+  const mediaType = (request.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase();
+  if (mediaType !== "application/json") return undefined;
+  const declared = Number(request.headers.get("content-length") ?? "0");
+  if (!(declared <= JSON_BODY_LIMIT)) return undefined;
+  const text = await request.text();
+  if (text.length > JSON_BODY_LIMIT) return undefined;
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return undefined;
+  }
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+}
+
+/**
  * Reads an `application/x-www-form-urlencoded` body in the order received, repeats included.
  *
  * @returns The pairs, or `undefined` when the body is another media type.
