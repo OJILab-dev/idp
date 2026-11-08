@@ -50,6 +50,12 @@ importers:
 
   packages/core: {}
 
+  packages/d1-adapter:
+    dependencies:
+      '@idp/core':
+        specifier: workspace:*
+        version: link:../core
+
 packages:
 
   '@cacheable/memory@2.2.0':

@@ -7,7 +7,7 @@
 データモデル（[データモデル](data-model.md)参照）は、次が成り立つことを前提にしている。
 
 - [ ] D1 が、マイグレーションで `CREATE TRIGGER … BEGIN SELECT RAISE(ABORT, …); END` を受け付け、実行時に、出来事の表の UPDATE と DELETE、`principals`、`users`、`clients`、`groups` の DELETE を拒否すること。D1 のドキュメント（Cloudflare「SQL statements」）はトリガーの可否を書いていない。設計の SQL は `sqlite3` と、ローカルの D1（`cf` が同梱する miniflare の workerd。`contract/test/schema.test.ts`）では確かめた。残るのは本物の D1 での確認。成り立たなければ、追記だけと削除しないことを共有コアの規則だけで守る形に見直し、break-glass での削除を防げないことを受け入れるリスクとして記録し直す
-- [ ] D1 のバッチの中で、トリガーの `RAISE(ABORT, …)` がバッチ全体をロールバックすること（下の「D1 バインディングのバッチ」の確認と一緒に行う）
+- [ ] D1 のバッチの中で、トリガーの `RAISE(ABORT, …)` がバッチ全体をロールバックすること（下の「D1 バインディングのバッチ」の確認と一緒に行う）。ローカルの D1 では、D1 アダプタの適合テスト（`packages/d1-adapter/test/conformance.test.ts`）で、アダプタを通しても成り立ち、ポートのエラーとして返ることを確認済み。残るのは本物の D1 での確認
 
 管理 API（[管理 CLI と管理用の Worker](idpctl.md)参照）は、次を前提にしている。
 
@@ -51,7 +51,7 @@ RS256 を任意の機能として持つこと（[トークン設計](tokens.md)�
 - [ ] つなぐ予定の各 RP の OIDC ライブラリが、`alg` が `Ed25519` の ID トークンを検証できるか。できない RP には `RS256` を登録し、RS256 を有効にする
 - [ ] Ed25519（-8）のパスキーを、Workers の WebCrypto（標準の Ed25519）で検証できるか
 - [ ] OpenID Foundation の Basic OP と Config OP のテストプランを全項目合格するか。特に、テストスイートが confidential client の認可リクエストに `code_challenge` を付けるか（付けなければ、PKCE を全 client で必須にする方針と衝突するので、テストスイートの設定で付けられるかを確かめる）と、パスキーのサインインを手動の操作で通して流せるか
-- [ ] D1 バインディングのバッチが、途中で失敗したときに全体をロールバックするか（わざと 2 文目を失敗させて、D1 アダプタの適合テストで確認する。ローカルの D1 では `contract/test/schema.test.ts` で確認済みで、残るのは本物の D1 での確認）
+- [ ] D1 バインディングのバッチが、途中で失敗したときに全体をロールバックするか（わざと 2 文目を失敗させて、D1 アダプタの適合テストで確認する。ローカルの D1 では `contract/test/schema.test.ts` と、D1 アダプタの適合テスト（`packages/d1-adapter/test/conformance.test.ts`）で確認済みで、残るのは本物の D1 での確認）
 - [ ] D1 REST API のバッチが、途中で失敗したときに全体をロールバックするか。日常の管理では使わず、break-glass の `cf d1 query` で複数の文を流すときだけ関係する（[管理 CLI と管理用の Worker](idpctl.md)参照）
 - [ ] Worker のバンドルサイズと起動時間が無料枠（圧縮前 64 MiB、起動 1 秒）に十分収まるか
 - [ ] 正規のサインイン 1 回で Worker に届くリクエスト数（WAF のしきい値の根拠）

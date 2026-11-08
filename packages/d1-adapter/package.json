@@ -1,0 +1,11 @@
+{
+  "name": "@idp/d1-adapter",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@idp/core": "workspace:*"
+  }
+}
