@@ -6,6 +6,8 @@
 | --- | --- | --- | --- |
 | ID トークン | JWT（`typ: JWT`、client に登録したアルゴリズム。既定は `Ed25519`） | 常に `iss`、`sub`、`aud`（client\_id）、`exp`、`iat`、`auth_time`、`nonce`（要求時）。スコープに応じて `name`（profile） | 5 分 |
 | アクセストークン | JWT（`typ: at+jwt`、常に `Ed25519`） | `iss`、`sub`、`aud`（issuer）、`client_id`、`scope`、`exp`、`iat`、`jti` | 5 分 |
+
+この表と下の「クレームの一覧」が、発行するクレームの唯一の一覧になる。共有コアのテストは、[契約](cross-language-contract.md)のテストベクタでこの一覧と照らし合わせる。
 | 認可コード | 不透明な値（ハッシュ保存） | client、redirect\_uri、PKCE、nonce、発行の根拠になったセッションに紐付け | 60 秒 |
 | セッション | `__Host-` Cookie（ハッシュ保存） | ユーザー、サインインに使ったパスキー（credential ID）、`auth_time` | サインインから 1 時間（絶対期限。延長しない） |
 | 登録リンクのトークン | 256 bit の乱数をフラグメントに入れる（ハッシュ保存） | ユーザー | 発行から 10 分。1 回だけ使える |
@@ -23,6 +25,26 @@
 - メールアドレスは持たない。IdP は連絡にも復旧にも識別にもメールアドレスを使わないので、残る用途は RP への受け渡しだけになる。そのために他人の個人情報を保管するより、メールアドレスを必要とする RP が本人から必要な分だけ集めるほうがよい。`email_verified` を誤って扱うことによるアカウント乗っ取りの経路も、持たなければ生じない。
 - `email` スコープは扱わない。要求されてもエラーにはせず無視し、`email` と `email_verified` のクレームは返さない。認可サーバーは要求されたスコープを一部無視してよく、発行したスコープが要求と異なるときはトークンレスポンスに `scope` を含める（RFC 6749 §3.3、§5.1）。既定で `openid email profile` を要求する RP が多いので、エラーにすると、メールアドレスなしで動く RP までつながらなくなる。
 - 課金やプランに関する情報はクレームに一切入れない。
+
+**クレームの一覧**
+
+一次資料で確かめた、発行するものと発行しないものの一覧。
+
+- ID トークンのヘッダーは `typ`（`JWT`）、`alg`、`kid`。
+- ID トークンには、常に `iss`、`sub`、`aud`、`exp`、`iat` を入れる（OIDC Core §2 で REQUIRED）。
+- `auth_time` は常に入れる。§2 は、`max_age` の要求か Essential Claim として要求されたときに REQUIRED、それ以外は OPTIONAL としている（`max_age` のときに必ず入れることは §3.1.2.1 にもある）。要求の有無で形を変えないために、常に入れる。
+- `nonce` は、認可リクエストにあったときに入れる（§2 で、あれば入れなければならない（MUST）。RP の確認は §3.1.3.7 の 11）。
+- `name` は `profile` スコープのときに入れる（§5.4）。値がないクレームを返さないことはエラーではない（§5.3.2、§5.5.1）。
+- `azp` は入れない（§2 で OPTIONAL。拡張を使わない実装は `azp` を使わないことが推奨されている）。
+- `at_hash` は入れない（§3.1.3.6 で認可コードフローでは OPTIONAL。implicit と hybrid のフローは提供しない）。
+- `acr` と `amr` は入れない（§2 で OPTIONAL）。RFC 8176 §2 の `amr` の値に、同期型のパスキーに合うものがない（`hwk` はハードウェアで守られた鍵の所持の証明で、同期型のパスキーには当てはまらない）。`claims` パラメータに対応しないので、`acr` を Essential として要求されることはない（§5.5.1.1 の場合は起きない）。`acr_values` は無視する。
+- `sid` は入れない（Core のクレームではなく、OIDC のログアウト仕様は実装しない）。
+- `preferred_username` は入れない。§5.1 は RP がこの値の一意性に頼ってはならない（MUST NOT）とし、§5.7 は `name` と `preferred_username` を一意な識別子に使ってはならない（MUST NOT）としている。RP は `sub` で利用者を識別する。
+- `scope` のクレームは ID トークンに入れない。
+- アクセストークンには、RFC 9068 §2.2 で REQUIRED の `iss`、`exp`、`aud`、`sub`、`client_id`、`iat`、`jti` を入れ、`scope` も入れる（§2.2.3 で、認可リクエストに `scope` があれば入れるべき（SHOULD））。ヘッダーの `typ` は `at+jwt`（§2.1）。
+- `/userinfo` は、常に `sub` を返し（OIDC Core §5.3.2 で MUST）、`profile` スコープのときに `name` を返す。
+- トークンレスポンスは、`access_token`、`token_type`（`Bearer`。RFC 6749 §5.1 で REQUIRED）、`expires_in`（300。§5.1 で RECOMMENDED）、`id_token`（OIDC Core §3.1.3.3 で MUST）、`scope` を返す。`scope` は常に返す（§5.1 は、要求と異なるときに REQUIRED とする。`email` を無視したときは要求と異なる）。
+
 **署名アルゴリズム**
 
 - 通常の運用では、トークンに Ed25519 で署名する。JWS の `alg` には RFC 9864 の完全指定の識別子 `Ed25519` を使う（RFC 9864 §2.2 で定義され、§4.1.1 で JWS のアルゴリズムの登録簿に登録された。署名は RFC 8032 §5.1 の Ed25519）。
@@ -38,9 +60,9 @@
 RS256 は、デプロイ時に有効にする任意の機能にする。RSA の署名鍵を Worker Secret に設定したときだけ有効になり、既定のデプロイは RSA の鍵を持たない。
 
 - discovery の `id_token_signing_alg_values_supported`、JWKS、client の登録で受け付けるアルゴリズムは、すべて設定された鍵から導く（設定が唯一の正）。既定は `["Ed25519"]`、RS256 を有効にすると `["Ed25519", "RS256"]` になる。署名できないアルゴリズムを載せることはない。
-- RS256 を無効にしている間は、OIDC Discovery 1.0 §3（`id_token_signing_alg_values_supported` に RS256 を含めなければならない（MUST））と、OIDC Core 1.0 §15.1（OP は ID トークンの RS256 での署名をサポートしなければならない（MUST）。例外は、ID トークンを Token Endpoint からだけ返し、client に `none` だけを登録させる OP）から外れる。IdP は `none` を使わないので、§15.1 の例外にも当たらない。これは標準からの逸脱として[標準準拠](standards-compliance.md)に例外として記録する。理由は、RSA を必要とする RP がいない間は、秘密鍵の素材と攻撃面（RSA の署名の実装、鍵の保管とローテーション）を最小にするため。
+- RS256 を無効にしている間は、OIDC Discovery 1.0 §3（`id_token_signing_alg_values_supported` に RS256 を含めなければならない（MUST））と、OIDC Core 1.0 §15.1（OP は ID トークンの RS256 での署名をサポートしなければならない（MUST）。例外は、ID トークンを Token Endpoint からだけ返し、client に `none` だけを登録させる OP）から外れる。IdP は `none` を使わないので、§15.1 の例外にも当たらない。また、アクセストークンは常に `Ed25519` で署名するので、RFC 9068 §2.1（準拠する認可サーバーは RS256 をサポートする署名アルゴリズムに含めなければならない（MUST））からも外れる。アクセストークンを検証するのは IdP 自身の `/userinfo` だけで、外部のリソースサーバーとの相互運用の問題はない。これらは標準からの逸脱として[標準準拠](standards-compliance.md)に例外として記録する。OIDC Core §3.1.3.7 の 7（`alg` は既定の RS256 か、登録時に送った `id_token_signed_response_alg` であるべき（SHOULD））は、client ごとにアルゴリズムを必ず明示して登録することで満たす。理由は、RSA を必要とする RP がいない間は、秘密鍵の素材と攻撃面（RSA の署名の実装、鍵の保管とローテーション）を最小にするため。
 - 適合性テスト（Basic OP と Config OP）は、RS256 を有効にしたデプロイで流し、全項目の合格を求める。
-- **有効にする**：運用者が RSA の鍵を AI のセッションの外で生成し、Worker Secret に登録してデプロイする（下の「署名鍵の生成とバックアップ」と同じ規則）。管理用の Worker は、RS256 が無効な間は、client への `RS256` の登録を拒否する。
+- **有効にする**：RSA の鍵をリポジトリの生成スクリプトで生成し、Worker Secret に登録してデプロイする（下の「署名鍵の生成とバックアップ」と同じ規則）。管理用の Worker は、RS256 が無効な間は、client への `RS256` の登録を拒否する。
 - **無効にする**：`RS256` を登録した client が 1 つもないときだけ許す。管理 API は `RS256` を登録している client を一覧できる（`clients_list`）。最後の client を `Ed25519` に変えてから、ID トークンの有効期限（5 分）が過ぎた後に RSA の Secret を外す。それまでに発行した RS256 の ID トークンを RP が検証できるようにするため。
 - `RS256` を登録した client があるのに RSA の鍵がない場合、その client へのトークンの発行は失敗させる（fail-closed）。`/authorize` は client と `redirect_uri` を検証した後、サインインの前に `server_error` を返す（RFC 6749 §4.1.2.1）。`/token` も、認可コードを消費する前に同じ確認を行い、トークンを発行せずにエラーを返す。別のアルゴリズムで署名して代わりに返すことはしない。
 - 管理用の Worker は署名鍵を持たない。RS256 が有効かどうかは、IdP の Worker の discovery の `id_token_signing_alg_values_supported` を Service Binding で読んで判断し、読めない場合や値の形が不正な場合は有効でないものとして扱う（fail-closed）。
@@ -60,6 +82,7 @@ RS256 は、デプロイ時に有効にする任意の機能にする。RSA の�
 
 **署名鍵の生成とバックアップ**
 
-- 鍵の形式（Ed25519 と RSA 4096 bit、`kid` は JWK thumbprint など）は [実装に依存しない契約](cross-language-contract.md)で固定する。形式が契約で決まっているので、生成に使う道具は問わない。
-- 運用者が、AI のセッションの外で、標準的な道具を使って手作業で生成する。`idpctl` も管理用の Worker も鍵を生成しない。管理者の mTLS の秘密鍵（[管理 CLI と管理用の Worker](idpctl.md)参照）とは別の鍵である。
-- 秘密鍵は標準入力で 1Password の Vault のアイテムと Worker Secret に渡し、平文のままディスクに書かない。Worker Secret は書き込み専用で読み出せないので、バックアップと正本は 1Password のアイテムとする（[デプロイと設定](deployment.md)参照）。
+- 鍵の形式（Ed25519 と RSA 4096 bit、`kid` は JWK thumbprint など）は [実装に依存しない契約](cross-language-contract.md)で固定する。
+- 鍵は必ずリポジトリのレビュー済みの生成スクリプトで生成する。手で生成すると、手順のずれ（鍵の長さ、`kid` の計算、`alg` や `use` の付け忘れ、平文のファイルの置き忘れ）が鍵ごとに起き、それが最も危険なため。スクリプトを通せば、人が実行してもエージェント（AI）が実行しても結果は同じなので、実行する主体は限らない。`idpctl` も管理用の Worker も鍵を生成しない。管理者の mTLS の秘密鍵（[管理 CLI と管理用の Worker](idpctl.md)参照）とは別の鍵である。
+- スクリプトは、生成した秘密鍵を `op` で 1Password の Vault のアイテムに、パイプで Worker Secret に直接渡し、平文をディスクに書かない。`kid`（RFC 7638 の JWK thumbprint）はスクリプトが自分で計算する。出力するのは秘密でない値（`kid`、公開鍵）だけにする。Worker Secret は書き込み専用で読み出せないので、バックアップと正本は 1Password のアイテムとする（[デプロイと設定](deployment.md)参照）。
+- 秘密鍵の値を AI のコンテキストに入れてはいけない。この規則は、誰がスクリプトを実行するかにかかわらず変わらない。

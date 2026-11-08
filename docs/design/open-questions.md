@@ -1,8 +1,25 @@
 # 未決事項・要検証
 
-実装に入る前に決めることは、すべて各トピックのドキュメントに記録した。残っているのは、実装の前に確かめる前提と、作りながら実測で確かめるものだけ。
+実装に入る前に決めること（有効・無効の持ち方と削除しない方針、管理 API の形、ブートストラップ、トークンのクレーム、デプロイのパイプライン、ログ、画面と多言語化を含む）は、すべて各トピックのドキュメントに記録した。決めていないことが見つかったら、ここではなく、そのトピックのドキュメントに決定として書く。ここに残すのは、実装の前に確かめる前提と、作りながら実測で確かめるものだけ。
 
 **実装の前に必ず確かめること**
+
+データモデル（[データモデル](data-model.md)参照）は、次が成り立つことを前提にしている。
+
+- [ ] D1 が、マイグレーションで `CREATE TRIGGER … BEGIN SELECT RAISE(ABORT, …); END` を受け付け、実行時に、出来事の表の UPDATE と DELETE、`principals`、`users`、`clients`、`groups` の DELETE を拒否すること。D1 のドキュメント（Cloudflare「SQL statements」）はトリガーの可否を書いていない。設計の SQL は `sqlite3` では確かめた。成り立たなければ、追記だけと削除しないことを共有コアの規則だけで守る形に見直し、break-glass での削除を防げないことを受け入れるリスクとして記録し直す
+- [ ] D1 のバッチの中で、トリガーの `RAISE(ABORT, …)` がバッチ全体をロールバックすること（下の「D1 バインディングのバッチ」の確認と一緒に行う）
+
+管理 API（[管理 CLI と管理用の Worker](idpctl.md)参照）は、次を前提にしている。
+
+- [ ] `Idempotency-Key` の draft（draft-ietf-httpapi-idempotency-key-header）の状態を、実装の直前にもう一度確かめる。2026-11-08 の時点では -08（2026-10-22）で、RFC になっていない。RFC になって §2.7 のステータスコードや、キーの形が変わっていれば、管理 API をそれに合わせる
+
+デプロイのパイプライン（[デプロイと設定](deployment.md)参照）は、次を前提にしている。どれかが成り立たなければ、wrangler に戻さず、Cloudflare API かダッシュボードで行う形に設計を見直す。
+
+- [ ] `cf`（`cf workers deployments` など）か Cloudflare API で、Worker を前のバージョンにロールバックできるか。Cloudflare「Rollbacks」はダッシュボードと `wrangler rollback` しか説明していない。できなければ、ロールバックはダッシュボードで行う手順にする
+- [ ] Terraform の Cloudflare provider が、D1 のデータベース、Worker のカスタムドメイン、WAF のカスタムルールとレート制限ルール、CSR からのクライアント証明書、管理用のホスト名への mTLS の割り当て、fail closed の設定を扱えるか。扱えないものは `cf` か Cloudflare API のスクリプトにする
+- [ ] `cf` で R2 のバケットを作れるか（Terraform の state のバケットは Terraform より先に要る）
+- [ ] 1Password Environments の GitHub Actions の destination を、plan の workflow の PR のイベントに限れるか。限れなければ、PR の `terraform plan` をやめる（[デプロイと設定](deployment.md)の例外を参照）
+- [ ] Takumi Guard の下で、固定した pnpm のセットアップの Action と `pnpm install --frozen-lockfile` が動くこと（利用者は pnpm への対応を確認済み。実装で軽く確かめる）
 
 管理用の Worker（[管理 CLI と管理用の Worker](idpctl.md)参照）は、次が成り立つことを前提にしている。どれかが成り立たなければ、実装に入る前に設計を見直す。
 
@@ -37,4 +54,7 @@ RS256 を任意の機能として持つこと（[トークン設計](tokens.md)�
 - [ ] カスタムドメインに割り当てた Worker でも fail closed を設定できるか（ドキュメントではルートの設定として説明されている）
 - [ ] つなぐ予定の RP（Grafana など）が、`email` クレームなしでサインインとユーザーの作成をできるか（[トークン設計](tokens.md)参照）。できない RP は、RP 側の設定で本人に入力させられるかを確認する
 - [ ] D1 のデータベースが production バックエンドにあり、Time Travel の対象になっていること（Cloudflare API の「Get D1 Database」（`GET /accounts/{account_id}/d1/database/{database_id}`、`D1 Read` の権限）の応答の `version` が `production` であることを確かめる。Time Travel のドキュメントは `version: production` のデータベースが Time Travel に対応するとしている（Cloudflare「Time Travel and backups」の「Support for Time Travel」）。`cf` で同じ情報を出すコマンドはドキュメントにないので、API で確かめる。[デプロイと設定](deployment.md)参照）
+- [ ] 対象のブラウザで、条件付きメディエーション（パスキーの自動入力）と、WebAuthn Level 3 の `parseCreationOptionsFromJSON()`、`parseRequestOptionsFromJSON()`、`toJSON()` が使えるか（[認証フロー](authentication.md)の画面と言語を参照）
+- [ ] サインインページの読み込みごとのチャレンジの書き込みを含めて、D1 の 1 日の書き込みが見込みに収まること（[無料枠](free-tier.md)参照）
+- [ ] 正規の利用での Workers Logs の 1 日の取り込み量が、2026 年 12 月 1 日からの Free の上限（0.5 GB / 日）に十分収まること（[デプロイと設定](deployment.md)のログを参照）
 - [ ] Cloudflare のクライアント証明書の失効を API で要求してから、`pending_revocation` が `revoked` になり WAF で遮断されるまでの時間（ドキュメントに書かれていない。それまでは許可リストから消すことで締め出す）

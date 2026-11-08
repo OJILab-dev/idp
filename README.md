@@ -36,6 +36,7 @@ IdP の Worker には管理用のエンドポイントや管理 UI を置きま�
 | [docs/design/README.md](docs/design/README.md) | IdP の設計ドキュメントの索引。概要、ゴール、設計原則、全体構成 |
 | [docs/philosophy/README.md](docs/philosophy/README.md) | OJILab の設計思想とエンジニアリング原則 |
 | [docs/deployment/secret.md](docs/deployment/secret.md) | 1Password Environments と GitHub Actions による CD 用 Secret の扱い |
+| [docs/deployment/bootstrap.md](docs/deployment/bootstrap.md) | 空の Cloudflare アカウントから最初のユーザーと RP をつなぐまでの手順の設計 |
 | [AGENT.md](AGENT.md) | このリポジトリを変更するエージェントの契約 |
 
 ## リポジトリの運用

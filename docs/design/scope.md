@@ -11,6 +11,8 @@
 | 管理 CLI（`idpctl`）と管理用の Worker | 作る | `idpctl` は Go の薄いクライアントで、管理操作は別ホスト名の管理用の Worker が mTLS で管理者を確かめて行う（[管理 CLI と管理用の Worker](idpctl.md)参照） |
 | MCP（ローカル・リモートとも） | 後回し | 管理 API の mTLS と、秘密を手元のファイルに書く規則に合う形を、必要になってから考える（[将来拡張](future-extensions.md)参照） |
 | ネイティブアプリ・CLI（public client） | 作る | RFC 8252 に沿い、PKCE とループバックなどの redirect で守る。サインインは毎回パスキー（[クライアントの種類](clients.md)参照） |
+| ユーザー、client、グループの完全な削除 | 作らない | 終わらせるときは無効化する。行を残すので client ID が再利用されず、有効・無効の履歴も残る（[データモデル](data-model.md)参照） |
+| UI の多言語化 | 作る | 英語と日本語から始め、`ui_locales`、ブラウザの言語、既定の英語の順に決める（[認証フロー](authentication.md)参照） |
 | 管理 Web UI | 作らない | CLI で代替する。管理面は mTLS で守る管理 API だけにする |
 | 同意画面 | 作らない | クライアントはすべて管理者が登録する。public client には、同意画面の代わりに毎回パスキーを求める |
 | DCR / CIMD | 作らない | 必要になったら再検討 |

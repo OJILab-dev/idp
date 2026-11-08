@@ -100,6 +100,7 @@ deploy jobだけに`id-token: write`を付与します。
 ```
 
 pull requestのvalidation jobにはOIDC権限も1Password credentialも渡しません。
+例外として、IdPの`terraform plan` jobにだけ、読み取り専用のcredentialを入れた別のEnvironmentを渡します。条件と理由は[デプロイと設定](../design/deployment.md)の「PR の `terraform plan` の認証情報（例外）」を参照してください。
 依存取得がある場合は、依存を取得してからSecretを読み込み、credentialの生存範囲をdeploy直前以降に限定します。
 
 ## 既存Secretsからの移行

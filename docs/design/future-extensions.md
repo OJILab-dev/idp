@@ -29,9 +29,11 @@
 - 管理 API は mTLS で守るので、MCP サーバーも管理者のクライアント証明書を提示する必要がある。Claude Code のドキュメントは、リモートの MCP サーバーに TLS のクライアント証明書を提示する方法を書いていない。`CLAUDE_CODE_CLIENT_CERT` は企業ネットワークでのクライアント証明書の認証として説明されているが、MCP サーバーとの通信に使えるとは書かれていない（Claude Code「Enterprise network configuration」の「mTLS authentication」）。リモートの MCP サーバーの認証として書かれているのは OAuth とヘッダーである（Claude Code「Connect Claude Code to tools via MCP」）。
 - リモートの MCP サーバーは、IdP が発行する秘密を手元の `0600` のファイルに書けない。平文を AI のコンテキストに入れないという規則（[管理 CLI と管理用の Worker](idpctl.md)の IdP が発行する秘密の扱い）を守るには、手元で動く stdio の MCP サーバーにするか、秘密を返す操作を出さない必要がある。
 - MCP のツールは、`tools/list` の応答で `_meta["anthropic/requiresUserInteraction"]` を `true` にすると、呼び出しのたびに人間の確認を求められる（Claude Code「Connect Claude Code to tools via MCP」の「Require approval for a specific tool」）。書き込みの操作はすべてこれを付ける。
-- 出す操作の範囲は、共有コアの操作の分類のメタデータから導く。取り返しのつかない操作（`user_delete`）と本人性を確定させる操作（`enroll_link_issue`）は出さない（[管理 CLI と管理用の Worker](idpctl.md)の操作の分類を参照）。
+- 出す操作の範囲は、共有コアの操作の分類のメタデータから導く。本人性を確定させる操作（`enroll_link_issue`）は出さない。ユーザー、client、グループの完全な削除の操作はもともと置かない（[管理 CLI と管理用の Worker](idpctl.md)の操作の分類を参照）。
 
 **その他**
 
 - リフレッシュトークン：ネイティブアプリ・モバイルアプリ（public client）が必要になったら、ローテーションと再利用検知付きで追加する。リフレッシュ時にもアクセス可否を再確認する。
-- 認可レベル 2・3：`roles` クレーム（宛先アプリの分だけ）と、`resource` + スコープの積集合による API 用トークン。未登録の resource は拒否する。
+- 認可レベル 2・3：`roles` クレーム（宛先アプリの分だけ）と、`resource` + スコープの積集合による API 用トークン。未登録の resource は拒否する。外部のリソースサーバーがアクセストークンを検証するようになったら、RFC 9068 §2.1 の RS256 の例外（[標準準拠](standards-compliance.md)参照）を見直す。
+- UI の言語：英語と日本語のほかの言語は、辞書のファイルを足して加える（[認証フロー](authentication.md)の画面と言語を参照）。
+- ログの長期保存：Workers Logs は無料枠では短期間しか残らない。より厳密な記録が要るなら、有料のプランを使うか、この IdP を使わない（[デプロイと設定](deployment.md)のログを参照）。

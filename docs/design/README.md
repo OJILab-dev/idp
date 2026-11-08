@@ -80,17 +80,18 @@ flowchart LR
 | --- | --- |
 | [スコープ](scope.md) | 作るもの・作らないもの・後回しにするものと、その理由 |
 | [技術選定](technology.md) | TypeScript の共有コアと 2 つの Worker、Go の薄いクライアント `idpctl` を選んだ理由、利用者向けと管理系の境界、Rust と他候補を外した理由 |
-| [データモデル](data-model.md) | D1 の 12 テーブルと監査ログのテーブル、アクセス判定を一元化する `effective_access` ビュー |
-| [認証フロー](authentication.md) | 認可コードフローでのサインイン、パスキーの登録、アカウントページでの本人によるパスキーの追加と失効、管理者による復旧、サインアウトの手順 |
+| [データモデル](data-model.md) | D1 の 16 テーブルと監査ログのテーブル、追記だけの有効・無効の出来事と今の状態のビュー、削除を拒否するトリガー、アクセス判定を一元化する `effective_access` ビュー |
+| [認証フロー](authentication.md) | 認可コードフローでのサインイン、パスキーの登録、アカウントページでの本人によるパスキーの追加と失効、管理者による復旧、画面と多言語化、サインアウトの手順 |
 | [認可](authorization.md) | IdP が持つ認可は「誰がどのアプリを使えるか」だけ。判定の場所と反映の遅れ、ユーザーとグループを分けるレイヤー、管理の関心事 |
 | [操作とリスク](operations-and-risks.md) | IdP を通じてできる行為ごとの目的、悪用や誤りの影響、今の対策と、影響の広さによる分類 |
 | [クライアントの種類](clients.md) | Web アプリ（confidential）とネイティブアプリ・CLI（public）の 2 種類と、新しいアプリのつなぎ方 |
 | [トークン設計](tokens.md) | 短命トークンのみでリフレッシュトークンは発行しない。各トークンの形式と中身、署名アルゴリズム（Ed25519、任意の RS256）、署名鍵のローテーションと生成・バックアップ |
 | [標準準拠](standards-compliance.md) | OIDC・OAuth・JWT・WebAuthn の準拠ポイントと、適合性テストによる確認方法 |
 | [セキュリティ要件チェックリスト](security-checklist.md) | e2e の攻撃ケースとして実装する要件の一覧（実際の CVE 事例付き） |
-| [管理 CLI と管理用の Worker（idpctl）](idpctl.md) | 別ホスト名の管理用の Worker と Go の `idpctl` による管理、mTLS と許可リストによる管理者の確定、IdP が発行する秘密の扱い、break-glass |
+| [管理 CLI と管理用の Worker（idpctl）](idpctl.md) | 別ホスト名の管理用の Worker と Go の `idpctl` による管理、mTLS と許可リストによる管理者の確定、REST の管理 API（エラー、Idempotency-Key、ページング）、IdP が発行する秘密の扱い、break-glass |
 | [実装に依存しない契約](cross-language-contract.md) | SQL・エンコーディング・ID・鍵の形式・テストベクタと、Go と TypeScript をつなぐ管理 API の仕様の取り決め |
-| [デプロイと設定](deployment.md) | ホスト名を設定値で与える仕組み、変更時の影響、IdP 専用アカウント、管理用の Worker、break-glass 用の API トークンの扱い、署名鍵と D1 のバックアップ |
+| [デプロイと設定](deployment.md) | ホスト名を設定値で与える仕組み、変更時の影響、IdP 専用アカウント、Terraform とスクリプトの分担、デプロイのパイプライン、API トークン、鍵の生成スクリプト、ログ、署名鍵と D1 のバックアップ |
+| [ブートストラップ](../deployment/bootstrap.md) | 空のアカウントから最初のユーザーと RP をつなぐまでの手順の設計 |
 | [無料枠の見積もりと制約](free-tier.md) | Workers と D1 の無料枠に対する見込みと、最初に確定すべき制約 |
 | [将来拡張](future-extensions.md) | ledger / entitlements、管理権限の分離、MCP など、IdP の外側に足す拡張 |
 | [Rust 移行計画](rust-migration.md) | IdP の Worker を Rust に置き換える条件、今のうちに守る書き方、共有コアの扱い、段階移行の順番 |

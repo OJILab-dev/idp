@@ -21,7 +21,7 @@ OIDC と WebAuthn は、仕様の MUST だけでなくセキュリティ上の S
 - `/authorize` は GET と POST の両方を受け付ける。
 - `scope` に `openid` がない認可リクエストは、`invalid_scope` で拒否する。OIDC Core §3.1.2.1 は `openid` がないときの動作を規定していないので、仕様の要求ではなく、fail-closed（設計原則 4）による方針として決める。
 - リクエストに `state` があれば、成功・エラーどちらのレスポンスにもその値をそのまま返す。
-- Core 15.1 の必須機能を満たす（RS256 による ID トークンの署名だけは、RS256 を有効にしたデプロイで満たす。下の例外を参照）。`prompt`（`none` / `login`）と `max_age` を正しく処理し、`max_age` があれば ID トークンに `auth_time` を入れる（`max_age=0` は `prompt=login` と同じ扱い）。`display`、`ui_locales`、`claims_locales`、`acr_values` は、送られてもエラーにしない（値は無視してよい）。
+- Core 15.1 の必須機能を満たす（RS256 による ID トークンの署名だけは、RS256 を有効にしたデプロイで満たす。下の例外を参照）。`prompt`（`none` / `login`）と `max_age` を正しく処理し、`max_age` があれば ID トークンに `auth_time` を入れる（`max_age=0` は `prompt=login` と同じ扱い）。`display`、`claims_locales`、`acr_values` は、送られてもエラーにせず、値を無視する。`ui_locales` は UI の言語の最初の候補として使い、対応しない言語が含まれてもエラーにしない（§3.1.2.1 の SHOULD NOT。[認証フロー](authentication.md)の画面と言語を参照）。`claims` パラメータには対応しないので、`acr` を Essential Claim として要求されることはなく、§5.5.1.1 の場合は起きない。
 - `prompt=none` に他の値が混ざっていたらエラーにする。
 - `id_token_hint` があれば自分が発行したものか検証し、セッションのユーザーと違えば `login_required` を返す。
 - 対応しない `request`、`request_uri`、`registration` には、それぞれ `request_not_supported`、`request_uri_not_supported`、`registration_not_supported` を返す。対応しない `response_mode` には、エラーパラメータなしの 400 を返す。
@@ -32,11 +32,12 @@ OIDC と WebAuthn は、仕様の MUST だけでなくセキュリティ上の S
 **例外：RS256 を既定で無効にする**
 
 - RS256 は、RSA の署名鍵を設定したデプロイだけで有効になる任意の機能にする（[トークン設計](tokens.md)参照）。既定のデプロイは RSA の鍵を持たない。
-- RS256 を無効にしている間は、次の 2 つの MUST から外れる。
+- RS256 を無効にしている間は、次の 3 つの MUST から外れる。
   - OIDC Discovery 1.0 §3：`id_token_signing_alg_values_supported` に RS256 を含めなければならない。
   - OIDC Core 1.0 §15.1：OP は ID トークンを RS256 で署名することをサポートしなければならない。例外は、ID トークンを Token Endpoint からだけ返し、client に `none` だけを登録させる OP で、IdP は `none` を使わないのでこの例外にも当たらない。
-- 理由：RSA を必要とする RP がいない間は、持つ秘密鍵の素材と攻撃面（RSA の署名の実装、鍵の保管とローテーション）を最小にする。署名できないアルゴリズムを discovery に載せると、RP がそれを選んだときに発行が失敗するので、載せる値は設定された鍵から導き、署名できるものだけにする。
-- 逸脱は RS256 を無効にしている間に限られる。RSA を必要とする RP をつなぐときは、運用者が RSA の鍵を設定して RS256 を有効にし、その RP に `RS256` を登録する。
+  - RFC 9068 §2.1：この仕様に準拠する認可サーバーとリソースサーバーは、サポートする署名アルゴリズムに RS256 を含めなければならない。IdP のアクセストークンは RS256 を有効にしたデプロイでも常に `Ed25519` で署名するので、この逸脱は RS256 の有効・無効にかかわらず続く。
+- 理由：RSA を必要とする RP がいない間は、持つ秘密鍵の素材と攻撃面（RSA の署名の実装、鍵の保管とローテーション）を最小にする。署名できないアルゴリズムを discovery に載せると、RP がそれを選んだときに発行が失敗するので、載せる値は設定された鍵から導き、署名できるものだけにする。RFC 9068 §2.1 については、アクセストークンを検証するのは IdP 自身の `/userinfo` だけで、外部のリソースサーバーがないので、相互運用の問題も起きない。外部の API（認可レベル 3）を足すときに見直す（[将来拡張](future-extensions.md)参照）。
+- OIDC Discovery 1.0 §3 と OIDC Core 1.0 §15.1 からの逸脱は、RS256 を無効にしている間に限られる。RFC 9068 §2.1 からの逸脱は、上のとおりアクセストークンの署名が常に `Ed25519` なので、RS256 を有効にしても残る（アクセストークンを RS256 で署名できるようにはしない）。RSA を必要とする RP をつなぐときは、運用者が RSA の鍵を設定して RS256 を有効にし、その RP に `RS256` を登録する。
 - ID トークンの署名のアルゴリズムは client ごとに必ず明示して登録するので、OIDC Core 1.0 §3.1.3.7 の 7（`alg` は既定の RS256 か、登録時に送った `id_token_signed_response_alg` であるべき（SHOULD））の後者に当たる。
 
 **認可コードの再利用（RFC 6749 §4.1.2）**
