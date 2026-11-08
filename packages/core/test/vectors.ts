@@ -19,6 +19,11 @@ type Vectors = {
   };
   readonly uuid_v4: { readonly valid: readonly string[]; readonly invalid: readonly InvalidCase[] };
   readonly client_id: { readonly valid: readonly string[]; readonly invalid: readonly InvalidCase[] };
+  readonly redirect_uri: {
+    readonly valid: readonly { readonly value: string; readonly kind: "https" | "loopback" | "custom-scheme" }[];
+    readonly invalid: readonly InvalidCase[];
+    readonly confidential_rejects: readonly string[];
+  };
   readonly random_token: { readonly valid: readonly string[]; readonly invalid: readonly InvalidCase[] };
   readonly issuer: {
     readonly valid: readonly { readonly value: string; readonly rp_id: string; readonly origin: string }[];

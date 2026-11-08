@@ -53,11 +53,12 @@ const RESOURCES: Readonly<Record<EnablementResource, ResourceTables>> = {
  * Builds the SQL expression of a resource's current state.
  *
  * @param resource The resource kind.
- * @returns An expression with one `?` for the resource ID; 'disabled' when no event row exists.
+ * @param idExpression The SQL expression of the resource ID; a `?` placeholder by default.
+ * @returns The expression; 'disabled' when no event row exists.
  */
-export function currentEnablementSql(resource: EnablementResource): string {
+export function currentEnablementSql(resource: EnablementResource, idExpression = "?"): string {
   const r = RESOURCES[resource];
-  return `COALESCE((SELECT enablement FROM ${r.view} WHERE ${r.column} = ?), 'disabled')`;
+  return `COALESCE((SELECT enablement FROM ${r.view} WHERE ${r.column} = ${idExpression}), 'disabled')`;
 }
 
 /**

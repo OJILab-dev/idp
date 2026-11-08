@@ -8,6 +8,7 @@ import { InvalidBase64urlError, base64urlDecode } from "./base64url.js";
 import type { SqlStatement, SqlValue } from "./db.js";
 import { isClientId, isUuidV4 } from "./identifiers.js";
 import { isProblemKind, type ProblemKind } from "./problems.js";
+import { classifyRedirectUri } from "./redirect-uri-registration.js";
 
 /** What an audit row is about: `user:<id>`, `client:<id>`, `group:<id>`, `schema`, or `none`. */
 export type AuditTarget = `user:${string}` | `client:${string}` | `group:${string}` | "schema" | "none";
@@ -132,6 +133,8 @@ const DETAIL_MEMBERS: Readonly<Record<string, (value: unknown) => boolean>> = {
   expires_at: isUnixSeconds,
   sessions_deleted: isUnixSeconds,
   problem: isProblemKind,
+  // Redirect URIs are configuration without personal data (data-model.md); each must pass the registration rules.
+  redirect_uris: (value) => Array.isArray(value) && value.every((uri) => typeof uri === "string" && classifyRedirectUri(uri) !== null),
 };
 
 /**

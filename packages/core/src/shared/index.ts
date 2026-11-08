@@ -23,6 +23,7 @@ export { isClientId, isRandomTokenFormat, isUuidV4, newUuidV4, randomToken } fro
 export { InvalidIssuerError, parseIssuer, type Issuer } from "./issuer.js";
 export { InvalidJwkError, jwkThumbprint } from "./jwk.js";
 export { PROBLEM_KINDS, isProblemKind, type ProblemKind } from "./problems.js";
+export { LOOPBACK_REDIRECT_HOSTS, classifyRedirectUri, isRedirectUriAllowed, type ClientType, type RedirectUriKind } from "./redirect-uri-registration.js";
 
 /**
  * The most passkeys one user may have (`max_passkeys_per_user` in docs/design/cross-language-contract.md).
