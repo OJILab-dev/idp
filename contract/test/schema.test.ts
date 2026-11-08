@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { D1Database } from "@cloudflare/workers-types";
-import { createTestD1, readMigration, splitStatements, type TestD1 } from "./d1.js";
+import { createTestD1, migrationNames, readMigration, splitStatements, type TestD1 } from "./d1.js";
 
 const NOW = 1_800_000_000;
 
@@ -69,19 +69,25 @@ async function effectiveAccess(): Promise<readonly string[]> {
   return results.map((r) => r.pair);
 }
 
-describe("migration 0001_init", () => {
-  it("is exactly the SQL block of docs/design/data-model.md", () => {
-    const doc = readFileSync(join(import.meta.dirname, "..", "..", "docs", "design", "data-model.md"), "utf8");
-    const blocks = [...doc.matchAll(/```sql\n([\s\S]*?)```/g)].map((m) => m[1]);
-    expect(blocks).toHaveLength(1);
-    expect(readMigration("0001_init.sql")).toBe(blocks[0]);
+describe("the migrations", () => {
+  it("are numbered 0001, 0002, … without gaps", () => {
+    const names = migrationNames();
+    expect(names[0]).toBe("0001_init.sql");
+    names.forEach((name, i) => expect(name.slice(0, 4)).toBe(String(i + 1).padStart(4, "0")));
   });
 
-  it("has no string literal that the statement splitter could cut", () => {
-    for (const literal of readMigration("0001_init.sql").match(/'[^']*'/g) ?? []) {
+  it("are exactly the SQL blocks of docs/design/data-model.md, one block per migration in order", () => {
+    const doc = readFileSync(join(import.meta.dirname, "..", "..", "docs", "design", "data-model.md"), "utf8");
+    const blocks = [...doc.matchAll(/```sql\n([\s\S]*?)```/g)].map((m) => m[1]);
+    expect(blocks.map((_, i) => migrationNames()[i])).toEqual(migrationNames());
+    migrationNames().forEach((name, i) => expect(readMigration(name)).toBe(blocks[i]));
+  });
+
+  it.each(migrationNames())("%s has no string literal that the statement splitter could cut", (name) => {
+    for (const literal of readMigration(name).match(/'[^']*'/g) ?? []) {
       expect(literal).not.toMatch(/;|--/);
     }
-    expect(splitStatements(readMigration("0001_init.sql")).length).toBeGreaterThan(0);
+    expect(splitStatements(readMigration(name)).length).toBeGreaterThan(0);
   });
 
   it("creates the 16 tables, audit_log, and the four views", async () => {
@@ -114,6 +120,62 @@ describe("append-only and never-deleted rows (triggers)", () => {
     await expect(db.prepare("DELETE FROM principals WHERE id = 'u1'").run()).rejects.toThrow(/never deleted/);
     await expect(db.prepare("DELETE FROM clients").run()).rejects.toThrow(/never deleted/);
     await expect(db.prepare("DELETE FROM groups").run()).rejects.toThrow(/never deleted/);
+  });
+
+  describe("audit_log", () => {
+    async function addAuditRow(): Promise<void> {
+      await db
+        .prepare(
+          `INSERT INTO audit_log (occurred_at, actor, admin_name, admin_cert_sha256, writer_version, operation, target, result, detail_json)
+           VALUES (?, 'admin', 'root', ?, 'admin-worker@test', 'user_create', 'none', 'success', '{}')`,
+        )
+        .bind(NOW, "a".repeat(64))
+        .run();
+    }
+
+    it("accepts INSERT", async () => {
+      await addAuditRow();
+      await addAuditRow();
+      expect(await db.prepare("SELECT COUNT(*) AS n FROM audit_log").first("n")).toBe(2);
+    });
+
+    it("rejects UPDATE of any column and leaves the row as written", async () => {
+      await addAuditRow();
+      await expect(db.prepare("UPDATE audit_log SET result = 'failure'").run()).rejects.toThrow(/audit_log is append-only/);
+      await expect(db.prepare("UPDATE audit_log SET detail_json = '{}' WHERE id = 1").run()).rejects.toThrow(/audit_log is append-only/);
+      expect(await db.prepare("SELECT result FROM audit_log WHERE id = 1").first("result")).toBe("success");
+    });
+
+    it("rejects DELETE", async () => {
+      await addAuditRow();
+      await expect(db.prepare("DELETE FROM audit_log").run()).rejects.toThrow(/audit_log is append-only/);
+      await expect(db.prepare("DELETE FROM audit_log WHERE id = 1").run()).rejects.toThrow(/audit_log is append-only/);
+      expect(await db.prepare("SELECT COUNT(*) AS n FROM audit_log").first("n")).toBe(1);
+    });
+
+    // REPLACE removes the conflicting row without firing DELETE triggers (recursive_triggers is off), so the row
+    // would be rewritten in place; an INSERT that names an existing id is refused instead.
+    it.each(["INSERT OR REPLACE", "REPLACE"])("rejects %s over an existing row", async (verb) => {
+      await addAuditRow();
+      await expect(
+        db
+          .prepare(
+            `${verb} INTO audit_log (id, occurred_at, actor, writer_version, operation, target, result)
+             VALUES (1, ?, 'user', 'worker@test', 'passkey_add', 'none', 'success')`,
+          )
+          .bind(NOW)
+          .run(),
+      ).rejects.toThrow(/audit_log is append-only/);
+      expect(await db.prepare("SELECT actor, operation FROM audit_log WHERE id = 1").first()).toEqual({ actor: "admin", operation: "user_create" });
+    });
+
+    it("rolls back the whole batch when a later statement tries to delete audit rows", async () => {
+      await addAuditRow();
+      await expect(
+        db.batch([db.prepare("INSERT INTO principals (id, kind) VALUES ('u1', 'user')"), db.prepare("DELETE FROM audit_log")]),
+      ).rejects.toThrow(/audit_log is append-only/);
+      expect(await db.prepare("SELECT COUNT(*) AS n FROM principals").first("n")).toBe(0);
+    });
   });
 
   it("rolls back the whole batch when a trigger aborts a later statement", async () => {
