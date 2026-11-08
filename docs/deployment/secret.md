@@ -38,6 +38,15 @@ GitHub repository: OJILab-dev/cloudflare-zero-trust
 GitHub Environment: production
 ```
 
+### IdPのデプロイごとの名前
+
+IdPは、最初に検証用のアカウントへデプロイし、本番はIdP専用の別のCloudflare accountへ同じ構成で作り直します。
+そのため、IdPのEnvironment、Vault item、GitHub Environmentの名前は上の例のように固定せず、[デプロイと設定](../design/deployment.md)の「デプロイごとの入力」としてdeployment設定ファイルに書きます。workflowとscriptはその値を読み、名前を直接書きません。
+
+- Environmentはdeploymentごと（Cloudflare accountごと）に分け、別のaccountとcredentialを共有しません。
+- `CLOUDFLARE_ACCOUNT_ID`はEnvironmentにだけ置き、repositoryには書きません（repositoryは公開しているため）。
+- Workload IDとEnvironment IDは`setup-1password-integration.sh`がGitHubの変数へ登録し、手で書き写しません。
+
 ## Environment変数
 
 変数名は、`cf` CLI、Terraform provider、S3互換backendなどが読む名前に合わせます。`cf` は `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID` を読みます（Cloudflare「Use cf in CI」の「Provide credentials」）。
@@ -46,7 +55,7 @@ workflowに値の対応表を重複して持たせないためです。
 | Variable | 内容 | Secret |
 | --- | --- | --- |
 | `CLOUDFLARE_API_TOKEN` | 対象リソースだけに制限したCloudflare API Token | yes |
-| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare Account ID | no |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare Account ID（deploymentごとの入力。repositoryには書かない） | no |
 
 R2をTerraform backendとして使うstackでは、必要に応じて次も登録します。
 
@@ -140,7 +149,7 @@ destinationはrepository名だけで許可せず、少なくとも次を固定�
 - Organizationとrepository
 - deploy workflowのpath
 - `main` branch
-- GitHub Environment `production`
+- GitHub Environment `production`（IdPでは、deployment設定ファイルのデプロイ用のGitHub Environmentの名前）
 
 例外として、IdPのPRの`terraform plan`に使う読み取り専用のEnvironmentのdestinationは、`main` branch、deploy workflow、GitHub Environment `production`の代わりに、次を固定します。
 
