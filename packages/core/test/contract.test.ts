@@ -1,11 +1,6 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { MAX_PASSKEYS_PER_USER } from "../src/shared/index.js";
-
-const vectors = JSON.parse(
-  readFileSync(join(import.meta.dirname, "..", "..", "..", "contract", "testdata", "vectors.json"), "utf8"),
-) as { readonly max_passkeys_per_user: number };
+import { vectors } from "./vectors.js";
 
 describe("shared contract values", () => {
   it("uses the passkey limit from contract/testdata/vectors.json", () => {
