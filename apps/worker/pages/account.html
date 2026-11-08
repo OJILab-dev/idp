@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="account_title">Your passkeys</title>
+<link rel="stylesheet" href="/style.css">
+<script type="module" src="./account.ts"></script>
+</head>
+<body>
+<main>
+<label for="lang" data-i18n="language">Language</label>
+<select id="lang"><option value="en">English</option><option value="ja">日本語</option></select>
+<h1 data-i18n="account_title">Your passkeys</h1>
+<section id="signed-in" hidden>
+<ul id="passkeys"></ul>
+<button id="add" type="button" data-i18n="account_add">Add a passkey</button>
+<button id="logout" type="button" data-i18n="account_logout">Sign out</button>
+</section>
+<p id="status" role="status" hidden></p>
+<p id="error" role="alert" hidden></p>
+</main>
+</body>
+</html>

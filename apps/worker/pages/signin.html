@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title data-i18n="signin_title">Sign in</title>
+<link rel="stylesheet" href="/style.css">
+<script type="module" src="./signin.ts"></script>
+</head>
+<body>
+<main>
+<h1 data-i18n="signin_title">Sign in</h1>
+<!-- The autofill target for conditional mediation. It is outside the form and never sent: the passkey picker
+     fills it, and pressing Enter in it must not post /authorize/resume before the passkey is verified. -->
+<label for="username" data-i18n="signin_button">Sign in with a passkey</label>
+<input id="username" autocomplete="username webauthn">
+<button id="signin" type="button" disabled data-i18n="signin_button">Sign in with a passkey</button>
+<form id="resume" method="post" action="/authorize/resume"></form>
+<p id="status" role="status" hidden></p>
+<p id="error" role="alert" hidden></p>
+</main>
+</body>
+</html>

@@ -153,6 +153,8 @@
 
 - Worker Secret は書き込み専用で、登録した値を読み出せない。署名鍵の正本とバックアップは 1Password の Vault のアイテムに置き、Worker Secret にはそこから登録する。鍵は上の生成スクリプトで生成し、平文のままディスクに書かない（[トークン設計](tokens.md)参照）。
 - Worker Secret は、Ed25519 の鍵の current を常に置き、最初のローテーションの後は previous も置く。RS256 を有効にするときだけ、RSA の鍵（4096 bit）の current（とローテーションの後の previous）を足す。既定のデプロイは RSA の鍵を持たない（[トークン設計](tokens.md)参照）。
+- Secret の名前は `SIGNING_KEY_ED25519_CURRENT`、`SIGNING_KEY_ED25519_PREVIOUS`、`SIGNING_KEY_RSA_CURRENT`、`SIGNING_KEY_RSA_PREVIOUS` に固定する。IdP の Worker の `cloudflare.config.ts` は Secret を宣言しない。最初のデプロイ（[ブートストラップ](../deployment/bootstrap.md)の段階 5）は鍵の登録（段階 5b）より前に走るので、宣言した Secret がないことでデプロイが止まる余地を残さないため。鍵がない間は、Worker 自身がすべてのリクエストを拒否する。
+- IdP の Worker の `cloudflare.config.ts` は、issuer を環境変数 `IDP_ISSUER`、D1 の ID を `IDP_D1_DATABASE_ID` で受け取る。デプロイのスクリプトが、issuer はデプロイの設定ファイルから、D1 の ID は名前から引いて渡す。どちらかが欠けているか形式が不正なら、設定の評価が失敗してデプロイは始まらない（fail-closed）。カスタムドメインのホスト名は issuer から導き、別の値として持たない。
 - RS256 を有効にするのも無効にするのも、RSA の Secret をスクリプトで登録するか外してデプロイすることで行う。無効にするのは、`RS256` を登録した client がないことを `idpctl clients_list` で確かめ、最後の client を `Ed25519` に変えてから ID トークンの有効期限（5 分）が過ぎた後にする（[トークン設計](tokens.md)参照）。
 - 管理用の Worker は署名鍵をバインドしない。RS256 が有効かどうかは、IdP の Worker への Service Binding で discovery を読んで判断する。
 - 同じデプロイの Worker を作り直すときは、1Password のアイテムから登録し直す。

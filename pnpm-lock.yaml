@@ -56,6 +56,12 @@ importers:
       '@idp/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@idp/d1-adapter':
+        specifier: workspace:*
+        version: link:../../packages/d1-adapter
+      hono:
+        specifier: 4.13.13
+        version: 4.13.13
 
   packages/core:
     dependencies:

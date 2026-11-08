@@ -1,0 +1,33 @@
+/* One stylesheet for the three pages and the Worker's error page; no external fonts or images. */
+body {
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+  margin: 0;
+  padding: 2rem 1rem;
+}
+
+main {
+  max-width: 32rem;
+  margin: 0 auto;
+}
+
+button {
+  font: inherit;
+  padding: 0.5rem 1rem;
+  margin: 0.25rem 0;
+}
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 3px solid currentColor;
+  outline-offset: 2px;
+}
+
+[role="alert"] {
+  color: #b00020;
+}
+
+ul {
+  padding-left: 1.25rem;
+}
