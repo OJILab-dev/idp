@@ -84,12 +84,13 @@ async function readBody(request: Request): Promise<{ readonly body: Readonly<Rec
 
 async function readParts(c: Context<AppEnv>, route: Route): Promise<RequestParts> {
   const params = c.req.param() as Record<string, string>;
-  const path: Record<string, string> = {};
+  // Null-prototype records, so a key such as __proto__ is stored as an own member instead of replacing the prototype.
+  const path: Record<string, string> = Object.create(null) as Record<string, string>;
   for (const name of pathParams(route.path)) {
     const value = params[name];
     if (value !== undefined) path[inputField(route.path, name)] = value;
   }
-  const query: Record<string, string> = {};
+  const query: Record<string, string> = Object.create(null) as Record<string, string>;
   let rejection: AdminProblem | undefined;
   for (const [key, value] of new URL(c.req.url).searchParams) {
     // A repeated parameter has no single value for the core's schema to check.
@@ -102,17 +103,28 @@ async function readParts(c: Context<AppEnv>, route: Route): Promise<RequestParts
   return { path, query, body: read.body, ...(rejection === undefined ? {} : { rejection }) };
 }
 
+// No operation input has these members. On an ordinary object, assigning __proto__ replaces the prototype instead
+// of adding a member, which would hide it from the duplicate check below and from the core's strict schemas, so
+// they are refused by name wherever they appear (a body, a query, or a nested body member the core never reads).
+const RESERVED_KEYS: ReadonlySet<string> = new Set(["__proto__", "constructor", "prototype"]);
+
+function plainCopy(input: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  // Object.fromEntries defines own members, so the copy keeps exactly the checked members with Object's prototype.
+  return Object.fromEntries(Object.entries(input));
+}
+
 // The core validates one merged input (idpctl.md, "Idempotency-Key"); a member named by two sources is refused, so
 // a body can never redirect the operation to another ID than the path names.
 function merge(sources: readonly Readonly<Record<string, unknown>>[]): { readonly input: Record<string, unknown>; readonly rejection?: AdminProblem } {
-  const input: Record<string, unknown> = {};
+  const input: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
   for (const source of sources) {
     for (const [key, value] of Object.entries(source)) {
-      if (Object.hasOwn(input, key)) return { input, rejection: invalid("A member is given more than once", [pointer(key)]) };
+      if (RESERVED_KEYS.has(key)) return { input: plainCopy(input), rejection: invalid("A member name is reserved", [pointer(key)]) };
+      if (Object.hasOwn(input, key)) return { input: plainCopy(input), rejection: invalid("A member is given more than once", [pointer(key)]) };
       input[key] = value;
     }
   }
-  return { input };
+  return { input: plainCopy(input) };
 }
 
 /** The operation a request runs, its merged input, and any problem found before the core sees it. */
@@ -128,7 +140,9 @@ function planRequest(route: Route, parts: RequestParts): Planned {
   }
   // The body picks enable or disable; until it parses, there is no operation to record a failure under.
   if (parts.rejection !== undefined) throw parts.rejection;
-  const { enablement } = parseInput(enablementEventSchema, parts.body);
+  const body = merge([parts.body]);
+  if (body.rejection !== undefined) throw body.rejection;
+  const { enablement } = parseInput(enablementEventSchema, body.input);
   const operation = findOperation(enablementOperationName(route.enablement, enablement));
   if (operation === undefined) throw new Error(`${route.operationId} has no ${enablement} operation`);
   const merged = merge([parts.path, parts.query]);
