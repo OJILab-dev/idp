@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | Worker のリクエスト | 10 万件 / 日 | 数百件 / 日 |
 | CPU 時間 | 10 ms / リクエスト（D1 やネットワークの待ちは含まない） | WebAuthn 検証とトークンの Ed25519 署名が各数 ms の見込み。RSA 4096 bit の RS256 署名は、`RS256` を登録した client の ID トークンだけにかかる。要実測（[未決事項](open-questions.md)参照） |
-| Worker のサイズ | 圧縮前 64 MiB（圧縮後の上限はない。Cloudflare「Workers Limits」） | Hono + SimpleWebAuthn + jose で余裕の見込み |
+| Worker のサイズ | 圧縮前 64 MiB（圧縮後の上限はない。Cloudflare「Workers Limits」） | Hono と、共有コアが WebCrypto で実装する WebAuthn の検証と JWS で、余裕の見込み（[技術選定](technology.md)参照） |
 | Worker の起動時間 | 1 秒 | 問題なしの見込み |
 | D1 の読み取り | 500 万行 / 日 | 少量 |
 | D1 の書き込み | 10 万行 / 日 | サインイン 1 回で約 10 行。5 人が 1 日 20 回でも約 1,000 行。サインインページは読み込みのたびにチャレンジを 1 行書く（条件付きメディエーションのため。[認証フロー](authentication.md)参照）。これは認証前の書き込みで、下の受け入れるリスクの対象になる |
