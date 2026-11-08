@@ -1,0 +1,16 @@
+packages:
+  - packages/*
+  - apps/*
+
+# Install only versions published at least 14 days (20160 minutes) ago, transitive ones included.
+minimumReleaseAge: 20160
+
+# Fail when a package's publish provenance is weaker than in its earlier releases.
+trustPolicy: no-downgrade
+
+# Dependency build scripts stay blocked unless listed here; strictDepBuilds fails the install on unreviewed ones.
+strictDepBuilds: true
+allowBuilds:
+  # Reviewed and denied. Its postinstall only re-checks the platform binary that optionalDependencies
+  # already installs with an integrity hash, and otherwise downloads a tarball outside the lockfile.
+  workerd: false

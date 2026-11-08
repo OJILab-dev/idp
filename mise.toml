@@ -1,6 +1,8 @@
 [tools]
 actionlint = "1.7.12"
+node = "26.12.1"
 pinact = "4.1.1"
+pnpm = "11.28.8"
 shellcheck = "0.11.0"
 
 [tasks."actions:pin"]
