@@ -16,7 +16,15 @@ export { CorruptRowError, loadClient, type RegisteredClient } from "./clients.js
 export { cryptoRandomSource, systemClock, type Clock, type OidcDeps, type RandomSource } from "./deps.js";
 export { asUiLocale, selectUiLocale, type UiLocale } from "./locale.js";
 export { isRegisteredRedirectUri, matchesRegisteredRedirectUri } from "./redirect-uri.js";
-export { findActiveSession, hasAccess, type ActiveSession } from "./sessions.js";
+export { findActiveSession, hasAccess, logout, type ActiveSession } from "./sessions.js";
+export {
+  exchangeToken,
+  type TokenErrorCode,
+  type TokenInput,
+  type TokenResponse,
+  type TokenSuccessBody,
+} from "./token.js";
+export { userinfo, type UserinfoClaims, type UserinfoInput, type UserinfoResponse } from "./userinfo.js";
 export { buildDiscoveryDocument, buildJwks, idTokenSigningAlgorithms, type DiscoveryDocument, type Jwks } from "./discovery.js";
 export {
   InvalidTokenError,
