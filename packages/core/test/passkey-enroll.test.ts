@@ -181,6 +181,15 @@ describe("enrollVerify", () => {
     expect(await f.count("enroll_tokens")).toBe(0);
   });
 
+  it("stores nothing when the token is deleted between the read and the write", async () => {
+    const { challenge } = await options();
+    // A re-issued link deletes the user's unused tokens; the challenge goes with it through the foreign key.
+    f.beforeBatch(/INSERT INTO credentials/, async () => f.run("DELETE FROM enroll_tokens WHERE token_hash = ?", await sha256Base64url(TOKEN)));
+    expect((await verify(await newCredential(), challenge)).kind).toBe("rejected");
+    expect(await f.count("credentials")).toBe(0);
+    expect(await f.count("audit_log")).toBe(0);
+  });
+
   it("removes the token's challenges with the token, through the foreign key", async () => {
     await options();
     await f.run("DELETE FROM enroll_tokens");
