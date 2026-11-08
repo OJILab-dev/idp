@@ -173,7 +173,7 @@ CREATE TABLE challenges (
 CREATE TABLE idempotency_keys (
   admin_name      TEXT NOT NULL,        -- 許可リストで確定した管理者の名前
   idempotency_key TEXT NOT NULL,
-  operation       TEXT NOT NULL,        -- 操作名（OpenAPI の operationId）
+  operation       TEXT NOT NULL,        -- 共有コアの操作名（user_enable など）。OpenAPI の operationId ではない
   request_hash    TEXT NOT NULL,        -- 要求の本文の SHA-256（base64url、パディングなし）
   replayable      INTEGER NOT NULL CHECK (replayable IN (0, 1)),
   response_status INTEGER,              -- replayable = 1 のときだけ持つ

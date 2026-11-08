@@ -60,7 +60,7 @@ D1 を手元から直接操作する形（D1 REST API）をやめ、管理 API �
 
 **操作の一覧**
 
-CLI のサブコマンドは操作名をそのまま使う（`idpctl client_create --public`、`idpctl grant_add group:<group_id> <client_id>` など）。操作名は共有コアのユースケースの名前と同じで、管理 API の OpenAPI の `operationId` と監査ログの `operation` にも同じ値が入るので、呼び方を 1 つに揃える。
+CLI のサブコマンドは操作名をそのまま使う（`idpctl client_create --public`、`idpctl grant_add group:<group_id> <client_id>` など）。操作名は共有コアのユースケースの名前と同じで、監査ログの `operation` にも同じ値が入る。管理 API の OpenAPI の `operationId` も操作名にする。例外は enablement-events のエンドポイントだけで、その `operationId` は `user_enablement_switch`、`client_enablement_switch`、`group_enablement_switch` とし、1 つのエンドポイントで `*_enable` と `*_disable` の両方を受ける（下の管理 API の 2 を参照）。呼び方を 1 つに揃えるため、例外はこの 1 つだけにする。
 
 書き込みの操作は、[認可](authorization.md)の管理の関心事で分類する。基盤の操作（署名鍵、Cloudflare の API トークンと証明書の発行、許可リストの変更、デプロイ）は `idpctl` の対象外。全 28 操作は次のとおり。
 
@@ -121,8 +121,8 @@ ID トークンの署名アルゴリズム（[トークン設計](tokens.md)参�
 
 管理 API は、RPC ではなく、リソースと HTTP のメソッドで表す REST の形にする。取り決めは次のとおり。
 
-1. 1 つのエンドポイントは、ちょうど 1 つの共有コアの操作に対応する。OpenAPI の `operationId` は操作名（CLI のサブコマンド、監査ログの `operation` と同じ値）にする。例外は下の 2 にだけ置く。
-2. 有効化と無効化は、`POST /v1/{users|clients|groups}/{id}/enablement-events` に `{"enablement": "enabled" | "disabled"}` を送る。出来事の表に行を足す操作なので、出来事のリソースへの追加として表す。このエンドポイントだけは、本文の値で 2 つの操作（`user_enable` と `user_disable` など）のどちらかになる。OpenAPI の `operationId` は 1 つしか付けられないので、`user_enablement_append`、`client_enablement_append`、`group_enablement_append` とし、共有コアが本文の値から操作名を決めて、監査ログの `operation` と CLI のサブコマンドには `user_enable` などの操作名を使う。
+1. 1 つのエンドポイントは、ちょうど 1 つの共有コアの操作に対応する。OpenAPI の `operationId` は操作名（CLI のサブコマンド、監査ログの `operation` と同じ値）にする。例外は下の 2 の enablement-events のエンドポイントだけで、その `operationId` は `*_enablement_switch` とし、`*_enable` と `*_disable` の両方を受ける。
+2. 有効化と無効化は、`POST /v1/{users|clients|groups}/{id}/enablement-events` に `{"enablement": "enabled" | "disabled"}` を送る。出来事の表に行を足す操作なので、出来事のリソースへの追加として表す。このエンドポイントだけは、本文の値で 2 つの操作（`user_enable` と `user_disable` など）のどちらかになる。OpenAPI の `operationId` は 1 つしか付けられないので、`user_enablement_switch`、`client_enablement_switch`、`group_enablement_switch` とする。共有コアが本文の値から操作名を決め、CLI のサブコマンド、共有コアのユースケース、監査ログの `operation`、`idempotency_keys.operation` には `user_enable`、`user_disable` などの操作名を使う。`*_enablement_switch` は操作名ではないので、これらには入れない。
 3. 属性の変更は、属性ごとのサブリソースへの `PUT` で行い、`PATCH` は使わない。1 回の呼び出しが、監査ログの 1 つの操作に対応するようにするため。
 4. `GET` の応答には `Cache-Control: no-store` を付ける。クエリのパラメータは共有コアのスキーマで検証する。
 5. パスは複数形の kebab-case にし、ID はパスに入れる。
