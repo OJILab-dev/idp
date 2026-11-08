@@ -18,6 +18,8 @@
 **新しいアプリを足すとき**
 
 1. 上の表で種類を決める。SPA なら BFF を置いて Web アプリにする。
-2. `idpctl client_create` で登録する。ネイティブアプリなら `--public` を付ける。Web アプリのシークレットは 0600 のファイルに書き出される。ID トークンの署名アルゴリズムは既定の `Ed25519` のままにし、RP のライブラリが Ed25519 を検証できないときだけ `--id-token-alg RS256` を選ぶ（RS256 を有効にしたデプロイでだけ登録できる。[トークン設計](tokens.md)参照）。
-3. `idpctl grant_add group:family <client_id>` などで、使える人を決める。
+2. `idpctl client_create` で登録する。client ID は管理者が決め（英小文字、数字、ハイフンの 3〜64 文字。[管理 CLI と管理用の Worker](idpctl.md)参照）、後から変えられず、client を無効化しても再利用されない。ネイティブアプリなら `--public` を付ける。Web アプリのシークレットは 0600 のファイルに書き出される。ID トークンの署名アルゴリズムは既定の `Ed25519` のままにし、RP のライブラリが Ed25519 を検証できないときだけ `--id-token-alg RS256` を選ぶ（RS256 を有効にしたデプロイでだけ登録できる。[トークン設計](tokens.md)参照）。
+3. `idpctl grant_add group:<group_id> <client_id>` などで、使える人を決める。
 4. アプリに Discovery の URL（`https://<IdP のホスト>/.well-known/openid-configuration`）と `client_id` を設定し、標準の OIDC ライブラリでつなぐ。IdP 専用の SDK は作らない。
+
+アプリを使わなくなったら、`idpctl client_disable` で無効化する。client は削除しない。無効な client の `/authorize` はリダイレクトせずエラーページを返し（登録された redirect URI がもう信頼できないかもしれないため）、`/token` と `/userinfo` も拒否する。

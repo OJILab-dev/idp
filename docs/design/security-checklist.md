@@ -18,7 +18,8 @@
 - [ ] `/authorize` は GET と POST の両方を受け付ける
 - [ ] `scope` に `openid` を含まない認可リクエストは、検証済みの `redirect_uri` に `invalid_scope` を返して拒否する（仕様では動作が未規定。fail-closed の方針として拒否する）
 - [ ] `prompt=login` と `max_age` で、パスキーによる再認証を強制できる。`prompt=none` に他の値が混ざっていればエラーにする
-- [ ] `display`、`ui_locales`、`claims_locales`、`acr_values` を送られてもエラーにしない
+- [ ] `display`、`claims_locales`、`acr_values` を送られてもエラーにしない。`ui_locales` は UI の言語の候補として使い、対応しない言語だけが送られてもエラーにせず、ブラウザの言語、既定の英語の順に進む（OIDC Core §3.1.2.1）
+- [ ] 無効な client（`client_enablement` が `enabled` でないか、行がない）の `/authorize` は、`redirect_uri` が一致していてもリダイレクトせずエラーページを返す。`/token` は `invalid_client` で拒否し、認可コードを消費しない。`/userinfo` はその client のアクセストークンを拒否する
 - [ ] `request`、`request_uri`、`registration` には、それぞれ `request_not_supported`、`request_uri_not_supported`、`registration_not_supported` を返す
 - [ ] `id_token_hint` は自分が発行したものか検証し、セッションのユーザーと違えば `login_required` を返す
 - [ ] トークンレスポンスに `Cache-Control: no-store` を付け、`redirect_uri` へのリダイレクトに 307 を使わない
@@ -29,6 +30,7 @@
 - [ ] RS256 が無効な間は、管理用の Worker が client への `RS256` の登録を拒否する。`RS256` を登録した client があるのに RSA の鍵がなければ、その client へのトークンの発行を失敗させ、別のアルゴリズムで署名して返さない
 - [ ] クレームは要求されたスコープの分だけ返す
 - [ ] `/token` と `/userinfo` で、無効化されたユーザーとアクセス可否を再確認する（Pocket ID CVE-2026-43983 の教訓）
+- [ ] `effective_access` は、有効なユーザー、有効な client、グループ経由なら有効なグループの grant だけを数える。出来事の行がないユーザー、client、グループには何も許可しない
 - [ ] `/userinfo` は `typ: at+jwt` かつ `aud` が issuer のトークンだけを受け付け、ID トークンや他の `aud` のトークンは拒否する。トークンの `client_id` に対するアクセス可否も確認する
 - [ ] 未登録の resource や audience を受け付けない（Pocket ID CVE-2026-62662）
 - [ ] メールアドレスを保存しない。`email` スコープを要求されても無視し、`email` と `email_verified` のクレームを返さない。メールアドレスの検証や変更の仕組みそのものを持たないことで、その欠陥の経路をなくす（Pocket ID CVE-2026-115770、edge-idp 2.2.0 の修正）
@@ -80,7 +82,12 @@
 
 - [ ] クライアントシークレットは 256 bit で生成し、SHA-256 で保存し、定数時間で比較する
 - [ ] 壊れた行（JSON がパースできないなど）に当たったら拒否する
+- [ ] 有効・無効の出来事の表（`user_enablement_events`、`client_enablement_events`、`group_enablement_events`）の UPDATE と DELETE、`principals`、`users`、`clients`、`groups` の DELETE を、D1 のトリガーが拒否する。今と同じ値への有効化・無効化は行を足さず、`state-conflict` を返し、成功の監査ログの行を書かない
+- [ ] Workers Logs に、トークン、認可コード、Cookie、IdP が発行する秘密、登録トークン、チャレンジ、`Authorization` ヘッダー、要求の本文、IP アドレスを書かない（[デプロイと設定](deployment.md)のログを参照）
 - [ ] 管理用の Worker は、クライアントシークレットと登録トークンの平文を、発行した応答で 1 回だけ返し、`Cache-Control: no-store` を付け、ログに書かない。`idpctl` は平文を `0600` のファイルに書き、パスだけを表示する
+- [ ] 管理 API の作成と追記の `POST` は `Idempotency-Key` がなければ 400 で拒否する。同じキーと同じ本文には保存した応答を返し、本文か操作が違えば 422 を返す。秘密を返す操作の応答は `idempotency_keys` に保存せず、再生には `secret-not-replayable` を返す。別の管理者のキーの応答は返さない
+- [ ] 登録リンクを発行すると、そのユーザーの未使用の登録トークンがすべて使えなくなる
+- [ ] 管理 API のエラーは RFC 9457 の problem details で、`detail` に秘密、トークン、SQL、スタックトレースを含まない。`forbidden` は理由を返さない
 
 **管理用の Worker（mTLS）**
 

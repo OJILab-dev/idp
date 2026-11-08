@@ -17,6 +17,10 @@
 - [RFC 9562：UUID](https://datatracker.ietf.org/doc/html/rfc9562)
 - [RFC 9068：JWT アクセストークン](https://datatracker.ietf.org/doc/html/rfc9068)
 - [RFC 8725：JWT Best Current Practices](https://datatracker.ietf.org/doc/html/rfc8725)
+- [RFC 8176：Authentication Method Reference Values（§2 の `hwk`）](https://www.rfc-editor.org/rfc/rfc8176.html)
+- [RFC 9457：Problem Details for HTTP APIs（§3.1 のメンバー、§3.1.1 の解決できない `type`）](https://www.rfc-editor.org/rfc/rfc9457.html)
+- [RFC 9110：HTTP Semantics（§9.2.2 の冪等なメソッド）](https://www.rfc-editor.org/rfc/rfc9110.html)
+- [draft-ietf-httpapi-idempotency-key-header：The Idempotency-Key HTTP Header Field（Internet-Draft、-08）](https://datatracker.ietf.org/doc/draft-ietf-httpapi-idempotency-key-header/)
 - [RFC 8252：OAuth 2.0 for Native Apps](https://www.rfc-editor.org/rfc/rfc8252)
 - [RFC 10017：OAuth 2.0 for Browser-Based Applications](https://www.rfc-editor.org/rfc/rfc10017.html)
 - [Web Authentication Level 3（W3C）](https://www.w3.org/TR/webauthn-3/)
@@ -72,6 +76,17 @@
 - [cf：Deploy your first Worker（`cf deploy`）](https://developers.cloudflare.com/cf/get-started/first-worker/)
 - [Use cf in CI（`CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID`）](https://developers.cloudflare.com/cf/ci/)
 - [API：Get D1 Database（`version`）](https://developers.cloudflare.com/api/resources/d1/subresources/database/methods/get/)
+- [D1：SQL statements（トリガーの記載がない）](https://developers.cloudflare.com/d1/sql-api/sql-statements/)
+- [D1：Define foreign keys（外部キーは常に有効）](https://developers.cloudflare.com/d1/sql-api/foreign-keys/)
+- [Workers：Rollbacks（ダッシュボードと Wrangler、Bindings）](https://developers.cloudflare.com/workers/configuration/versions-and-deployments/rollbacks/)
+- [Workers Logs（Pricing、2026 年 12 月 1 日の移行）](https://developers.cloudflare.com/workers/observability/logs/workers-logs/)
+- [Cloudflare Observability：Pricing（Free の 0.5 GB / 日、7 日、取り込みの停止）](https://developers.cloudflare.com/observability/pricing/)
+- [Terraform：Remote R2 backend](https://developers.cloudflare.com/terraform/advanced-topics/remote-backend/)
+- [Terraform Cloudflare provider](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs)
+- [Terraform Cloudflare provider：cloudflare_d1_database（Accepted Permissions は `D1 Read` か `D1 Write`）](https://github.com/cloudflare/terraform-provider-cloudflare/blob/main/docs/resources/d1_database.md)
+- [HashiCorp：terraform plan（既定で既存のリモートのオブジェクトの現状を読む）](https://developer.hashicorp.com/terraform/cli/commands/plan)
+- [API：Query D1 Database（Accepted Permissions に `D1 Read`）](https://developers.cloudflare.com/api/resources/d1/subresources/database/methods/query/)
+- [API：Raw D1 Database Query（Accepted Permissions に `D1 Read`）](https://developers.cloudflare.com/api/resources/d1/subresources/database/methods/raw/)
 
 **言語・ライブラリ**
 

@@ -12,12 +12,71 @@
 
 **デプロイの道具**
 
-- Worker のデプロイ、D1 のマイグレーション、break-glass の D1 の操作は、すべて Cloudflare の `cf` CLI で行う。wrangler はどこにも使わない。`cf` は Worker のデプロイ（`cf deploy`。Cloudflare「Deploy your first Worker」）と D1 のマイグレーション（`cf d1 migrations apply`。Cloudflare「Wrangler to cf reference」）を挙げている。
+- 最初の構築の順番は[ブートストラップ](../deployment/bootstrap.md)にまとめる。
+- Worker のデプロイ、D1 のデータベースの作成とマイグレーション、break-glass の D1 の操作は、すべて Cloudflare の `cf` CLI で行う。wrangler はどこにも使わない。`cf` は Worker のデプロイ（`cf deploy`。Cloudflare「Deploy your first Worker」）と D1 のマイグレーション（`cf d1 migrations apply`。Cloudflare「Wrangler to cf reference」）を挙げている。
 - `cf` は自分でバンドラーを動かさず、フレームワークのコマンドか、`package.json` で宣言した Cloudflare のビルドツールを実行する。ビルドツールは Cloudflare Vite plugin 2.0 beta（`@cloudflare/vite-plugin@beta`）で、Wrangler に依存しない。Vite plugin を宣言していないときだけ Wrangler でビルドする（Cloudflare「Develop, build, and deploy」の「How `cf` runs your project」）。また、`wrangler.jsonc`、`wrangler.json`、`wrangler.toml` のあるプロジェクトでは `cf deploy` を実行してはいけない（Cloudflare「Deploy your first Worker」の「Start from an existing project」）。
 - そのため、2 つの Worker はどちらも `@cloudflare/vite-plugin@beta` を宣言し、wrangler を依存に宣言せず、`wrangler.*` の設定ファイルを置かない。`cf migrate` の Wrangler bundler も使わない。
 - `cf` にドキュメント化されたコマンドがない操作は、Cloudflare API かダッシュボードで行い、wrangler で補わない。`cf` で足りるかどうかを実装の前に確かめる項目は[未決事項](open-questions.md)にまとめる。
 - `cf` はベータで、コマンドが安定版の前に変わりうる（Cloudflare「Cloudflare CLI」）。
 - CI では `cf` が `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID` を読む（Cloudflare「Use cf in CI」の「Provide credentials」）。
+
+**Terraform とスクリプトの分担**
+
+基盤はできるだけコードで持つ（IaC）。宣言できるものは Terraform に、手続きでしか表せないものは `cf` を使うシェルスクリプトに置き、手作業の手順を残さない。望む状態を宣言し、実際の状態をそれに合わせ続ける形にするため（[宣言とリコンシリエーション](../philosophy/system-design/declarative-and-reconciliation.md)）。
+
+- Terraform（Cloudflare provider）が持つもの：DNS、Worker のカスタムドメイン、WAF のカスタムルール（mTLS）、レート制限ルール、管理用のホスト名への mTLS の割り当て、CSR から発行するクライアント証明書、fail closed の設定。
+- `cf` のシェルスクリプトが持つもの：D1 のデータベースの作成、D1 のマイグレーション、Worker のデプロイ、Worker Secret の登録、D1 が production バックエンドにあることの確認、鍵の生成、Terraform の state を置く R2 のバケットの作成。
+- D1 のデータベースを Terraform に置かないのは、plan の認証情報に D1 の権限を一切持たせないため（下の PR の `terraform plan` の認証情報を参照）。provider の `cloudflare_d1_database` は `D1 Read` か `D1 Write` の権限を要し（Terraform Cloudflare provider「cloudflare_d1_database」の Accepted Permissions）、`terraform plan` は既定で既存のリソースの現状を読む（HashiCorp「terraform plan」の Introduction）。Terraform に D1 のデータベースがあると、plan のトークンに D1 の権限が要る。D1 のデータベースは作った後に変えるものがほとんどなく、宣言で持つ利点も小さい。
+- Terraform には秘密を渡さない。state は入力の値を保存するため。証明書と CSR は秘密ではないので Terraform に渡してよい。
+- Terraform のバージョンは mise で固定し、provider のバージョンは `.terraform.lock.hcl` で固定する。
+- state は、IdP 専用の Cloudflare アカウントの R2 に、S3 互換の backend で置く（Cloudflare「Remote R2 backend」）。state のバケットは Terraform より先に必要なので、`cf` のスクリプトで最初に作る。R2 の認証情報は 1Password Environments で CI に渡す（[1Password Environments と GitHub Actions](../deployment/secret.md)参照）。
+- provider がどのリソースに対応しているか（mTLS のホスト名の割り当て、fail closed の設定など）は、実装の前に確かめる（[未決事項](open-questions.md)参照）。対応していないものは、`cf` か Cloudflare API のスクリプトにし、wrangler では補わない。
+
+**シェルスクリプトの規則**
+
+- スクリプトは `#!/usr/bin/env bash` と `set -euxo pipefail` で始める。
+- 例外として、秘密を扱うスクリプト（鍵の生成、Worker Secret の登録、break-glass の操作）は `set -euo pipefail` にし、`-x` を付けない。xtrace は展開した後の秘密の値をそのまま表示するため。この例外と理由は、そのスクリプトの先頭のコメントに書く。[AGENT.md](../../AGENT.md) には書かない（スクリプトごとの例外なので、例外を持つスクリプトの中に置く）。
+
+**鍵と秘密の生成スクリプト**
+
+鍵と秘密（署名鍵、管理者の mTLS の秘密鍵）は、必ずリポジトリのレビュー済みの生成スクリプトで生成する。手で生成すると、手順のずれが鍵ごとに積み重なり、それが最も危険なため。
+
+- スクリプトを通せば、人が実行してもエージェント（AI）が実行しても結果は変わらない。そのため、実行する主体は限らない。
+- 秘密を AI のコンテキストに入れてはいけない、という規則は変わらない。スクリプトは秘密を標準出力に出さない。
+- 生成スクリプトは `op` を必須にし、生成した鍵を 1Password のアイテムと Worker Secret に直接パイプで渡す。平文をディスクに書かない。
+- `kid`（RFC 7638）はスクリプトが自分で計算する。
+- 出力するのは秘密でない値（`kid`、公開鍵、証明書のフィンガープリント、CSR）だけにする。
+
+**デプロイのパイプライン**
+
+- PR：lint、テスト、`terraform plan` を流し、plan の出力を PR に載せる。apply はしない。
+- main へのマージ：その 1 つのコミットから、`terraform apply`、`cf` のスクリプトによる D1 のマイグレーション、IdP の Worker の `cf deploy`、管理用の Worker の `cf deploy` の順に流し、最初の失敗で止める。
+- 手動の承認は置かない。apply とデプロイは main へのマージで自動で走る。デプロイは管理者のフィンガープリントの許可リストも変えるので、main のブランチのルールセット（PR のレビューとマージの権限）が、管理者の権限と基盤の変更の唯一の関門になる（[操作とリスク](operations-and-risks.md)参照）。
+- 2 つの Worker は別々に切り替わるので、マイグレーションは expand / contract にする。新しいマイグレーションは、古いコードと新しいコードの両方で動く形にし、古い形を消すのは、両方の Worker が新しいコードになった後の別のマイグレーションで行う。
+- ロールバック：Worker は前のバージョンに戻す。Cloudflare のドキュメントは、ロールバックをダッシュボードと Wrangler の `wrangler rollback` でしか説明していない（Cloudflare「Rollbacks」）。`cf` か Cloudflare API でできるかは実装の前に確かめる（[未決事項](open-questions.md)参照）。ロールバックはバインディング先の D1 を変えない（同じページの「Bindings」）。D1 は Time Travel で戻す。
+- 依存の取得は、Takumi Guard の下で、バージョンを固定した pnpm のセットアップの Action と `pnpm install --frozen-lockfile` で行う。Takumi Guard が pnpm に対応していることは利用者が確認済みで、セットアップの Action の実装で改めて確かめる。
+- `examples/github-actions/deploy.yml` は、今は npm の雛形のままで、pnpm、`cf`、Terraform の上の流れに作り直すのは実装の作業にする。
+
+**PR の `terraform plan` の認証情報（例外）**
+
+[1Password Environments と GitHub Actions](../deployment/secret.md) は、PR の検証の job に OIDC の権限も 1Password の認証情報も渡さないとしている。`terraform plan` は state と Cloudflare の現状を読むので、認証情報なしでは動かない。
+
+- 例外として、plan の job にだけ、読み取り専用の Environment（plan 用の読み取り専用の API トークンと、state のバケットの読み取り専用の R2 の認証情報）を渡す。デプロイ用の Environment とは分ける。
+- plan 用のトークンは、Terraform が持つもの（DNS、WAF、SSL と証明書、mTLS の割り当て、Worker のカスタムドメインなど）の読み取りだけにし、D1 の権限は読み取りも含めて一切持たせない。Cloudflare API の D1 のクエリ（「Query D1 Database」と「Raw D1 Database Query」）は `D1 Read` の権限でも受け付けると書かれていて（それぞれの Accepted Permissions）、`D1 Read` があればユーザーのデータを読める可能性があるため（どこまでできるかは[未決事項](open-questions.md)で確かめる）。
+- destination は、plan の workflow と、同じリポジトリのブランチからの `pull_request` のイベントに限り、GitHub Environment `production` は使わない。fork からの PR には渡さない。
+- 理由：plan を PR に載せることで、基盤の変更をマージの前にレビューでき、手動の承認を置かない流れでの唯一の関門（PR のレビュー）を意味のあるものにするため。
+- 残るリスク：読み取り専用なので、トークンが漏れても変更はできない。残るのは、そのトークンの範囲で読めるものの機密性。workflow の path を固定しても、そのトークンで何が動くかは限れない。同じリポジトリの PR は、plan の workflow も Terraform のコードも書き換えられ、Terraform は plan の時点でもコード（provider や data source）を動かすので、トークンを持ち出せる。そのため、範囲を読まれても困らないもの（基盤の設定）に絞り、D1 を外す。
+- 1Password の destination で PR のイベントに限れるかは、実装の前に確かめる（[未決事項](open-questions.md)参照）。限れなければ、plan を PR に載せるのをやめ、main での apply の前の plan だけにする。
+
+**API トークン**
+
+- 役割ごとに分ける。どれも IdP 専用のアカウントに限る。
+  - Terraform 用：DNS、WAF、SSL と証明書、Worker のカスタムドメイン。D1 の権限は持たせない。
+  - デプロイ用：Workers の編集と、マイグレーションのための D1 の編集。
+  - plan 用（上の例外）：Terraform 用と同じ範囲の読み取りだけ。D1 の権限は読み取りも持たせない。
+- D1 のデータベースの作成は、最初の構築のときだけ、運用者の手元の `cf` のセッションで行う（[ブートストラップ](../deployment/bootstrap.md)の段階 1）。CI のトークンには D1 の作成の権限を持たせない。
+- どれも 1Password Environments と GitHub OIDC で、実行時に CI に渡す。
+- break-glass 用の D1 のトークン（下記）は、範囲（IdP の D1 の編集）と短い有効期限を定めておくが、前もって作らない。
 
 **ホスト名を変えるときの影響**
 
@@ -45,16 +104,25 @@
 **D1 の API トークン（break-glass）**
 
 - 日常の管理には使わない。管理操作はすべて管理用の Worker の管理 API で行う。
-- 管理用の Worker が使えないときの break-glass に限って、権限を D1 の編集だけに絞り、短い有効期限を付けて発行し、`cf d1 query` で使う。作業が終わったら失効させ、常設しない。
+- 前もって作らない。どこ（キーチェーン、1Password、CI）にも常設しない。管理用の Worker が使えないときの break-glass に限って、その時点で、権限を IdP の D1 の編集だけに絞り、短い有効期限を付けて作り、`cf d1 query` で使う。作業が終わったら失効させる。
 - このトークンは IdP の全データを書き換えられる基盤の権限で、共有コアの規則も監査ログも通らない（[管理 CLI と管理用の Worker](idpctl.md)の break-glass を参照）。
 
 **署名鍵**
 
-- Worker Secret は書き込み専用で、登録した値を読み出せない。署名鍵の正本とバックアップは 1Password の Vault のアイテムに置き、Worker Secret にはそこから登録する。鍵は運用者が AI のセッションの外で生成し、秘密鍵は標準入力で渡して平文のままディスクに書かない（[トークン設計](tokens.md)参照）。
+- Worker Secret は書き込み専用で、登録した値を読み出せない。署名鍵の正本とバックアップは 1Password の Vault のアイテムに置き、Worker Secret にはそこから登録する。鍵は上の生成スクリプトで生成し、平文のままディスクに書かない（[トークン設計](tokens.md)参照）。
 - Worker Secret は、Ed25519 の鍵の current と previous の 2 つを常に置く。RS256 を有効にするときだけ、RSA の鍵（4096 bit）の current と previous を足して 4 つにする。既定のデプロイは RSA の鍵を持たない（[トークン設計](tokens.md)参照）。
-- RS256 を有効にするのも無効にするのも、運用者が RSA の Secret を登録するか外してデプロイすることで行う。無効にするのは、`RS256` を登録した client がないことを `idpctl clients_list` で確かめ、最後の client を `Ed25519` に変えてから ID トークンの有効期限（5 分）が過ぎた後にする（[トークン設計](tokens.md)参照）。
+- RS256 を有効にするのも無効にするのも、RSA の Secret をスクリプトで登録するか外してデプロイすることで行う。無効にするのは、`RS256` を登録した client がないことを `idpctl clients_list` で確かめ、最後の client を `Ed25519` に変えてから ID トークンの有効期限（5 分）が過ぎた後にする（[トークン設計](tokens.md)参照）。
 - 管理用の Worker は署名鍵をバインドしない。RS256 が有効かどうかは、IdP の Worker への Service Binding で discovery を読んで判断する。
 - 再設定や別アカウントへの移行のときは、1Password のアイテムから登録し直す。
+
+**ログ**
+
+- 状態の変化は D1 の `audit_log` に記録する。Workers Logs は消えていく短期の記録で、障害の調査にだけ使い、外部に送らない。
+- Workers Logs の無料枠は、今は 1 日 200,000 イベントで 3 日間残る（Cloudflare「Workers Logs」の「Pricing」）。2026 年 12 月 1 日からは Cloudflare Observability の料金に移り、Free は 1 日 0.5 GB の取り込みで 7 日間残る。1 日の上限に達すると、UTC 0 時のリセットまで新しいデータを取り込まない（Cloudflare「Pricing」（Observability）の「Plans」）。
+- 形式は、リクエストごとに構造化した 1 行とし、ルート、結果、エラーの種類、`client_id`、`sub`、管理者の名前（管理用の Worker）を持たせる。管理用の Worker が拒否したリクエストは、証明書のフィンガープリントと拒否の理由だけを書く。
+- 書かないもの：トークン、認可コード、Cookie、IdP が発行する秘密、登録トークン、チャレンジ、`Authorization` ヘッダー、要求の本文。
+- IdP は IP アドレスを書かない（設計原則 7）。悪用の調査には WAF の分析を使う。
+- **受け入れるリスク**：無料枠では、すべてのリクエストのログを残すことはできない。大量のリクエストでその日の取り込みを止められることもある。それでも、状態の変化は `audit_log` にすべて残る。これより厳密な記録が必要なら、有料のプランにするか、この IdP を使わない。
 
 **D1 のバックアップ**
 
