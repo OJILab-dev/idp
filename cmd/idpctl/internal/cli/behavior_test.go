@@ -269,6 +269,75 @@ func TestSecretFileIsCheckedBeforeTheRequestAndRemovedOnFailure(t *testing.T) {
 	}
 }
 
+// TestStraySecretsAreNeverPrinted covers a server bug that returns a secret
+// member to an operation that did not route it to --secret-out: idpctl must
+// fail and keep the value off the terminal.
+func TestStraySecretsAreNeverPrinted(t *testing.T) {
+	const secret = "c3RyYXktc2VjcmV0LXRoYXQtbXVzdC1uZXZlci1sZWFr"
+	cases := []struct {
+		name     string
+		args     []string
+		status   int
+		response string
+	}{
+		{"public client_create with client_secret", []string{"client_create", "cli", "CLI", "--public", "--redirect-uri", "http://127.0.0.1/cb"},
+			201, `{"client_id":"cli","client_type":"public","client_secret":"` + secret + `"}`},
+		{"user_get with enrollment_link", []string{"user_get", userID},
+			200, `{"user_id":"` + userID + `","name":"Alice","enablement":"enabled","created_at":1,"passkeys":[],"enrollment_link":"https://idp.example/enroll#` + secret + `"}`},
+		{"nested client_secret", []string{"clients_list"},
+			200, `{"items":[{"client_id":"g","name":"G","client_type":"confidential","enablement":"enabled","redirect_uris":[],"id_token_alg":"Ed25519","created_at":1,"client_secret":"` + secret + `"}],"next_cursor":null,"prev_cursor":null}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t, fixed(tc.status, tc.response))
+			got := h.run(tc.args...)
+			if got.code != cli.ExitFailure {
+				t.Fatalf("exit %d, want %d; stderr:\n%s", got.code, cli.ExitFailure, got.stderr)
+			}
+			if got.stdout != "" {
+				t.Errorf("stdout %q, want nothing", got.stdout)
+			}
+			if strings.Contains(got.stderr, secret) {
+				t.Errorf("the secret reached stderr:\n%s", got.stderr)
+			}
+		})
+	}
+}
+
+// TestASecondSecretAfterTheRoutedOneRemovesTheFile checks that the file is
+// kept only when the whole output was safe to print, so the "issue it again"
+// message is accurate whenever idpctl fails after writing the file.
+func TestASecondSecretAfterTheRoutedOneRemovesTheFile(t *testing.T) {
+	const secret = "c2Vjb25kLXNlY3JldC10aGF0LW11c3QtbmV2ZXItbGVhaw"
+	h := newHarness(t, fixed(201, `{"client_id":"grafana","client_secret":"first","enrollment_link":"https://idp.example/enroll#`+secret+`"}`))
+	out := filepath.Join(t.TempDir(), "secret")
+	got := h.run("client_rotate_secret", "grafana", "--secret-out", out)
+	if got.code != cli.ExitFailure || got.stdout != "" || strings.Contains(got.stderr, secret) {
+		t.Fatalf("exit %d, stdout %q, stderr:\n%s", got.code, got.stdout, got.stderr)
+	}
+	if !strings.Contains(got.stderr, "client_rotate_secret again") {
+		t.Errorf("stderr lacks the recovery hint:\n%s", got.stderr)
+	}
+	if _, err := os.Stat(out); !os.IsNotExist(err) {
+		t.Errorf("the secret file was kept although idpctl failed: %v", err)
+	}
+}
+
+func TestRetriesAreBounded(t *testing.T) {
+	h := newHarness(t, fixed(200, emptyPage))
+	for _, n := range []string{"-1", "11"} {
+		if got := h.run("--retries", n, "users_list"); got.code != cli.ExitUsage {
+			t.Errorf("--retries %s: exit %d", n, got.code)
+		}
+	}
+	if got := h.run("--retries", "10", "users_list"); got.code != 0 {
+		t.Errorf("--retries 10: exit %d: %s", got.code, got.stderr)
+	}
+	if n := len(h.seen()); n != 1 {
+		t.Fatalf("%d requests, want only the valid one", n)
+	}
+}
+
 func TestSecretNotReplayableExplainsHowToRecover(t *testing.T) {
 	h := newHarness(t, func(*http.Request, int) reply {
 		return problem(409, "secret-not-replayable", "The response held a secret and was not stored.", "")

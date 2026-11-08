@@ -20,6 +20,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,6 +37,10 @@ const (
 // maxKeyBytes bounds what is read from stdin; a PEM private key is far
 // smaller, and anything larger is not one.
 const maxKeyBytes = 64 << 10
+
+// maxRetries bounds --retries; with the 30-second backoff cap, the waits of
+// one invocation stay within a few minutes.
+const maxRetries = 10
 
 // Options carries the process environment into Run so tests can replace it.
 type Options struct {
@@ -161,6 +166,9 @@ func run(ctx context.Context, args []string, opts Options, logger *slog.Logger, 
 	case secret == "" && f.secretOut != "":
 		return usagef("%s returns no secret; drop --secret-out", op.name)
 	}
+	if g.retries < 0 || g.retries > maxRetries {
+		return usagef("--retries must be between 0 and %d, got %d", maxRetries, g.retries)
+	}
 	if g.verbose {
 		level.Set(slog.LevelDebug)
 	}
@@ -208,7 +216,57 @@ func run(ctx context.Context, args []string, opts Options, logger *slog.Logger, 
 			return fmt.Errorf("%s succeeded but %w; %s", op.name, err, recoveryHint(op.name))
 		}
 	}
+	// Whatever the operation, a secret member still in the output was not
+	// routed to --secret-out (a server bug, or a second secret), and printing
+	// it would put the plaintext on the terminal.
+	if member := strayPath(body); member != "" {
+		err := fmt.Errorf("the response carries %s outside --secret-out, so nothing was printed", member)
+		if out != nil {
+			return fmt.Errorf("%s succeeded but %w; %s", op.name, err, recoveryHint(op.name))
+		}
+		return fmt.Errorf("%s: %w", op.name, err)
+	}
+	if out != nil {
+		out.keep()
+	}
 	return printJSON(opts.Stdout, body)
+}
+
+// secretMembers are the response members that hold IdP-issued secrets.
+var secretMembers = []string{"client_secret", "enrollment_link"}
+
+// strayPath returns the JSON Pointer of the first secret member anywhere in
+// body, or "" when there is none. A body that is not valid JSON reports the
+// root, so it is never printed either.
+func strayPath(body []byte) string {
+	var value any
+	if err := json.Unmarshal(body, &value); err != nil {
+		return "/"
+	}
+	return findSecret(value, "")
+}
+
+func findSecret(value any, pointer string) string {
+	switch v := value.(type) {
+	case map[string]any:
+		for _, member := range secretMembers {
+			if _, ok := v[member]; ok {
+				return pointer + "/" + member
+			}
+		}
+		for key, child := range v {
+			if found := findSecret(child, pointer+"/"+key); found != "" {
+				return found
+			}
+		}
+	case []any:
+		for i, child := range v {
+			if found := findSecret(child, pointer+"/"+strconv.Itoa(i)); found != "" {
+				return found
+			}
+		}
+	}
+	return ""
 }
 
 // connect validates the local configuration, reads the key from stdin, and

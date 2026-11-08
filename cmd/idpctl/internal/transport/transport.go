@@ -108,16 +108,35 @@ type RetryingDoer struct {
 	Doer Doer
 	// Retries is the number of attempts after the first.
 	Retries int
-	// Backoff is the wait before the first retry; it doubles per retry.
+	// Backoff is the wait before the first retry; it doubles per retry up
+	// to MaxBackoff.
 	Backoff time.Duration
+	// MaxBackoff caps the doubled wait. Zero means DefaultMaxBackoff.
+	MaxBackoff time.Duration
 	// Logger receives one warning per retry.
 	Logger *slog.Logger
+	// After replaces time.After for the wait between attempts. Tests only:
+	// it lets them observe the waits without sleeping.
+	After func(time.Duration) <-chan time.Time
 }
+
+// DefaultMaxBackoff caps the wait between retries when
+// RetryingDoer.MaxBackoff is zero, so a large --retries cannot make one
+// invocation hang for hours.
+const DefaultMaxBackoff = 30 * time.Second
 
 // Do sends req, retrying as described on RetryingDoer. It returns the last
 // response or error, and stops early when req's context ends.
 func (d *RetryingDoer) Do(req *http.Request) (*http.Response, error) {
-	wait := d.Backoff
+	limit := d.MaxBackoff
+	if limit <= 0 {
+		limit = DefaultMaxBackoff
+	}
+	after := d.After
+	if after == nil {
+		after = time.After
+	}
+	wait := min(d.Backoff, limit)
 	for attempt := 0; ; attempt++ {
 		current := req
 		if attempt > 0 {
@@ -149,9 +168,9 @@ func (d *RetryingDoer) Do(req *http.Request) (*http.Response, error) {
 				return nil, err
 			}
 			return nil, req.Context().Err()
-		case <-time.After(wait):
+		case <-after(wait):
 		}
-		wait *= 2
+		wait = min(wait*2, limit)
 	}
 }
 

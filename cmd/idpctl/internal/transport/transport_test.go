@@ -265,6 +265,50 @@ func TestRetryingDoerRetriesEdgeUnavailableButNotProblems(t *testing.T) {
 	}
 }
 
+func TestRetryingDoerCapsTheDoublingBackoff(t *testing.T) {
+	inner := &flakyDoer{failures: 10}
+	var waits []time.Duration
+	doer := &transport.RetryingDoer{
+		Doer: inner, Retries: 5, Backoff: 10 * time.Second, MaxBackoff: 30 * time.Second, Logger: discardLogger(),
+		After: func(d time.Duration) <-chan time.Time {
+			waits = append(waits, d)
+			ch := make(chan time.Time, 1)
+			ch <- time.Now()
+			return ch
+		},
+	}
+	if _, err := doer.Do(newPost(t)); err == nil {
+		t.Fatal("error swallowed")
+	}
+	want := []time.Duration{10 * time.Second, 20 * time.Second, 30 * time.Second, 30 * time.Second, 30 * time.Second}
+	if len(waits) != len(want) {
+		t.Fatalf("waits %v, want %v", waits, want)
+	}
+	for i := range want {
+		if waits[i] != want[i] {
+			t.Fatalf("waits %v, want %v", waits, want)
+		}
+	}
+}
+
+func TestRetryingDoerDefaultsTheBackoffCapTo30Seconds(t *testing.T) {
+	inner := &flakyDoer{failures: 10}
+	var last time.Duration
+	doer := &transport.RetryingDoer{
+		Doer: inner, Retries: 8, Backoff: time.Second, Logger: discardLogger(),
+		After: func(d time.Duration) <-chan time.Time {
+			last = d
+			ch := make(chan time.Time, 1)
+			ch <- time.Now()
+			return ch
+		},
+	}
+	_, _ = doer.Do(newPost(t))
+	if last != transport.DefaultMaxBackoff || transport.DefaultMaxBackoff != 30*time.Second {
+		t.Fatalf("last wait %v, cap %v", last, transport.DefaultMaxBackoff)
+	}
+}
+
 func TestRetryingDoerStopsWhenTheContextEnds(t *testing.T) {
 	inner := &flakyDoer{failures: 10}
 	doer := &transport.RetryingDoer{Doer: inner, Retries: 5, Backoff: time.Hour, Logger: discardLogger()}
