@@ -48,7 +48,10 @@ export function classifyRedirectUri(value: string): RedirectUriKind | null {
   }
   if (url.href !== value || url.username !== "" || url.password !== "") return null;
   if (url.protocol === "https:") {
-    return url.hostname === "" || url.hostname === "localhost" ? null : "https";
+    // A trailing dot names the same host (a fully qualified name), and *.localhost resolves to loopback too
+    // (RFC 6761 §6.3), so neither may slip past the localhost ban of RFC 8252 §8.3.
+    const host = url.hostname.endsWith(".") ? url.hostname.slice(0, -1) : url.hostname;
+    return host === "" || host === "localhost" || host.endsWith(".localhost") ? null : "https";
   }
   if (url.protocol === "http:") {
     return LOOPBACK_REDIRECT_HOSTS.has(url.hostname) && url.port === "" ? "loopback" : null;
