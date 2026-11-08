@@ -1,6 +1,8 @@
 // Admin use cases (the idpctl operations). Only the admin Worker may import this module.
 
 export type { AccessPair, Principal } from "./access.js";
+export type { AuditEvent } from "./audit-tail.js";
+export { ENROLL_LINK_TTL_SECONDS, type EnrollLinkIssueResult } from "./passkeys.js";
 export {
   MAX_REDIRECT_URIS,
   type ClientCreateResult,
