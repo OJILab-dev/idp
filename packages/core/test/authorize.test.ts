@@ -482,6 +482,23 @@ describe("resumeAuthorize", () => {
     expect(await resume(id, session)).toEqual({ kind: "error_page", error: "invalid_client", locale: "ja" });
   });
 
+  it("gives an error page, not a redirect, when the client was disabled during the sign-in", async () => {
+    const id = await startSignIn();
+    await f.setClientEnabled(WEB, false);
+    const session = await f.addSession(USER, CREDENTIAL, f.clock.now());
+    expect(await resume(id, session)).toEqual({ kind: "error_page", error: "invalid_client", locale: "en" });
+    expect(await authCodeRows()).toEqual([]);
+    expect(await authorizeRequestRows()).toEqual([]);
+  });
+
+  it("returns server_error and issues no code when the client switched to RS256 and no RSA key is configured", async () => {
+    const id = await startSignIn();
+    await f.run("UPDATE clients SET id_token_signed_response_alg = 'RS256' WHERE id = ?", WEB);
+    const session = await f.addSession(USER, CREDENTIAL, f.clock.now());
+    expectErrorRedirect(await resume(id, session), "server_error");
+    expect(await authCodeRows()).toEqual([]);
+  });
+
   it("gives an error page when the redirect_uri is no longer registered", async () => {
     const id = await startSignIn();
     await f.run("UPDATE clients SET redirect_uris_json = ? WHERE id = ?", JSON.stringify(["https://app.example.com/new"]), WEB);
