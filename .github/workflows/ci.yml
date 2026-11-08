@@ -36,3 +36,59 @@ jobs:
 
       - name: Typecheck, lint, and test
         run: pnpm run check
+
+  idpctl:
+    runs-on: takumi-runner
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Anonymous mode: a pull request validation job gets no OIDC permission
+      # (.github/workflows/AGENT.md), and a bot-id would require id-token: write.
+      - name: Enable Takumi Guard for Go modules
+        uses: flatt-security/setup-takumi-guard-golang@02545d3425218766aac4dca114dcc3f6eaa0df4a # v1.3.0
+
+      - name: Install Go and oapi-codegen pinned in mise.toml
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3.6.3
+        with:
+          install_args: go go:github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen
+
+      - name: gofmt, go vet, build, test, and the generated-code drift check
+        run: mise run idpctl:check
+
+  infra:
+    runs-on: takumi-runner
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # No Takumi Guard step: it covers no Terraform provider registry, and
+      # nothing here fetches npm, PyPI, RubyGems, Go, or Packagist packages.
+      - name: Install Terraform and ShellCheck pinned in mise.toml
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3.6.3
+        with:
+          install_args: terraform shellcheck
+
+      - name: terraform fmt
+        run: terraform -chdir=infra fmt -check -recursive -diff
+
+      # -backend=false skips the R2 state backend, so no Cloudflare or R2
+      # credential is needed; the provider comes from .terraform.lock.hcl.
+      - name: terraform init
+        run: terraform -chdir=infra init -backend=false -input=false -lockfile=readonly
+
+      - name: terraform validate
+        run: terraform -chdir=infra validate
+
+      # The tests use a mock provider and run offline (infra/tests).
+      - name: terraform test
+        run: terraform -chdir=infra test
+
+      - name: shellcheck
+        run: shellcheck scripts/*.sh scripts/test/*.sh
