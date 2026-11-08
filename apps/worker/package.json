@@ -1,0 +1,8 @@
+{
+  "name": "@idp/worker",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@idp/core": "workspace:*"
+  }
+}

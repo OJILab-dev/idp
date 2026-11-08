@@ -90,6 +90,17 @@ mise install
 pnpm install --frozen-lockfile
 ```
 
-実装はまだありません。
-共有コアと 2 つの Worker（pnpm の workspace：`packages/core`、`apps/worker`、`apps/admin-worker`）、`idpctl`（Go）、e2e（Playwright）を追加したら、それぞれの Setup、Build、Test、Check の正規コマンドをこの節へ記録してください。
+TypeScript の workspace（`packages/core`、`apps/worker`、`apps/admin-worker`）と、D1 のスキーマ（`contract/migrations`）の正規コマンドは次のとおりです。CI（`.github/workflows/ci.yml`）も同じ `pnpm run check` を実行します。
+
+```sh
+pnpm run typecheck   # tsc
+pnpm run lint        # ESLint。IdP の Worker から管理系のモジュールへの import を禁止する規則を含む
+pnpm run test        # Vitest。D1 のスキーマのテストはローカルの D1（miniflare、workerd の SQLite）で動く
+pnpm run check       # 上の 3 つを順に実行する。コミットの前に必ず通す
+```
+
+- `contract/migrations/0001_init.sql` は [データモデル](docs/design/data-model.md) の SQL のブロックと同じ内容でなければならず、テストがずれを検出します。スキーマを変えるときは、先にドキュメントを更新してからマイグレーションに写します。
+- テストの D1 は `cf` が同梱するのと同じ版の miniflare を使います。`cf` を更新するときは、`package.json` の `miniflare` も `cf` の依存と同じ版に揃えます。wrangler は使いません。
+
+`idpctl`（Go）と e2e（Playwright）を追加したら、それぞれの Setup、Build、Test、Check の正規コマンドをこの節へ記録してください。
 Check には、IdP の Worker が管理系のモジュールに依存しないことの lint とビルド成果物の検査、管理 API の仕様と Go の生成物のずれの検出、D1 アダプタの適合テストを含めます。

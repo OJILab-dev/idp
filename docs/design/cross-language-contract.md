@@ -35,6 +35,7 @@ D1 に保存する値の形と、管理 API の形を、どの実装からも独
 | 監査ログ | 管理操作は管理用の Worker が、本人のパスキー操作は IdP の Worker が書くので、両者で同じ形にする。`actor` は `admin`（管理用の Worker）か `user`（IdP の Worker）か `break_glass`（基盤の権限で手で書く行）。`admin` の行は、許可リストで確定した管理者の名前を `admin_name` に、使われたクライアント証明書の SHA-256 フィンガープリントを `admin_cert_sha256` に必ず持ち、`user` と `break_glass` の行はどちらも持たない。`writer_version` は書き込んだ Worker のバージョン、`operation` は操作名（`idpctl` の操作名か、`passkey_enroll`・`passkey_add`・`passkey_self_revoke`）、`target` は `user:<id>`・`client:<id>`・`group:<id>`・`schema`・`none` のどれか、`result` は `success` か `failure`（`user` と `break_glass` の行は `success` だけ）、`detail_json` は JSON オブジェクトの文字列で、ID、列挙値、数値、時刻、個人情報を含まない設定値だけを持ち、名前と自由記述を持たない。セッション ID、トークン、シークレット、登録トークンは書かない（[データモデル](data-model.md)参照） |
 | 管理 API | 管理用の Worker の HTTPS API。仕様（OpenAPI など）は共有コアの入力のスキーマから生成し、`idpctl` の Go の型はその仕様から生成する。生成物は手で編集せず、仕様と生成物のずれは CI で検出する。これが Go と TypeScript の間の唯一の契約になる（[管理 CLI と管理用の Worker](idpctl.md)参照） |
 
+- D1 のマイグレーションは `contract/migrations/` に置く。SQL は実装の言語に依存しない契約なので、TypeScript の workspace の外に置き、将来の Rust の実装も同じファイルを使う。`0001_init.sql` は[データモデル](data-model.md)の SQL のブロックと同じ内容にし、ずれはテストで検出する。
 - `contract/testdata/vectors.json` に共通のテストベクタ（入力とハッシュ結果など）を置き、共有コアのテストで検証する。パスキーの上限の値もここに置き、コアが同じ値を使っていることを確かめる。将来 Rust の実装を足すときは、同じテストベクタをその実装のテストでも検証する。
 - パスキーの上限を変えるときは、この契約の値を変え、共有コアを更新する。下げても既存のパスキーは消さない。新しい上限を超えているユーザーは今のパスキーをそのまま使え、それ以上の追加と登録リンクの発行は拒否され、失効は（最後の 1 本は失効できない規則のもとで）これまでどおりできる。上げるときはマイグレーションが要らない。
 - 入力の検証（redirect URI の形式、グループ名など）は、書き込みを行う共有コアだけで行う。`idpctl` は検証せず、管理用の Worker が返すエラーを表示する。IdP の Worker は保存された値と完全一致で比べ、壊れた行は拒否する。
