@@ -1,0 +1,59 @@
+// The IdP session as the OIDC endpoints read it. Sessions are created by the passkey sign-in, not here; these helpers
+// only look a session up by its cookie and check access through effective_access, the one access definition.
+import { isRandomTokenFormat, sha256Base64url, type Database } from "../shared/index.js";
+import { CorruptRowError } from "./clients.js";
+import type { OidcDeps } from "./deps.js";
+
+/** A session row that has not expired. */
+export type ActiveSession = {
+  readonly tokenHash: string;
+  readonly userId: string;
+  /** When the user signed in with a passkey, in UNIX seconds. */
+  readonly authTime: number;
+};
+
+/**
+ * Looks up the session a cookie names.
+ *
+ * @param deps The database and the clock.
+ * @param sessionToken The cookie value, untrusted; `undefined` when the cookie is absent.
+ * @returns The session, or `undefined` when the cookie is absent, malformed, unknown, or expired.
+ * @throws {CorruptRowError} The row's columns do not have the schema's types.
+ * @throws {DatabaseError} The read failed.
+ */
+export async function findActiveSession(
+  deps: Pick<OidcDeps, "db" | "clock">,
+  sessionToken: string | undefined,
+): Promise<ActiveSession | undefined> {
+  if (sessionToken === undefined || !isRandomTokenFormat(sessionToken)) return undefined;
+  const tokenHash = await sha256Base64url(sessionToken);
+  const [result] = await deps.db.batch([
+    {
+      sql: "SELECT user_id, auth_time FROM sessions WHERE token_hash = ? AND expires_at > ?",
+      params: [tokenHash, deps.clock.now()],
+    },
+  ]);
+  const row = result?.rows[0];
+  if (row === undefined) return undefined;
+  const userId = row["user_id"];
+  const authTime = row["auth_time"];
+  if (typeof userId !== "string" || typeof authTime !== "number") throw new CorruptRowError("session row is malformed");
+  return { tokenHash, userId, authTime };
+}
+
+/**
+ * Checks whether a user may use a client right now.
+ *
+ * @param db The database.
+ * @param userId The user.
+ * @param clientId The client.
+ * @returns Whether `effective_access` has the pair, which also requires the user and client (and a granting group)
+ *   to be enabled.
+ * @throws {DatabaseError} The read failed.
+ */
+export async function hasAccess(db: Database, userId: string, clientId: string): Promise<boolean> {
+  const [result] = await db.batch([
+    { sql: "SELECT 1 AS ok FROM effective_access WHERE user_id = ? AND client_id = ?", params: [userId, clientId] },
+  ]);
+  return (result?.rows.length ?? 0) > 0;
+}

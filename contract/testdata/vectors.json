@@ -259,5 +259,44 @@
       }
     ],
     "id_token_forbidden": ["azp", "at_hash", "c_hash", "acr", "amr", "sid", "preferred_username", "scope", "email", "email_verified", "client_id", "jti"]
-  }
+  },
+  "redirect_uri_match": [
+    { "case": "https exact", "registered": "https://app.example.com/callback", "requested": "https://app.example.com/callback", "matches": true },
+    { "case": "https trailing slash", "registered": "https://app.example.com/callback", "requested": "https://app.example.com/callback/", "matches": false },
+    { "case": "https extra query", "registered": "https://app.example.com/callback", "requested": "https://app.example.com/callback?x=1", "matches": false },
+    { "case": "https registered query exact", "registered": "https://app.example.com/cb?tenant=a", "requested": "https://app.example.com/cb?tenant=a", "matches": true },
+    { "case": "https host case differs", "registered": "https://app.example.com/callback", "requested": "https://APP.example.com/callback", "matches": false },
+    { "case": "https explicit default port", "registered": "https://app.example.com/callback", "requested": "https://app.example.com:443/callback", "matches": false },
+    { "case": "https port is not ignored", "registered": "https://app.example.com/callback", "requested": "https://app.example.com:8443/callback", "matches": false },
+    { "case": "https fragment", "registered": "https://app.example.com/callback", "requested": "https://app.example.com/callback#x", "matches": false },
+    { "case": "path case differs", "registered": "https://app.example.com/callback", "requested": "https://app.example.com/Callback", "matches": false },
+    { "case": "custom scheme exact", "registered": "com.example.app:/callback", "requested": "com.example.app:/callback", "matches": true },
+    { "case": "custom scheme different path", "registered": "com.example.app:/callback", "requested": "com.example.app:/other", "matches": false },
+    { "case": "loopback v4 any port", "registered": "http://127.0.0.1/callback", "requested": "http://127.0.0.1:51004/callback", "matches": true },
+    { "case": "loopback v4 no port", "registered": "http://127.0.0.1/callback", "requested": "http://127.0.0.1/callback", "matches": true },
+    { "case": "loopback v4 registered port ignored", "registered": "http://127.0.0.1:8080/callback", "requested": "http://127.0.0.1:9090/callback", "matches": true },
+    { "case": "loopback v6 any port", "registered": "http://[::1]/callback", "requested": "http://[::1]:61000/callback", "matches": true },
+    { "case": "loopback different path", "registered": "http://127.0.0.1/callback", "requested": "http://127.0.0.1:51004/other", "matches": false },
+    { "case": "loopback extra query", "registered": "http://127.0.0.1/callback", "requested": "http://127.0.0.1:51004/callback?x=1", "matches": false },
+    { "case": "loopback v4 is not v6", "registered": "http://127.0.0.1/callback", "requested": "http://[::1]:51004/callback", "matches": false },
+    { "case": "loopback localhost is not a loopback literal", "registered": "http://127.0.0.1/callback", "requested": "http://localhost:51004/callback", "matches": false },
+    { "case": "loopback https scheme", "registered": "http://127.0.0.1/callback", "requested": "https://127.0.0.1:51004/callback", "matches": false },
+    { "case": "loopback userinfo", "registered": "http://127.0.0.1/callback", "requested": "http://user@127.0.0.1:51004/callback", "matches": false },
+    { "case": "loopback non-canonical path", "registered": "http://127.0.0.1/callback", "requested": "http://127.0.0.1:51004/x/../callback", "matches": false },
+    { "case": "loopback fragment", "registered": "http://127.0.0.1/callback", "requested": "http://127.0.0.1:51004/callback#f", "matches": false },
+    { "case": "loopback port zero padded", "registered": "http://127.0.0.1/callback", "requested": "http://127.0.0.1:0051004/callback", "matches": false },
+    { "case": "registered localhost is never a loopback", "registered": "http://localhost/callback", "requested": "http://localhost:51004/callback", "matches": false }
+  ],
+  "ui_locale": [
+    { "case": "default", "ui_locales": null, "accept_language": null, "locale": "en" },
+    { "case": "ui_locales first supported", "ui_locales": "fr ja en", "accept_language": "en", "locale": "ja" },
+    { "case": "ui_locales region subtag", "ui_locales": "ja-JP", "accept_language": null, "locale": "ja" },
+    { "case": "ui_locales case-insensitive", "ui_locales": "JA", "accept_language": null, "locale": "ja" },
+    { "case": "ui_locales unsupported falls back to browser", "ui_locales": "fr de", "accept_language": "ja,en;q=0.5", "locale": "ja" },
+    { "case": "ui_locales unsupported falls back to default", "ui_locales": "fr", "accept_language": null, "locale": "en" },
+    { "case": "accept-language by quality", "ui_locales": null, "accept_language": "en;q=0.4, ja;q=0.9", "locale": "ja" },
+    { "case": "accept-language zero quality excluded", "ui_locales": null, "accept_language": "ja;q=0, fr", "locale": "en" },
+    { "case": "accept-language wildcard ignored", "ui_locales": null, "accept_language": "*", "locale": "en" },
+    { "case": "accept-language malformed quality ignored", "ui_locales": null, "accept_language": "ja;q=abc, en;q=0.1", "locale": "en" }
+  ]
 }

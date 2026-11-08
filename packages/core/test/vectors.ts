@@ -71,6 +71,18 @@ type Vectors = {
     }[];
     readonly id_token_forbidden: readonly string[];
   };
+  readonly redirect_uri_match: readonly {
+    readonly case: string;
+    readonly registered: string;
+    readonly requested: string;
+    readonly matches: boolean;
+  }[];
+  readonly ui_locale: readonly {
+    readonly case: string;
+    readonly ui_locales: string | null;
+    readonly accept_language: string | null;
+    readonly locale: "en" | "ja";
+  }[];
 };
 
 export const vectors = JSON.parse(
