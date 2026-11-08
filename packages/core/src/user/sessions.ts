@@ -4,10 +4,15 @@ import { isRandomTokenFormat, sha256Base64url, type Database } from "../shared/i
 import { CorruptRowError } from "./clients.js";
 import type { OidcDeps } from "./deps.js";
 
+/** How long a session lives from the sign-in; it is never extended (NIST SP 800-63B-4 AAL2, authentication.md). */
+export const SESSION_LIFETIME_SECONDS = 3600;
+
 /** A session row that has not expired. */
 export type ActiveSession = {
   readonly tokenHash: string;
   readonly userId: string;
+  /** The passkey the user signed in with; revoking it ends the session through the foreign key. */
+  readonly credentialId: string;
   /** When the user signed in with a passkey, in UNIX seconds. */
   readonly authTime: number;
 };
@@ -29,16 +34,19 @@ export async function findActiveSession(
   const tokenHash = await sha256Base64url(sessionToken);
   const [result] = await deps.db.batch([
     {
-      sql: "SELECT user_id, auth_time FROM sessions WHERE token_hash = ? AND expires_at > ?",
+      sql: "SELECT user_id, credential_id, auth_time FROM sessions WHERE token_hash = ? AND expires_at > ?",
       params: [tokenHash, deps.clock.now()],
     },
   ]);
   const row = result?.rows[0];
   if (row === undefined) return undefined;
   const userId = row["user_id"];
+  const credentialId = row["credential_id"];
   const authTime = row["auth_time"];
-  if (typeof userId !== "string" || typeof authTime !== "number") throw new CorruptRowError("session row is malformed");
-  return { tokenHash, userId, authTime };
+  if (typeof userId !== "string" || typeof credentialId !== "string" || typeof authTime !== "number") {
+    throw new CorruptRowError("session row is malformed");
+  }
+  return { tokenHash, userId, credentialId, authTime };
 }
 
 /**
