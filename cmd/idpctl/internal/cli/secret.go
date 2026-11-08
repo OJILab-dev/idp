@@ -33,7 +33,10 @@ func createSecretFile(path string) (*secretFile, error) {
 }
 
 // store moves member's value from body into the file and returns body with
-// the member replaced by <member>_file holding the path.
+// the member replaced by <member>_file holding the path. The file is kept
+// only after keep is called; until then discard removes it, so any failure
+// before the output is printed reports the secret as lost and tells the
+// admin to issue it again.
 func (s *secretFile) store(body []byte, member string) ([]byte, error) {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(body, &fields); err != nil {
@@ -53,7 +56,6 @@ func (s *secretFile) store(body []byte, member string) ([]byte, error) {
 	if err := errors.Join(s.file.Sync(), s.file.Close()); err != nil {
 		return nil, fmt.Errorf("write %s: %w", s.path, err)
 	}
-	s.stored = true
 
 	delete(fields, member)
 	path, err := json.Marshal(s.path)
@@ -64,8 +66,14 @@ func (s *secretFile) store(body []byte, member string) ([]byte, error) {
 	return json.Marshal(fields)
 }
 
-// discard removes the file unless store succeeded, so a failed operation
-// leaves no empty or partial secret file behind.
+// keep marks the stored secret as delivered, once the output that names the
+// file is known to be safe to print.
+func (s *secretFile) keep() {
+	s.stored = true
+}
+
+// discard removes the file unless keep was called, so a failed operation
+// leaves no empty, partial, or unannounced secret file behind.
 func (s *secretFile) discard() {
 	if s.stored {
 		return
