@@ -1,0 +1,6 @@
+# Provider binaries and the local backend cache; the lock file is committed.
+.terraform/
+# State lives only in the R2 backend; a local copy would hold the deployment's values outside 1Password and R2.
+*.tfstate
+*.tfstate.*
+*.tfplan
