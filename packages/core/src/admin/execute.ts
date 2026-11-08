@@ -24,6 +24,12 @@ import { clientIdSchema, parseInput, uuidSchema } from "./schemas.js";
 export type ExecuteOptions = {
   /** The Idempotency-Key header; required by idempotent operations and ignored by the others. */
   readonly idempotencyKey?: string | undefined;
+  /**
+   * A problem the HTTP layer found before the input could be assembled (a body that is not JSON, a repeated query
+   * parameter). The operation does not run; a write still records the failure row, as for any other rejection after
+   * the allowlist resolved the admin.
+   */
+  readonly rejection?: AdminProblem | undefined;
 };
 
 /**
@@ -36,7 +42,7 @@ export type ExecuteOptions = {
  * @param ctx The caller's context, with the admin the allowlist resolved.
  * @param operation The operation from the registry.
  * @param input The untrusted input (path parameters, query, and body merged by the HTTP layer).
- * @param options The Idempotency-Key.
+ * @param options The Idempotency-Key, and a rejection the HTTP layer already decided.
  * @returns The success status and body, or a replayed stored response.
  * @throws {AdminProblem} A rule rejected the request; any other error, including {@link DatabaseError}, is
  *   wrapped as `internal` with the original as `cause`.
@@ -49,6 +55,7 @@ export async function executeOperation<I, R>(
 ): Promise<OperationOutcome<R>> {
   const now = ctx.now();
   if ("read" in operation) {
+    if (options.rejection !== undefined) throw options.rejection;
     try {
       const body = await operation.read(ctx, parseInput(operation.input, input));
       return { status: operation.http.status, body, replayed: false };
@@ -57,6 +64,7 @@ export async function executeOperation<I, R>(
     }
   }
   try {
+    if (options.rejection !== undefined) throw options.rejection;
     return await runWrite(ctx, operation, input, options, now);
   } catch (error) {
     const problem = toProblem(error);
