@@ -9,7 +9,7 @@
 
 **構成**
 
-- 管理用の Worker（`apps/admin-worker`）は、IdP の Worker と同じ D1 をバインディングで使い、共有コアの管理系のユースケースを管理 API として出す。`idpctl` の全 28 操作（下の一覧）は IdP のドメインの操作であり、すべて共有コアのユースケースとして実装する（[技術選定](technology.md)のコードの構成を参照）。
+- 管理用の Worker（`apps/admin-worker`）は、IdP の Worker と同じ D1 をバインディングで使い、共有コアの管理系のユースケースを管理 API として出す。`idpctl` の全 29 操作（下の一覧）は IdP のドメインの操作であり、すべて共有コアのユースケースとして実装する（[技術選定](technology.md)のコードの構成を参照）。
 - 共有コアが持つもの：入力の検証、IdP が発行する秘密の生成とハッシュ、条件付きの SQL（パスキーの上限、最後の 1 本の規則など）、監査ログの行の組み立て、`grant_add` と `group_member_add` で新たに使えるようになるユーザーと client の組の計算。
 - `idpctl` が持つもの：引数の解釈、管理 API の呼び出し、出力の整形、手元の入出力（管理者の秘密鍵を標準入力から読む、IdP が発行する秘密を `0600` のファイルに書く）、`Idempotency-Key` の生成と自分の再試行での再利用だけ。ドメインの規則は評価せず、管理用の Worker が返すエラーをそのまま表示する。管理用の Worker が規則の唯一の判定者である。
 - 管理 API の仕様（OpenAPI など）は共有コアの入力のスキーマから生成し、`idpctl` の Go の型はその仕様から生成する。仕様は Go と TypeScript の間の契約として扱う（[実装に依存しない契約](cross-language-contract.md)参照）。
@@ -62,11 +62,11 @@ D1 を手元から直接操作する形（D1 REST API）をやめ、管理 API �
 
 CLI のサブコマンドは操作名をそのまま使う（`idpctl client_create --public`、`idpctl grant_add group:<group_id> <client_id>` など）。操作名は共有コアのユースケースの名前と同じで、監査ログの `operation` にも同じ値が入る。管理 API の OpenAPI の `operationId` も操作名にする。例外は enablement-events のエンドポイントだけで、その `operationId` は `user_enablement_switch`、`client_enablement_switch`、`group_enablement_switch` とし、1 つのエンドポイントで `*_enable` と `*_disable` の両方を受ける（下の管理 API の 2 を参照）。呼び方を 1 つに揃えるため、例外はこの 1 つだけにする。
 
-書き込みの操作は、[認可](authorization.md)の管理の関心事で分類する。基盤の操作（署名鍵、Cloudflare の API トークンと証明書の発行、許可リストの変更、デプロイ）は `idpctl` の対象外。全 28 操作は次のとおり。
+書き込みの操作は、[認可](authorization.md)の管理の関心事で分類する。基盤の操作（署名鍵、Cloudflare の API トークンと証明書の発行、許可リストの変更、デプロイ）は `idpctl` の対象外。全 29 操作は次のとおり。
 
 - 読み取り（7）：`users_list`、`user_get`、`clients_list`、`groups_list`、`grants_list`、`access_check`、`audit_tail`
 - ユーザーの管理（13）：`user_create`、`user_rename`、`user_disable`、`user_enable`、`enroll_link_issue`、`passkey_revoke`、`session_revoke`、`group_create`、`group_rename`、`group_disable`、`group_enable`、`group_member_add`、`group_member_remove`
-- RP の管理（6）：`client_create`（public client は `--public`、ID トークンの署名アルゴリズムは `--id-token-alg`）、`client_set_redirects`、`client_rotate_secret`、`client_set_id_token_alg`、`client_disable`、`client_enable`
+- RP の管理（7）：`client_create`（public client は `--public`、ID トークンの署名アルゴリズムは `--id-token-alg`）、`client_rename`、`client_set_redirects`、`client_rotate_secret`、`client_set_id_token_alg`、`client_disable`、`client_enable`
 - アクセスの管理（2）：`grant_add`、`grant_remove`
 
 ユーザー、client、グループは完全に削除しない。`user_delete`、`client_delete`、`group_delete` は置かず、終わらせるときは無効化する。行を消さないことは D1 のトリガーで強制する（[データモデル](data-model.md)参照）。
@@ -81,14 +81,14 @@ CLI のサブコマンドは操作名をそのまま使う（`idpctl client_crea
 
 `enroll_link_issue` は、発行の時点でパスキーの本数を確かめ、パスキーの上限（[実装に依存しない契約](cross-language-contract.md)参照）に達しているユーザーには発行しない。本人の目の前ではなく、管理者の側で失敗させるためである。無効化されたユーザーにも発行しない。発行から使用までの間に本人が追加することもあるので、IdP の Worker も登録の verify で上限を確かめる。どちらの確認も共有コアの同じ規則を使う。発行は、同じバッチでそのユーザーの未使用の登録トークンをすべて消すので、有効な登録リンクはユーザーごとに常に 1 つまでになる。
 
-ユーザーとグループの名前は、次のように扱う。
+ユーザー、グループ、client の名前は、次のように扱う。
 
-- `user_rename` は表示名（`users.name`）を、`group_rename` はグループ名（`groups.name`）を変える。ID は変わらないので、`sub`、所属、grant はそのまま残る。変更前と変更後の名前を `detail_json` に残す。
+- `user_rename` は表示名（`users.name`）を、`group_rename` はグループ名（`groups.name`）を、`client_rename` は client の表示名（`clients.name`）を変える。ID は変わらないので、`sub`、client ID、所属、grant はそのまま残る。変更前と変更後の名前は `detail_json` に残さない。監査ログは削除しないので、名前を残すと、表示名を中立にしても旧名が消えないため（[データモデル](data-model.md)の監査ログを参照）。
 - これらも他の書き込みと同じく、監査ログに 1 行を書く。
 
 有効化と無効化は、次のように扱う。
 
-- `user_disable`、`client_disable`、`group_disable` は、出来事の表に `disabled` の行を、`user_enable`、`client_enable`、`group_enable` は `enabled` の行を追記する。今の状態と同じ値への変更は拒否し（`state-conflict`）、行も成功の監査ログの行も書かない。理由は `detail_json` に入れ、出来事の表には書かない（[データモデル](data-model.md)参照）。
+- `user_disable`、`client_disable`、`group_disable` は、出来事の表に `disabled` の行を、`user_enable`、`client_enable`、`group_enable` は `enabled` の行を追記する。今の状態と同じ値への変更は拒否し（`state-conflict`）、行も成功の監査ログの行も書かない。理由は受け取らず、出来事の表にも監査ログにも書かない。自由記述の個人情報を、削除しない行に入れないため（[データモデル](data-model.md)参照）。
 - `user_disable` は、同じバッチでそのユーザーの全セッションを消す。無効化の前に始めたセレモニーは、書き込みの条件で止める（[認証フロー](authentication.md)参照）。
 - `client_disable` の後は、その client の `/authorize` はリダイレクトせずエラーページを返し、`/token` と `/userinfo` も拒否する。grant と redirect URI は残るので、`client_enable` で元に戻せる。
 - `group_disable` の後は、そのグループ経由の grant は誰にも許可を出さない（`effective_access` が除く）。所属と grant は残るので、`group_enable` で元に戻せる。
@@ -137,6 +137,7 @@ ID トークンの署名アルゴリズム（[トークン設計](tokens.md)参�
 | `passkey_revoke` | `DELETE /v1/users/{id}/passkeys/{credential_id}` |
 | `session_revoke` | `DELETE /v1/users/{id}/sessions` |
 | `client_create`、`clients_list` | `POST /v1/clients`、`GET /v1/clients` |
+| `client_rename` | `PUT /v1/clients/{id}/name` |
 | `client_set_redirects` | `PUT /v1/clients/{id}/redirect-uris` |
 | `client_set_id_token_alg` | `PUT /v1/clients/{id}/id-token-alg` |
 | `client_rotate_secret` | `POST /v1/clients/{id}/secrets` |
@@ -151,6 +152,7 @@ ID トークンの署名アルゴリズム（[トークン設計](tokens.md)参�
 | `audit_tail` | `GET /v1/audit-events` |
 
 - 状態を変えない `PUT`（今と同じ名前への `user_rename`、すでにある grant への `grant_add` など）は成功として返し、行も監査ログの行も書かない。書き込みは監査ログの行と同じ条件を付けて同じバッチに置くので、変化がなければどちらも起きない。
+- `session_revoke`（`DELETE /v1/users/{id}/sessions`）は、ユーザーの全セッションを消す操作で、関係の 1 行を指す `DELETE` ではない。ユーザーが存在すれば、消すセッションが 0 件でも成功を返し、監査ログに 1 行を書いて消した件数を `detail_json` に残す。ユーザーが存在しなければ `not-found` を返す。
 - 存在しない関係への `DELETE`（所属していないメンバー、ない grant、ないパスキー）は `not-found` を返す。RFC 9110 §9.2.2 の冪等はサーバーの状態への効果についての性質で、2 回目の応答が 1 回目と同じであることまでは求めない。打ち間違えた ID が黙って成功することを避ける。
 
 **エラーの形（RFC 9457）**
@@ -214,10 +216,10 @@ ID トークンの署名アルゴリズム（[トークン設計](tokens.md)参�
 
 - 管理用の Worker やその mTLS が使えないときは、基盤の権限で `cf` CLI の `cf d1 query <DATABASE_ID>` を、break-glass 用の D1 の API トークンで実行する。このトークンは常設せず、必要になったときに作り、作業が終わったら失効させる（[デプロイと設定](deployment.md)参照）。`cf` はデータベースの名前ではなく ID を受け取り、既定でリモートのデータを対象にする（Cloudflare「cf for Wrangler users」の「What changes」）。`cf` はベータで、コマンドが安定版の前に変わりうる（Cloudflare「Cloudflare CLI」）。
 - break-glass の書き込みは共有コアを通らないので、パスキーの上限などの規則は SQL を書く人が守る必要があり、監査ログの行も手で書かなければ残らない。日常の管理には使わないので、このことを受け入れる。
-- 行の削除を拒否するトリガー（[データモデル](data-model.md)参照）は、break-glass でも外さない限り効く。誤って入れた個人情報を消すなど、緊急に行を消すときだけ、同じ作業の中で先にトリガーを外し、消した後に戻す。外したことと戻したことは、手で監査ログの行を書いて残す。出来事の表は対象を ON DELETE なしで参照し、自分の削除を拒否するトリガーも持つので、対象ごとに次のトリガーを外し、出来事の行を先に消してから対象を消す。
+- 行の削除を拒否するトリガー（[データモデル](data-model.md)参照）は、break-glass でも外さない限り効く。誤って入れた個人情報を消すなど、緊急に行を消すときだけ、同じ作業の中で先にトリガーを外し、消した後に戻す。外したことと戻したことは、手で監査ログの行を書いて残す。行の形は、`actor` を `break_glass`、`target` を `schema`、`result` を `success` にし、管理者の列を持たせない（[データモデル](data-model.md)の監査ログを参照）。出来事の表は対象を ON DELETE なしで参照し、自分の削除を拒否するトリガーも持つので、対象ごとに次のトリガーを外し、出来事の行を先に消してから対象を消す。
   - ユーザー：`principals_no_delete`、`users_no_delete`、`user_enablement_events_no_delete` を外し、`user_enablement_events` のそのユーザーの行を消してから、`principals` の行を消す。外部キーの連鎖で、`users` の行、パスキー、セッション、所属、grant、登録トークン、チャレンジ、認可コードも消える。
   - グループ：`principals_no_delete`、`groups_no_delete`、`group_enablement_events_no_delete` を外し、`group_enablement_events` のそのグループの行を消してから、`principals` の行を消す。連鎖で `groups` の行、所属、grant も消える。
   - client：`clients_no_delete`、`client_enablement_events_no_delete` を外し、`client_enablement_events` のその client の行を消してから、`clients` の行を消す。連鎖で grant、認可コード、`authorize_requests` も消える。
-  - 出来事の表の `*_no_update` のトリガーは外さない。外したトリガーは、マイグレーションと同じ定義で作り直す。`audit_log` の行は外部キーを持たないので残る。
+  - 出来事の表の `*_no_update` のトリガーは外さない。外したトリガーは、マイグレーションと同じ定義で作り直す。`audit_log` の行は外部キーを持たないので残るが、ID だけを持ち名前を持たないので、消す必要はない。
   - この順番は `sqlite3` で確かめた。出来事の行を残したまま対象を消すと、外部キーの制約で失敗する。
 - D1 の API トークンは日常の管理には使わない。扱いは[デプロイと設定](deployment.md)にまとめる。
