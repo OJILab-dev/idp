@@ -29,6 +29,36 @@ export function pairsEnabledByMembership(groupId: string, userId: string): SqlSt
 }
 
 /**
+ * Builds the query of the pairs `grant_add(principal, client)` enables: the user itself, or every member of the
+ * group, counted only when the user, the group, and the client are enabled and the pair is not already allowed.
+ *
+ * @param principal The grantee.
+ * @param clientId The client.
+ * @returns A SELECT of `user_id, client_id`, ordered by user ID.
+ */
+export function pairsEnabledByGrant(principal: Principal, clientId: string): SqlStatement {
+  const tail =
+    "AND EXISTS (SELECT 1 FROM user_enablement ue WHERE ue.user_id = m.user_id AND ue.enablement = 'enabled') " +
+    "AND EXISTS (SELECT 1 FROM client_enablement WHERE client_id = ? AND enablement = 'enabled') " +
+    "AND NOT EXISTS (SELECT 1 FROM effective_access e WHERE e.user_id = m.user_id AND e.client_id = ?) ORDER BY m.user_id";
+  if (principal.kind === "user") {
+    return {
+      sql: `SELECT m.user_id, ? AS client_id FROM (SELECT id AS user_id FROM users WHERE id = ?) m WHERE 1 ${tail}`,
+      params: [clientId, principal.id, clientId, clientId],
+    };
+  }
+  return {
+    sql:
+      "SELECT m.user_id, ? AS client_id FROM group_members m WHERE m.group_id = ? " +
+      `AND EXISTS (SELECT 1 FROM group_enablement WHERE group_id = ? AND enablement = 'enabled') ${tail}`,
+    params: [clientId, principal.id, principal.id, clientId, clientId],
+  };
+}
+
+/** A grantee: a user or a group, by ID (docs/design/authorization.md). */
+export type Principal = { readonly kind: "user" | "group"; readonly id: string };
+
+/**
  * Wraps a pairs query as the JSON array the audit row's `newly_enabled` member holds.
  *
  * @param pairs A query from this module.

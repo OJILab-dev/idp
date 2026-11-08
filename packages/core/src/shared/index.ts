@@ -19,14 +19,10 @@ export {
 export { InvalidBase64urlError, base64urlDecode, base64urlEncode } from "./base64url.js";
 export { DatabaseError, type Database, type SqlRow, type SqlStatement, type SqlStatementResult, type SqlValue } from "./db.js";
 export { sha256Base64url } from "./hash.js";
-export { isClientId, isRandomTokenFormat, isUuidV4, newUuidV4, randomToken } from "./identifiers.js";
+export { isClientId, isCredentialId, isRandomTokenFormat, isUuidV4, newUuidV4, randomToken } from "./identifiers.js";
 export { InvalidIssuerError, parseIssuer, type Issuer } from "./issuer.js";
 export { InvalidJwkError, jwkThumbprint } from "./jwk.js";
+export { MAX_PASSKEYS_PER_USER } from "./limits.js";
+export { passkeyBelowLimitCondition, passkeyRevocableCondition, userEnabledCondition } from "./passkey-rules.js";
 export { PROBLEM_KINDS, isProblemKind, type ProblemKind } from "./problems.js";
-
-/**
- * The most passkeys one user may have (`max_passkeys_per_user` in docs/design/cross-language-contract.md).
- *
- * A provisional value, not one any specification sets; contract/testdata/vectors.json holds the same value.
- */
-export const MAX_PASSKEYS_PER_USER = 10;
+export { LOOPBACK_REDIRECT_HOSTS, classifyRedirectUri, isRedirectUriAllowed, type ClientType, type RedirectUriKind } from "./redirect-uri-registration.js";

@@ -4,10 +4,10 @@
 // detail_json is never deleted, so a name or free text written into it would outlive a rename and even a break-glass
 // deletion of the user (design principle 7). The builder therefore accepts only known members, each checked against
 // the format of an ID, an enum, a number, or a time; anything else throws before a statement exists.
-import { InvalidBase64urlError, base64urlDecode } from "./base64url.js";
 import type { SqlStatement, SqlValue } from "./db.js";
-import { isClientId, isUuidV4 } from "./identifiers.js";
+import { isClientId, isCredentialId, isUuidV4 } from "./identifiers.js";
 import { isProblemKind, type ProblemKind } from "./problems.js";
+import { classifyRedirectUri } from "./redirect-uri-registration.js";
 
 /** What an audit row is about: `user:<id>`, `client:<id>`, `group:<id>`, `schema`, or `none`. */
 export type AuditTarget = `user:${string}` | `client:${string}` | `group:${string}` | "schema" | "none";
@@ -83,19 +83,6 @@ export class InvalidAuditRowError extends Error {
 
 const OPERATION = /^[a-z]+(?:_[a-z0-9]+)*$/;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
-// WebAuthn §5.4.3 (Level 3) caps a credential ID at 1023 bytes.
-const MAX_CREDENTIAL_ID_BYTES = 1023;
-
-function isCredentialId(value: unknown): boolean {
-  if (typeof value !== "string" || value === "") return false;
-  try {
-    const bytes = base64urlDecode(value);
-    return bytes.length > 0 && bytes.length <= MAX_CREDENTIAL_ID_BYTES;
-  } catch (error) {
-    if (error instanceof InvalidBase64urlError) return false;
-    throw error;
-  }
-}
 
 function isPrincipal(value: unknown): boolean {
   if (typeof value !== "string") return false;
@@ -124,7 +111,7 @@ const DETAIL_MEMBERS: Readonly<Record<string, (value: unknown) => boolean>> = {
   group_id: isString(isUuidV4),
   client_id: isString(isClientId),
   principal: isPrincipal,
-  credential_id: isCredentialId,
+  credential_id: isString(isCredentialId),
   enablement: oneOf("enabled", "disabled"),
   client_type: oneOf("confidential", "public"),
   id_token_alg: ALGORITHMS,
@@ -132,6 +119,8 @@ const DETAIL_MEMBERS: Readonly<Record<string, (value: unknown) => boolean>> = {
   expires_at: isUnixSeconds,
   sessions_deleted: isUnixSeconds,
   problem: isProblemKind,
+  // Redirect URIs are configuration without personal data (data-model.md); each must pass the registration rules.
+  redirect_uris: (value) => Array.isArray(value) && value.every((uri) => typeof uri === "string" && classifyRedirectUri(uri) !== null),
 };
 
 /**

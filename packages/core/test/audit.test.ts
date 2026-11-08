@@ -236,6 +236,15 @@ describe("a name never reaches detail_json", () => {
     ).toThrow(InvalidAuditRowError);
   });
 
+  it("accepts registered redirect URIs and rejects a name hidden in the list", () => {
+    const row = { occurredAt: NOW, actor: ADMIN, writerVersion: "v", operation: "client_set_redirects", target: "client:grafana" } as const;
+    expect(() => auditSuccessStatement({ ...row, detail: { redirect_uris: ["https://app.example.com/cb", "http://127.0.0.1/cb"] } })).not.toThrow();
+    expect(() => auditSuccessStatement({ ...row, detail: { redirect_uris: ["https://app.example.com/cb", "Alice's laptop"] } })).toThrow(
+      InvalidAuditRowError,
+    );
+    expect(() => auditSuccessStatement({ ...row, detail: { redirect_uris: "https://app.example.com/cb" } })).toThrow(InvalidAuditRowError);
+  });
+
   it("rejects an operation name that is not snake_case", () => {
     expect(() =>
       auditSuccessStatement({
