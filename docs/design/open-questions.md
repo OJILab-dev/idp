@@ -21,6 +21,9 @@
 - [ ] `cf` で D1 のデータベースを APAC のリージョンを指定して作れるか（plan のトークンから D1 の権限を外すため、D1 のデータベースは Terraform に置かない）。作れなければ、Cloudflare API の「Create D1 Database」のスクリプトにする
 - [ ] 1Password Environments の GitHub Actions の destination を、plan の workflow の、同じリポジトリのブランチからの `pull_request` のイベントに限れるか。限れなければ、PR の `terraform plan` をやめる（[デプロイと設定](deployment.md)の例外を参照）
 - [ ] `D1 Read` の権限だけのトークンで、Cloudflare API の D1 のクエリ（「Query D1 Database」と「Raw D1 Database Query」）を実行できるか、できるなら読み取りだけか書き込みもできるか。ドキュメントは両方の Accepted Permissions に `D1 Read` を挙げるが、実行できる文の範囲は書いていない。結果によらず、plan のトークンには D1 の権限を持たせない（[デプロイと設定](deployment.md)の例外を参照）。デプロイ用のトークンの範囲を見直すときの根拠にもする
+- [ ] 移植性のテスト：本番の前に、[デプロイと設定](deployment.md)の「デプロイごとの入力」だけを新しく用意し、検証用のアカウントとは別の 2 つ目のアカウントに、[ブートストラップ](../deployment/bootstrap.md)の段階 0 から 7 までが、Terraform、スクリプト、CI の workflow、Worker のコードを変えずに最後まで通ること。あわせて、リポジトリにアカウント ID、ゾーン ID、D1 の ID が残っていないことを確かめる。通らなければ、直すのは入力の一覧か直書きの箇所で、手順に手作業を足さない
+- [ ] 運用者の `cf auth login` のセッション（複数のアカウントにまたがりうる）の下で、`CLOUDFLARE_ACCOUNT_ID` を設定すると、`cf` がそのアカウントだけを対象にするか。`cf` 1.0.0-beta.21 のグローバルフラグにはアカウントを指定するものがない。従わなければ、アカウントごとの `--profile` か Cloudflare API のスクリプトにする（[デプロイと設定](deployment.md)の直書きの禁止を参照）
+- [ ] `cf` で、D1 のデータベースの ID をリポジトリのファイルに書かずに、Worker の D1 のバインディングに渡せるか（デプロイのスクリプトが名前から引いた ID を渡す）。渡せなければ、スクリプトがデプロイのたびにバインディングの設定を生成し、コミットしない形にする
 - [ ] Takumi Guard の下で、固定した pnpm のセットアップの Action と `pnpm install --frozen-lockfile` が動くこと（利用者は pnpm への対応を確認済み。実装で軽く確かめる）
 
 管理用の Worker（[管理 CLI と管理用の Worker](idpctl.md)参照）は、次が成り立つことを前提にしている。どれかが成り立たなければ、実装に入る前に設計を見直す。
