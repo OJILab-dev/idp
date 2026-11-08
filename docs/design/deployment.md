@@ -72,6 +72,8 @@
 - Terraform のコードは、上の「デプロイごとの入力」を変数として受け取り、アカウント ID、ゾーン ID、ホスト名を `.tf` のファイルに書かない。ゾーン ID は data source でゾーンの名前から引く。
 - provider がどのリソースに対応しているか（mTLS のホスト名の割り当て、fail closed の設定など）は、実装の前に確かめる（[未決事項](open-questions.md)参照）。対応していないものは、`cf` か Cloudflare API のスクリプトにし、wrangler では補わない。
 - 実装（`infra/`、provider 5.28.1）で確かめた結果：mTLS のホスト名の割り当て（`cloudflare_certificate_authorities_hostname_associations`。CA を指定しなければ managed CA）、CSR からのクライアント証明書（`cloudflare_client_certificate`）、WAF のカスタムルールとレート制限ルール（`cloudflare_ruleset`）は provider で持てる。fail closed の設定は、provider の Workers のルート（`cloudflare_workers_route`）に属性がなく、2 つの Worker はルートではなくカスタムドメインを使うので、Terraform には置かない。カスタムドメインで設定できるかは[未決事項](open-questions.md)の項目のまま残す。
+- ゾーンの設定として、Always Use HTTPS を有効にし、TLS の最小バージョンを 1.2 にする（`cloudflare_zone_setting`）。平文の `http://` のリクエストを Worker に届く前にリダイレクトするためと、RFC 8996 の §4 と §5 が TLS 1.0 と 1.1 を使ってはならない（MUST NOT）としているため。どちらもゾーン全体に効く。
+- WAF のカスタムルールは、管理用のホスト名を `lower(http.host)` で比べ、既定のポートを付けた形（`<管理用のホスト名>:443`）も対象にする。`http.host` は送られた `Host` ヘッダーそのままなので、大文字やポートを付けた形でルールを抜けると、Worker 側の確認で拒否されても 1 日のリクエスト上限を使うため。管理用のホスト名は、設定ファイルで小文字のホスト名だけを受け付ける。
 - 今の構成では、Terraform が持つ DNS のレコードはない。IdP の Worker と管理用の Worker のホスト名のレコードは、どちらもカスタムドメインが作るため。カスタムドメイン以外のレコードが要るようになったら、Terraform に足す。
 - WAF のカスタムルールとレート制限ルールは、ゾーンのフェーズごとの entry point のルールセットとして持つ。ゾーンとフェーズごとに 1 つしかないので、Terraform がそのゾーンのそのフェーズのルールをすべて持つ。検証用のアカウントのゾーンにほかのルールがあれば、Terraform の設定に移す。
 - レート制限ルールのしきい値（10 秒あたりの件数）は、実測の前の仮の値として 10 にする。正規のサインイン 1 回でブラウザーから Worker に届くリクエストは 4〜5 件の見込みで、10 秒の間に 1 回やり直せる数にした。実測したら置き換える（[無料枠](free-tier.md)と[未決事項](open-questions.md)参照）。

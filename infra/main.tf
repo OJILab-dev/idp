@@ -1,6 +1,7 @@
 # What Terraform owns is fixed by docs/design/deployment.md "Terraform とスクリプトの分担":
 # the WAF custom rule (mTLS), the rate limiting rule, the mTLS hostname association, and the client
-# certificates issued from CSRs. Not here, on purpose:
+# certificates issued from CSRs, plus the zone settings Always Use HTTPS and the minimum TLS version.
+# Not here, on purpose:
 # - D1: created by scripts/bootstrap-d1.sh so that the plan token needs no D1 permission at all.
 # - Worker custom domains and their DNS records: cloudflare.config.ts owns them and `cf deploy` attaches them.
 # - Fail closed: provider 5.28.1 has no such attribute (cloudflare_workers_route has only pattern and script),
@@ -40,13 +41,32 @@ locals {
 
   # cert_verified is true for a valid certificate even after it is revoked, so revocation must be checked in the
   # same rule (Cloudflare "mTLS related features", WAF for Client Certificates and Certificate Revocation).
+  # http.host is the Host header as sent, so the match ignores case (admin_host is validated as lowercase) and also
+  # takes the explicit default port. An odd form would otherwise skip the rule and reach the Worker: its own check
+  # still refuses it, but the request has then used the daily request limit (docs/design/free-tier.md).
   admin_mtls_block_expression = format(
-    "(http.host eq %s and (not cf.tls_client_auth.cert_verified or cf.tls_client_auth.cert_revoked))",
+    "(lower(http.host) in {%s %s} and (not cf.tls_client_auth.cert_verified or cf.tls_client_auth.cert_revoked))",
     jsonencode(var.admin_host),
+    jsonencode("${var.admin_host}:443"),
   )
 
   # Short enough that a forgotten certificate stops working within a year; long enough that renewal is a yearly chore.
   admin_certificate_validity_days = 365
+}
+
+# Plain http:// requests are redirected at the edge and never reach a Worker. The issuer, RP ID, and WebAuthn
+# origin are all https (docs/design/deployment.md), and the Workers also refuse other schemes themselves.
+resource "cloudflare_zone_setting" "always_use_https" {
+  zone_id    = data.cloudflare_zone.this.zone_id
+  setting_id = "always_use_https"
+  value      = "on"
+}
+
+# RFC 8996 §§4-5: TLS 1.0 and 1.1 MUST NOT be used.
+resource "cloudflare_zone_setting" "min_tls_version" {
+  zone_id    = data.cloudflare_zone.this.zone_id
+  setting_id = "min_tls_version"
+  value      = "1.2"
 }
 
 data "cloudflare_zone" "this" {

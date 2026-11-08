@@ -38,8 +38,20 @@ run "admin_rule_blocks_unverified_or_revoked_certificates_on_the_admin_host_only
   command = plan
 
   assert {
-    condition     = cloudflare_ruleset.custom_rules.rules[0].expression == "(http.host eq \"admin.id.example.com\" and (not cf.tls_client_auth.cert_verified or cf.tls_client_auth.cert_revoked))"
+    condition     = cloudflare_ruleset.custom_rules.rules[0].expression == "(lower(http.host) in {\"admin.id.example.com\" \"admin.id.example.com:443\"} and (not cf.tls_client_auth.cert_verified or cf.tls_client_auth.cert_revoked))"
     error_message = "The admin mTLS rule expression changed."
+  }
+
+  # The Host header is not normalised: a client can send it in another case or with the default port. Both forms
+  # must still hit the rule, or the request reaches the Worker and uses the daily request limit.
+  assert {
+    condition     = strcontains(cloudflare_ruleset.custom_rules.rules[0].expression, "lower(http.host)")
+    error_message = "The admin host match must ignore case."
+  }
+
+  assert {
+    condition     = strcontains(cloudflare_ruleset.custom_rules.rules[0].expression, "\"admin.id.example.com:443\"")
+    error_message = "The admin host match must cover the explicit default port."
   }
 
   assert {
@@ -79,6 +91,30 @@ run "rate_limit_rule_fits_the_free_plan_and_covers_the_worker_endpoints" {
     )
     error_message = "Free plan rate limiting fixes the period and timeout to 10 seconds and counts per IP."
   }
+}
+
+run "zone_redirects_http_to_https_and_refuses_tls_below_1_2" {
+  command = plan
+
+  assert {
+    condition     = cloudflare_zone_setting.always_use_https.setting_id == "always_use_https" && cloudflare_zone_setting.always_use_https.value == "on"
+    error_message = "Always Use HTTPS must be on, so plain http:// requests never reach a Worker."
+  }
+
+  assert {
+    condition     = cloudflare_zone_setting.min_tls_version.setting_id == "min_tls_version" && cloudflare_zone_setting.min_tls_version.value == "1.2"
+    error_message = "The minimum TLS version must be 1.2 (RFC 8996)."
+  }
+}
+
+run "rejects_an_uppercase_admin_host" {
+  command = plan
+
+  variables {
+    admin_host = "ADMIN.id.example.com"
+  }
+
+  expect_failures = [var.admin_host]
 }
 
 run "client_certificates_are_issued_from_the_configured_csrs" {

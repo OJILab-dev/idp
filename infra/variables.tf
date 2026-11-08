@@ -43,6 +43,12 @@ variable "admin_host" {
   type        = string
   nullable    = false
 
+  # Lowercase only, so that the WAF rule's lower(http.host) comparison can match it.
+  validation {
+    condition     = can(regex("^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$", var.admin_host))
+    error_message = "admin_host must be a lowercase hostname without a port."
+  }
+
   validation {
     condition     = endswith(var.admin_host, ".${var.zone}") && var.admin_host != var.issuer_host
     error_message = "admin_host must be a name inside the zone and must differ from issuer_host (docs/design/idpctl.md)."
