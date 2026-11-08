@@ -1,6 +1,7 @@
 // Enabling and disabling users, clients, and groups: one appended row in the resource's enablement events, only
 // when the state differs (docs/design/data-model.md, "有効・無効と削除しない行"). A resource without any event row
 // counts as disabled (fail-closed), so the same rule is spelled as COALESCE(..., 'disabled') in SQL and here.
+import { enablementOutput } from "./outputs.js";
 import { z } from "zod";
 import type { SqlCondition, SqlRow, SqlStatement } from "../shared/index.js";
 import type { Concern, OperationName, WriteOperation } from "./operation.js";
@@ -129,6 +130,7 @@ export function enablementOperation(resource: EnablementResource, enablement: En
     target: { kind: resource, field: r.column } as WriteOperation<IdInput, EnablementResult>["target"],
     input: z.strictObject({ [r.column]: idSchema }).transform((value): IdInput => ({ id: value[r.column] as string })),
     http: { method: "POST", path: r.path, status: 201 },
+    output: enablementOutput,
     async plan(ctx, input) {
       const now = ctx.now();
       const id = input.id;

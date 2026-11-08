@@ -99,7 +99,7 @@ pnpm run test        # Vitest。D1 のスキーマのテストはローカルの
 pnpm run check       # 上の 3 つを順に実行する。コミットの前に必ず通す
 ```
 
-- `contract/migrations/0001_init.sql` は [データモデル](docs/design/data-model.md) の SQL のブロックと同じ内容でなければならず、テストがずれを検出します。スキーマを変えるときは、先にドキュメントを更新してからマイグレーションに写します。
+- `contract/migrations/` の番号順のマイグレーション（`0001_init.sql`、`0002_audit_log_append_only.sql`、…）は、[データモデル](docs/design/data-model.md) の SQL のブロックと、出てくる順に 1 対 1 で同じ内容でなければならず、テストがずれを検出します。スキーマを変えるときは、先にドキュメントを更新してからマイグレーションに写します。適用済みのマイグレーションは書き換えず、次の番号のファイルを足します。
 - テストの D1 は `cf` が同梱するのと同じ版の miniflare を使います。`cf` を更新するときは、`package.json` の `miniflare` も `cf` の依存と同じ版に揃えます。wrangler は使いません。
 
 `idpctl`（Go）と e2e（Playwright）を追加したら、それぞれの Setup、Build、Test、Check の正規コマンドをこの節へ記録してください。

@@ -1,5 +1,6 @@
 // User management (docs/design/idpctl.md): create, rename, enable and disable, list, get, and revoke sessions.
 // Users are never deleted; disabling ends access and keeps the row (data-model.md).
+import { sessionRevokeOutput, userCreateOutput, userGetOutput, userRenameOutput, usersListOutput } from "./outputs.js";
 import { z } from "zod";
 import { newUuidV4, type SqlRow } from "../shared/index.js";
 import { currentEnablementSql, enablementOperation, initialEnablementStatement, type Enablement } from "./enablement.js";
@@ -23,6 +24,7 @@ export const userCreate: WriteOperation<{ readonly name: string }, UserCreateRes
   target: "none",
   input: z.strictObject({ name: nameSchema }),
   http: { method: "POST", path: "/v1/users", status: 201 },
+  output: userCreateOutput,
   async plan(ctx, input) {
     const now = ctx.now();
     const id = newUuidV4();
@@ -59,6 +61,7 @@ export const userRename: WriteOperation<{ readonly user_id: string; readonly nam
   target: { kind: "user", field: "user_id" },
   input: z.strictObject({ user_id: uuidSchema, name: nameSchema }),
   http: { method: "PUT", path: "/v1/users/{id}/name", status: 200 },
+  output: userRenameOutput,
   async plan(_ctx, input) {
     const guard = { sql: "EXISTS (SELECT 1 FROM users WHERE id = ? AND name IS NOT ?)", params: [input.user_id, input.name] };
     return {
@@ -100,6 +103,7 @@ export const sessionRevoke: WriteOperation<{ readonly user_id: string }, Session
   target: { kind: "user", field: "user_id" },
   input: z.strictObject({ user_id: uuidSchema }),
   http: { method: "DELETE", path: "/v1/users/{id}/sessions", status: 200 },
+  output: sessionRevokeOutput,
   async plan(_ctx, input) {
     const guard = { sql: "EXISTS (SELECT 1 FROM users WHERE id = ?)", params: [input.user_id] };
     return {
@@ -157,6 +161,7 @@ export const usersList: ReadOperation<PageInput, Page<UserSummary>> = {
   establishesIdentity: false,
   input: z.strictObject(pageInputShape),
   http: { method: "GET", path: "/v1/users", status: 200 },
+  output: usersListOutput,
   read: (ctx, input) => readPage(ctx.db, USERS_PAGE, input, toUserSummary),
 };
 
@@ -182,6 +187,7 @@ export const userGet: ReadOperation<{ readonly user_id: string }, UserDetail> = 
   establishesIdentity: false,
   input: z.strictObject({ user_id: uuidSchema }),
   http: { method: "GET", path: "/v1/users/{id}", status: 200 },
+  output: userGetOutput,
   async read(ctx, input) {
     const [user, passkeys] = await ctx.db.batch([
       { sql: `SELECT id, name, created_at, ${currentEnablementSql("user")} AS enablement FROM users WHERE id = ?`, params: [input.user_id, input.user_id] },

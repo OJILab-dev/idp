@@ -1,6 +1,7 @@
 // RP management (docs/design/idpctl.md, docs/design/clients.md): register, rename, set redirect URIs, rotate the
 // secret, set the ID token algorithm, enable and disable, and list. Clients are never deleted, so a client ID is
 // never reused.
+import { clientCreateOutput, clientRenameOutput, clientRotateSecretOutput, clientSetIdTokenAlgOutput, clientSetRedirectsOutput, clientsListOutput } from "./outputs.js";
 import { z } from "zod";
 import {
   classifyRedirectUri,
@@ -86,6 +87,7 @@ export const clientCreate: WriteOperation<ClientCreateInput, ClientCreateResult>
       });
     }),
   http: { method: "POST", path: "/v1/clients", status: 201 },
+  output: clientCreateOutput,
   async plan(ctx, input) {
     requireAlgorithmEnabled(ctx, input.id_token_alg);
     const now = ctx.now();
@@ -139,6 +141,7 @@ export const clientRename: WriteOperation<{ readonly client_id: string; readonly
   target: { kind: "client", field: "client_id" },
   input: z.strictObject({ client_id: clientIdSchema, name: nameSchema }),
   http: { method: "PUT", path: "/v1/clients/{id}/name", status: 200 },
+  output: clientRenameOutput,
   async plan(_ctx, input) {
     const id = input.client_id;
     const guard = { sql: "EXISTS (SELECT 1 FROM clients WHERE id = ? AND name IS NOT ?)", params: [id, input.name] };
@@ -185,6 +188,7 @@ export const clientSetRedirects: WriteOperation<
   target: { kind: "client", field: "client_id" },
   input: z.strictObject({ client_id: clientIdSchema, redirect_uris: redirectUrisSchema }),
   http: { method: "PUT", path: "/v1/clients/{id}/redirect-uris", status: 200 },
+  output: clientSetRedirectsOutput,
   async plan(ctx, input) {
     const id = input.client_id;
     const clientType = await readClientType(ctx, id);
@@ -229,6 +233,7 @@ export const clientRotateSecret: WriteOperation<{ readonly client_id: string }, 
   target: { kind: "client", field: "client_id" },
   input: z.strictObject({ client_id: clientIdSchema }),
   http: { method: "POST", path: "/v1/clients/{id}/secrets", status: 201 },
+  output: clientRotateSecretOutput,
   async plan(_ctx, input) {
     const id = input.client_id;
     const secret = randomToken();
@@ -266,6 +271,7 @@ export const clientSetIdTokenAlg: WriteOperation<{ readonly client_id: string; r
   target: { kind: "client", field: "client_id" },
   input: z.strictObject({ client_id: clientIdSchema, id_token_alg: idTokenAlgSchema }),
   http: { method: "PUT", path: "/v1/clients/{id}/id-token-alg", status: 200 },
+  output: clientSetIdTokenAlgOutput,
   async plan(ctx, input) {
     requireAlgorithmEnabled(ctx, input.id_token_alg);
     const id = input.client_id;
@@ -340,5 +346,6 @@ export const clientsList: ReadOperation<ClientsListInput, Page<ClientSummary>> =
   establishesIdentity: false,
   input: z.strictObject({ ...pageInputShape, id_token_alg: idTokenAlgSchema.optional() }),
   http: { method: "GET", path: "/v1/clients", status: 200 },
+  output: clientsListOutput,
   read: (ctx, input) => readPage(ctx.db, clientsPage(input), input, toClientSummary),
 };

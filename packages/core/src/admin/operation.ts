@@ -149,19 +149,24 @@ export interface WritePlan<R> {
 }
 
 /** The metadata every operation carries next to its use case (docs/design/idpctl.md, "操作の分類"). */
-export interface OperationBase<I> {
+export interface OperationBase<I, R> {
   /** The operation name; unique in the registry. */
   readonly name: OperationName;
   /** True only for enroll_link_issue; an entry point other than the CLI must never expose such an operation. */
   readonly establishesIdentity: boolean;
   /** The input schema; the same schema validates the request and generates the admin API's OpenAPI spec. */
   readonly input: z.ZodType<I>;
+  /**
+   * The response body schema; generates the admin API's OpenAPI responses. Typed by the result, so it cannot drift
+   * from it; never used to validate results at run time.
+   */
+  readonly output: z.ZodType<R>;
   /** The REST mapping of the operation. */
   readonly http: HttpMapping;
 }
 
 /** A read operation (a use case of the admin API): no audit row, no Idempotency-Key. */
-export interface ReadOperation<I, R> extends OperationBase<I> {
+export interface ReadOperation<I, R> extends OperationBase<I, R> {
   /** Always a read. */
   readonly class: { readonly access: "read" };
   /**
@@ -177,7 +182,7 @@ export interface ReadOperation<I, R> extends OperationBase<I> {
 }
 
 /** A write operation (a use case of the admin API), planned as one guarded batch with its audit row. */
-export interface WriteOperation<I, R> extends OperationBase<I> {
+export interface WriteOperation<I, R> extends OperationBase<I, R> {
   /** Always a write, with its management concern. */
   readonly class: { readonly access: "write"; readonly concern: Concern };
   /** Which input field names the target of a failure row. */

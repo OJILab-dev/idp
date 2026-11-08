@@ -1,5 +1,6 @@
 // Access management (docs/design/authorization.md, docs/design/idpctl.md): grant_add, grant_remove, grants_list, and
 // access_check. A grant is principal × client, the same for users and groups; effective_access is the only judge.
+import { accessCheckOutput, grantAddOutput, grantRemoveOutput, grantsListOutput } from "./outputs.js";
 import { z } from "zod";
 import { isUuidV4, type SqlRow } from "../shared/index.js";
 import { pairsAsJson, pairsEnabledByGrant, toPairs, type AccessPair, type Principal } from "./access.js";
@@ -52,6 +53,7 @@ export const grantAdd: WriteOperation<GrantInput, GrantAddResult> = {
   target: { kind: "client", field: "client_id" },
   input: z.strictObject({ client_id: clientIdSchema, principal: principalSchema }),
   http: { method: "PUT", path: "/v1/clients/{id}/grants/{principal}", status: 200 },
+  output: grantAddOutput,
   async plan(ctx, input) {
     const { client_id: clientId, principal } = input;
     const exists = principalExists(principal);
@@ -102,6 +104,7 @@ export const grantRemove: WriteOperation<GrantInput, GrantRemoveResult> = {
   target: { kind: "client", field: "client_id" },
   input: z.strictObject({ client_id: clientIdSchema, principal: principalSchema }),
   http: { method: "DELETE", path: "/v1/clients/{id}/grants/{principal}", status: 200 },
+  output: grantRemoveOutput,
   async plan(_ctx, input) {
     const { client_id: clientId, principal } = input;
     const exists = principalExists(principal);
@@ -161,6 +164,7 @@ export const grantsList: ReadOperation<GrantsListInput, Page<GrantSummary>> = {
   establishesIdentity: false,
   input: z.strictObject({ ...pageInputShape, client_id: clientIdSchema.optional(), principal: principalSchema.optional() }),
   http: { method: "GET", path: "/v1/grants", status: 200 },
+  output: grantsListOutput,
   read: (ctx, input) => readPage(ctx.db, grantsPage(input), input, toGrantSummary),
 };
 
@@ -196,6 +200,7 @@ export const accessCheck: ReadOperation<{ readonly user: string; readonly client
   establishesIdentity: false,
   input: z.strictObject({ user: uuidSchema, client: clientIdSchema }),
   http: { method: "GET", path: "/v1/access", status: 200 },
+  output: accessCheckOutput,
   async read(ctx, input) {
     const { user, client } = input;
     const [head, grants] = await ctx.db.batch([

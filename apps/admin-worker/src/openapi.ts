@@ -2,8 +2,8 @@
 // (docs/design/idpctl.md; docs/design/cross-language-contract.md). It is the Go/TypeScript contract that idpctl's
 // types are generated from, checked in at contract/openapi/admin.json and compared in the tests.
 import { z } from "zod";
-import { enablementEventSchema } from "@idp/core/admin";
-import { PROBLEM_KINDS } from "@idp/core/shared";
+import { PROBLEM_STATUS, enablementEventSchema, problemType } from "@idp/core/admin";
+import { PROBLEM_KINDS, type ProblemKind } from "@idp/core/shared";
 import { inputField, pathParams, ROUTES, type Route } from "./routes.js";
 
 type JsonSchema = Record<string, unknown>;
@@ -29,6 +29,87 @@ const PROBLEM_RESPONSE = {
   description: "An RFC 9457 problem; branch on `type`.",
   content: { "application/problem+json": { schema: { $ref: "#/components/schemas/Problem" } } },
 };
+
+// Only the framework decides these kinds, so they can be narrowed per endpoint without per-operation metadata.
+const IDEMPOTENCY_KINDS: ReadonlySet<ProblemKind> = new Set(["idempotency-key-reused", "secret-not-replayable"]);
+
+/**
+ * Lists the problem kinds an endpoint can answer, by status. Every endpoint can answer validation-failed, forbidden,
+ * not-found, and internal; only writes can conflict (409); only an idempotent POST can answer the idempotency kinds.
+ * Within a status the list is the core's, not narrowed per operation: idpctl branches on `type`, never on status.
+ */
+function problemKindsByStatus(route: Route): ReadonlyMap<number, readonly ProblemKind[]> {
+  const write = route.operations.some((operation) => operation.class.access === "write");
+  const byStatus = new Map<number, ProblemKind[]>();
+  for (const kind of PROBLEM_KINDS) {
+    const status = PROBLEM_STATUS[kind];
+    if (IDEMPOTENCY_KINDS.has(kind) && !route.idempotent) continue;
+    if (status === 409 && !write) continue;
+    byStatus.set(status, [...(byStatus.get(status) ?? []), kind]);
+  }
+  return new Map([...byStatus].sort(([a], [b]) => a - b));
+}
+
+// A shared response component per distinct (status, kinds), named by status plus a suffix for a narrower variant,
+// so the 26 endpoints reference a handful of components instead of repeating them.
+function problemComponentName(status: number, kinds: readonly ProblemKind[]): string {
+  const idempotent = kinds.some((kind) => IDEMPOTENCY_KINDS.has(kind));
+  return `Problem${status}${status === 409 && idempotent ? "Idempotent" : ""}`;
+}
+
+function problemComponent(status: number, kinds: readonly ProblemKind[]): JsonSchema {
+  return {
+    description: `An RFC 9457 problem of kind ${kinds.join(", ")}.`,
+    content: {
+      "application/problem+json": {
+        schema: {
+          allOf: [
+            { $ref: "#/components/schemas/Problem" },
+            { type: "object", properties: { type: { enum: kinds.map(problemType) }, status: { const: status } } },
+          ],
+        },
+      },
+    },
+  };
+}
+
+function problemResponses(route: Route): Record<string, JsonSchema> {
+  const responses: Record<string, JsonSchema> = {};
+  for (const [status, kinds] of problemKindsByStatus(route)) {
+    responses[String(status)] = { $ref: `#/components/responses/${problemComponentName(status, kinds)}` };
+  }
+  return responses;
+}
+
+function problemComponents(): Record<string, JsonSchema> {
+  const components: Record<string, JsonSchema> = {};
+  for (const route of ROUTES) {
+    for (const [status, kinds] of problemKindsByStatus(route)) {
+      const name = problemComponentName(status, kinds);
+      const component = problemComponent(status, kinds);
+      const existing = components[name];
+      // One name must mean one set of kinds; a clash means the naming above no longer captures the variants.
+      if (existing !== undefined && JSON.stringify(existing) !== JSON.stringify(component)) throw new Error(`${name} has two variants`);
+      components[name] = component;
+    }
+  }
+  return Object.fromEntries(Object.entries(components).sort(([a], [b]) => (a < b ? -1 : 1)));
+}
+
+// The output side: what the server sends, so an optional member is one the server may omit.
+function outputSchema(route: Route): JsonSchema {
+  const schemas = route.operations.map((operation) => {
+    const json = z.toJSONSchema(operation.output, { io: "output", unrepresentable: "any" }) as JsonSchema;
+    delete json["$schema"];
+    return json;
+  });
+  const [first] = schemas;
+  // The enable and disable operations of one endpoint share a result type, so they must share the schema.
+  if (first === undefined || schemas.some((s) => JSON.stringify(s) !== JSON.stringify(first))) {
+    throw new Error(`${route.operationId} has no single output schema`);
+  }
+  return first;
+}
 
 function operationObject(route: Route): JsonSchema {
   const [first] = route.operations;
@@ -68,7 +149,8 @@ function operationObject(route: Route): JsonSchema {
     ...(parameters.length === 0 ? {} : { parameters }),
     ...(requestBody === undefined ? {} : { requestBody }),
     responses: {
-      [String(route.status)]: { description: "Success.", content: { "application/json": { schema: {} } } },
+      [String(route.status)]: { description: "Success.", content: { "application/json": { schema: outputSchema(route) } } },
+      ...problemResponses(route),
       default: PROBLEM_RESPONSE,
     },
   };
@@ -94,6 +176,7 @@ export function buildOpenApiDocument(): JsonSchema {
     },
     paths,
     components: {
+      responses: problemComponents(),
       schemas: {
         Problem: {
           type: "object",

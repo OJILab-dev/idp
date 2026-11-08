@@ -1,5 +1,6 @@
 // audit_tail (docs/design/idpctl.md): the audit log, newest first, filtered by target, operation, and time. Admins
 // read the user's own passkey additions and revocations here, in place of a notification to the user.
+import { auditTailOutput } from "./outputs.js";
 import { z } from "zod";
 import { isAuditTarget, type AuditTarget, type SqlCondition, type SqlRow } from "../shared/index.js";
 import type { ReadOperation } from "./operation.js";
@@ -73,5 +74,6 @@ export const auditTail: ReadOperation<AuditTailInput, Page<AuditEvent>> = {
     until: unixSecondsSchema.optional(),
   }),
   http: { method: "GET", path: "/v1/audit-events", status: 200 },
+  output: auditTailOutput,
   read: (ctx, input) => readPage(ctx.db, auditPage(input as AuditTailInput), input, toAuditEvent),
 };

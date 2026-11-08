@@ -1,5 +1,6 @@
 // Group management (docs/design/idpctl.md, docs/design/authorization.md): create, rename, enable and disable, add
 // and remove members, and list. Groups are named by ID, never by name, since names change.
+import { groupCreateOutput, groupMemberAddOutput, groupMemberRemoveOutput, groupRenameOutput, groupsListOutput } from "./outputs.js";
 import { z } from "zod";
 import { newUuidV4, type SqlRow } from "../shared/index.js";
 import { pairsAsJson, pairsEnabledByMembership, toPairs, type AccessPair } from "./access.js";
@@ -21,6 +22,7 @@ export const groupCreate: WriteOperation<{ readonly name: string }, GroupCreateR
   target: "none",
   input: z.strictObject({ name: nameSchema }),
   http: { method: "POST", path: "/v1/groups", status: 201 },
+  output: groupCreateOutput,
   async plan(ctx, input) {
     const now = ctx.now();
     const id = newUuidV4();
@@ -61,6 +63,7 @@ export const groupRename: WriteOperation<{ readonly group_id: string; readonly n
   target: { kind: "group", field: "group_id" },
   input: z.strictObject({ group_id: uuidSchema, name: nameSchema }),
   http: { method: "PUT", path: "/v1/groups/{id}/name", status: 200 },
+  output: groupRenameOutput,
   async plan(_ctx, input) {
     const id = input.group_id;
     const guard = {
@@ -115,6 +118,7 @@ export const groupMemberAdd: WriteOperation<MembershipInput, GroupMemberAddResul
   target: { kind: "group", field: "group_id" },
   input: z.strictObject({ group_id: uuidSchema, user_id: uuidSchema }),
   http: { method: "PUT", path: "/v1/groups/{id}/members/{user_id}", status: 200 },
+  output: groupMemberAddOutput,
   async plan(_ctx, input) {
     const { group_id: groupId, user_id: userId } = input;
     const guard = {
@@ -158,6 +162,7 @@ export const groupMemberRemove: WriteOperation<MembershipInput, MembershipInput>
   target: { kind: "group", field: "group_id" },
   input: z.strictObject({ group_id: uuidSchema, user_id: uuidSchema }),
   http: { method: "DELETE", path: "/v1/groups/{id}/members/{user_id}", status: 200 },
+  output: groupMemberRemoveOutput,
   async plan(_ctx, input) {
     const { group_id: groupId, user_id: userId } = input;
     const guard = { sql: "EXISTS (SELECT 1 FROM group_members WHERE group_id = ? AND user_id = ?)", params: [groupId, userId] };
@@ -218,5 +223,6 @@ export const groupsList: ReadOperation<PageInput, Page<GroupSummary>> = {
   establishesIdentity: false,
   input: z.strictObject(pageInputShape),
   http: { method: "GET", path: "/v1/groups", status: 200 },
+  output: groupsListOutput,
   read: (ctx, input) => readPage(ctx.db, GROUPS_PAGE, input, toGroupSummary),
 };
