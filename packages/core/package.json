@@ -1,0 +1,10 @@
+{
+  "name": "@idp/core",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./shared": "./src/shared/index.ts",
+    "./user": "./src/user/index.ts",
+    "./admin": "./src/admin/index.ts"
+  }
+}
