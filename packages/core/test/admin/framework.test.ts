@@ -202,8 +202,11 @@ describe("module boundaries", () => {
   // zod is for the admin API's schemas; keeping it out of shared and user keeps it out of the IdP Worker's bundle.
   it.each(["shared", "user"])("src/%s does not import zod", (dir) => {
     const root = join(import.meta.dirname, "..", "..", "src", dir);
-    for (const file of readdirSync(root)) {
-      expect(readFileSync(join(root, file), "utf8"), file).not.toMatch(/from "zod/);
+    // Recursive, so a subdirectory such as src/user/webauthn is covered as well.
+    const files = readdirSync(root, { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile());
+    expect(files.length).toBeGreaterThan(0);
+    for (const file of files) {
+      expect(readFileSync(join(file.parentPath, file.name), "utf8"), file.name).not.toMatch(/from "zod/);
     }
   });
 });
