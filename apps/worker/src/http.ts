@@ -88,8 +88,49 @@ export function isSameOriginFetch(request: Request): boolean {
   return request.headers.get("sec-fetch-site") === "same-origin";
 }
 
-// A WebAuthn response is a few kilobytes at most; anything far larger is not one of the pages' requests.
-const JSON_BODY_LIMIT = 64 * 1024;
+// A WebAuthn response is a few kilobytes at most, and so is any legitimate /authorize or /token form; anything far
+// larger is not a request of the pages or of an RP.
+const BODY_LIMIT_BYTES = 64 * 1024;
+
+function mediaTypeOf(request: Request): string | undefined {
+  return (request.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase();
+}
+
+/**
+ * Reads a body as UTF-8 text, at most {@link BODY_LIMIT_BYTES} bytes.
+ *
+ * The limit is enforced on the bytes as they arrive, not on Content-Length alone: a chunked body declares no length,
+ * and buffering it whole first would let one request hold the isolate's memory. A declared length over the limit is
+ * refused before anything is read.
+ *
+ * @returns The text, or `undefined` when the body is over the limit.
+ */
+async function readLimitedText(request: Request): Promise<string | undefined> {
+  const declared = request.headers.get("content-length");
+  if (declared !== null && !(Number(declared) <= BODY_LIMIT_BYTES)) return undefined;
+  if (request.body === null) return "";
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > BODY_LIMIT_BYTES) {
+      // Stop the upload instead of draining it; the rest of the body is never read.
+      await reader.cancel();
+      return undefined;
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
 
 /**
  * Reads an `application/json` body that is a JSON object.
@@ -98,12 +139,9 @@ const JSON_BODY_LIMIT = 64 * 1024;
  *   not an object.
  */
 export async function readJsonObject(request: Request): Promise<Readonly<Record<string, unknown>> | undefined> {
-  const mediaType = (request.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase();
-  if (mediaType !== "application/json") return undefined;
-  const declared = Number(request.headers.get("content-length") ?? "0");
-  if (!(declared <= JSON_BODY_LIMIT)) return undefined;
-  const text = await request.text();
-  if (text.length > JSON_BODY_LIMIT) return undefined;
+  if (mediaTypeOf(request) !== "application/json") return undefined;
+  const text = await readLimitedText(request);
+  if (text === undefined) return undefined;
   let value: unknown;
   try {
     value = JSON.parse(text);
@@ -116,12 +154,12 @@ export async function readJsonObject(request: Request): Promise<Readonly<Record<
 /**
  * Reads an `application/x-www-form-urlencoded` body in the order received, repeats included.
  *
- * @returns The pairs, or `undefined` when the body is another media type.
+ * @returns The pairs, or `undefined` when the body is another media type or exceeds the limit.
  */
 export async function readForm(request: Request): Promise<readonly (readonly [string, string])[] | undefined> {
-  const mediaType = (request.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase();
-  if (mediaType !== "application/x-www-form-urlencoded") return undefined;
-  return [...new URLSearchParams(await request.text())];
+  if (mediaTypeOf(request) !== "application/x-www-form-urlencoded") return undefined;
+  const text = await readLimitedText(request);
+  return text === undefined ? undefined : [...new URLSearchParams(text)];
 }
 
 /** One structured line per request (docs/design/deployment.md, "ログ"); never a token, cookie, body, or IP address. */
