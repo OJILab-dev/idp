@@ -83,6 +83,9 @@ CLI のサブコマンドは操作名をそのまま使う（`idpctl client_crea
 
 ユーザー、グループ、client の名前は、次のように扱う。
 
+- 名前（`users.name`、`groups.name`、`clients.name`）の形式は共有コアの入力の検証で確かめる。1〜64 文字（Unicode のコードポイントで数える）で、Unicode の NFC であり、前後に空白を持たず、制御文字、書式文字などの一般カテゴリ C の文字と、行と段落の区切り文字を含まない。NFC に揃えるのは、見た目が同じ 2 つの書き方を同じ名前として扱い、グループ名の一意性を書き方の違いで迂回させないため。制御文字と区切り文字を除くのは、`idpctl` の表示で行を壊したり、保存した値と違って見えたりしないようにするため。
+- グループ名の一意性は、同じバッチの条件で確かめ、ほかのグループが持つ名前への `group_create` と `group_rename` は `already-exists` にする。
+
 - `user_rename` は表示名（`users.name`）を、`group_rename` はグループ名（`groups.name`）を、`client_rename` は client の表示名（`clients.name`）を変える。ID は変わらないので、`sub`、client ID、所属、grant はそのまま残る。変更前と変更後の名前は `detail_json` に残さない。監査ログは削除しないので、名前を残すと、表示名を中立にしても旧名が消えないため（[データモデル](data-model.md)の監査ログを参照）。
 - これらも他の書き込みと同じく、監査ログに 1 行を書く。
 
@@ -183,6 +186,7 @@ ID トークンの署名アルゴリズム（[トークン設計](tokens.md)参�
 
 - 管理 API の作成と追記の `POST`（`user_create`、`client_create`、`group_create`、有効化と無効化、`enroll_link_issue`、`client_rotate_secret`）は、`Idempotency-Key` ヘッダーを必須にする。ヘッダーは IETF の draft-ietf-httpapi-idempotency-key-header で定義されている。この文書はまだ RFC ではない Internet-Draft で、確認した時点の最新は -08（2026-10-22）である。ヘッダーがなければ `validation-failed`（400）を返す（draft §2.7 は、ヘッダーを必須とする操作でヘッダーがなければ 400 を返すべき（SHOULD）としている）。
 - `idpctl` は 1 回の実行ごとに乱数のキー（[契約](cross-language-contract.md)のトークンと同じ形）を作り、自分の再試行で同じキーを使う。管理用の Worker は、その形でないキーを `validation-failed` で拒否する。
+- ハッシュする「要求の本文」は、管理用の Worker がパスのパラメータ、クエリ、本文をまとめて共有コアに渡し、共有コアのスキーマで検証した後の入力とする。オブジェクトのメンバーをキーの順に並べた JSON の SHA-256 で、メンバーの順番が違うだけの要求は同じハッシュになる。HTTP の本文だけをハッシュすると、有効化と無効化の本文（`{"enablement": "disabled"}` など）はどのユーザーでも同じなので、同じキーを別のユーザーに使った要求に、前のユーザーの応答を再生してしまうため。[データモデル](data-model.md)の `idempotency_keys.request_hash` の注釈の「要求の本文」は、この入力を指す。
 - 管理用の Worker は、キー、操作名、要求の本文のハッシュ、応答、有効期限（24 時間）を `idempotency_keys` に書く。行は操作と同じバッチで書くので、操作と保存した応答は一緒に確定するか、一緒に消える。同時に同じキーで来た 2 つ目の要求は、主キーの衝突で失敗してから保存した応答を返す。期限切れの行は、ほかの短命の行と同じく、新しい行を書くバッチで削除する。キーは管理者ごとに分け、別の管理者の応答は返さない。
 - 同じキーで同じ本文なら、保存した応答をそのまま返す。同じキーで本文か操作が違えば `idempotency-key-reused`（422）を返す（draft §2.2 はキーを別の本文の要求に再利用してはならない（MUST NOT）とし、§2.7 はそのとき 422 を返すべき（SHOULD）としている）。
 - 秘密は保存しない。秘密を返す操作（confidential client の `client_create`、`client_rotate_secret`、`enroll_link_issue`）は応答を保存せず、同じキーの再生には `secret-not-replayable` を返す。管理者は新しいキーで操作をやり直す。`enroll_link_issue` のやり直しは前のリンクを無効にし、`client_rotate_secret` のやり直しは前のシークレットを置き換えるので、平文を受け取れなかった秘密が有効なまま残ることはない。confidential client の `client_create` を再生できなかったときは、`client_rotate_secret` で新しいシークレットを発行する。
@@ -195,6 +199,8 @@ ID トークンの署名アルゴリズム（[トークン設計](tokens.md)参�
 
 - パラメータは `limit`（既定 50、最大 200）と、不透明な `cursor`。応答の本文は `items`、`next_cursor`、`prev_cursor`（どちらも文字列か `null`）を持つ。`Link` ヘッダー、総件数、ページ番号は返さない。
 - 並び順は、`audit_tail` が `id` の新しい順、ほかは作成の順（`created_at` と ID）。
+- 中身のない最後のページの先を指すカーソル（境界の行より後に行がない場合）には、`items` を空にし、`next_cursor` と `prev_cursor` をどちらも `null` にして返す。指す行がないため。
+- `limit` は、JSON の本文では整数で、クエリでは 10 進の文字列（先頭に 0 を付けない）で受け取る。どちらも共有コアのスキーマで検証する。
 - カーソルは、向き（次か前か）と境界の行の並びのキーを base64url にしたもので、署名しない。`next_cursor` は向きが「次」で、そのページの最後の行のキーを持ち、`prev_cursor` は向きが「前」で、そのページの最初の行のキーを持つ。最初のページの `prev_cursor` と最後のページの `next_cursor` は `null` にする。共有コアがカーソルを検証し、不正なら `validation-failed` を返す。秘密を含まず、並びのキーを知られても困らないので、署名は要らない。
 - `audit_tail` は、`target`、`operation`、`since`、`until`（UNIX 秒）で絞り込める。
 - オフセットのページングにしない理由：行が追加されるとオフセットのページがずれ、`OFFSET` と総件数の `COUNT` は読み飛ばす行も読むので、D1 はそれも読み取りとして数える（[無料枠](free-tier.md)参照）。

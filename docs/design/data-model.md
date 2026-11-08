@@ -290,6 +290,8 @@ BEGIN SELECT RAISE(ABORT, 'groups are never deleted'); END;
 - IdP の Worker は `success` の行だけを書き、失敗や拒否は IdP の Worker のログに任せる。IdP の Worker のエンドポイントは認証前のリクエストからも呼べるので、失敗の行を書くと、誰でも D1 の 1 日の書き込み上限を監査ログの行で消費させられるため（[無料枠](free-tier.md)参照）。
 - IdP の Worker の行は、`credentials` への書き込みと同じ条件を付けて、同じバッチに置く。登録と追加は、挿入と同じ条件（`user_enablement` でユーザーが `enabled`、パスキーの本数が[上限](cross-language-contract.md)未満）を付けた `INSERT … SELECT` で書く。本人による失効は、削除と同じ条件（対象がそのユーザーのパスキーで、2 本以上ある）を付けた `INSERT … SELECT` を削除の直前の文に置く。条件が成り立たず書き込みが起きなければ、監査ログの行も書かれない。拒否されたのに成功の行が残ることはない。
 - `target` と `detail_json` には、ID、列挙値、数値、時刻と、個人情報を含まない設定値（redirect URI、署名アルゴリズム）だけを入れる。ユーザーの表示名、グループ名、client の表示名と、自由記述（理由など）は入れない。監査ログの行は削除しないので、ここに入った個人情報は、`user_rename` で表示名を中立にしても、break-glass で `users` の行を消しても残り続けるため（設計原則 7）。名前は、`target` の ID から今の行を引いて表示する。
+- `detail_json` に入れてよいメンバーは、共有コアの監査ログの行の組み立てが持つ許可表で 1 か所に固定する。表はメンバーごとに値の形（UUIDv4、client ID、`user:<id>` か `group:<id>`、credential ID、列挙値、UNIX 秒、件数など）を持ち、組み立ては表にないメンバーや形の合わない値を、文を作る前に拒否する。名前は ID の形にも列挙値にも合わないので、ここで止まる。新たな操作がメンバーを足すときは、この表に形の判定と一緒に足す。新たに使えるようになった組（`newly_enabled`）と消したセッションの数（`sessions_deleted`）は、書き込みと同じバッチの SQL で数えて、同じ文の中で `detail_json` に入れる。値は ID の列と件数だけから作るので、名前が入らない。
+- 失敗の行の `detail_json` は、問題の種類（`problem`。[管理 CLI と管理用の Worker](idpctl.md)の `kind`）だけを持つ。拒否された入力の値は入れない。ID の欄に打ち間違えた名前が、そのまま残らないようにするため。
 - 対象が 2 つある操作は、`grant_add` などでは client を、`group_member_add` などではグループを `target` に入れ、もう一方（`user:<id>` や `group:<id>`）を `detail_json` に入れる。
 - 権限を広げる操作（`grant_add`、`group_member_add`）は、新たに使えるようになったユーザーと client の組（どちらも ID）を `detail_json` に残す。
 - 有効化と無効化（`user_enable`、`user_disable`、`client_enable`、`client_disable`、`group_enable`、`group_disable`）は、出来事の行と同じバッチで監査ログに 1 行を書く。理由は受け取らず、記録しない。状態の正は出来事の表で、アクセスの判定は監査ログを読まない。
