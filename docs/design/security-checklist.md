@@ -8,7 +8,7 @@
 - [ ] ループバックの `redirect_uri` は IP リテラル（`127.0.0.1` と `[::1]`）だけを登録でき、`localhost` は拒否する（RFC 8252 §8.3）
 - [ ] client type を登録時に記録する。confidential client が認証なしで `/token` を呼んだら拒否し、public client が送ってきたシークレットは受け付けない（RFC 8252 §8.4・§8.5）
 - [ ] public client には、既存のセッションや以前の許可があっても毎回パスキー認証を求める（RFC 8252 §8.6）
-- [ ] CORS ヘッダーを返さず、ブラウザから直接 `/token` を呼べないようにする（RFC 10017 の BFF を前提にする）
+- [ ] どのエンドポイントも CORS ヘッダーを返さず、ブラウザから直接 `/token` と `/userinfo` を呼べないようにする（RFC 10017 の BFF を前提にする。OIDC の SHOULD からの例外は[標準準拠](standards-compliance.md)を参照）
 - [ ] client と `redirect_uri` を検証する前のエラーはリダイレクトせず、エラーページを返す。`prompt=none` の場合も同じ（Pocket ID CVE-2026-55834）
 - [ ] 認可コードは client、`redirect_uri`、PKCE に紐付け、すべて検証してから原子的に消費する（Pocket ID CVE-2026-28513）
 - [ ] PKCE S256 を全クライアントで必須にし、`code_challenge` のない認可リクエストと `plain` は拒否する。これで PKCE ダウングレード（RFC 9700 §2.1.1）も防ぐ
@@ -21,7 +21,9 @@
 - [ ] `display`、`claims_locales`、`acr_values` を送られてもエラーにしない。`ui_locales` は UI の言語の候補として使い、対応しない言語だけが送られてもエラーにせず、ブラウザの言語、既定の英語の順に進む（OIDC Core §3.1.2.1）
 - [ ] 無効な client（`client_enablement` が `enabled` でないか、行がない）の `/authorize` は、`redirect_uri` が一致していてもリダイレクトせずエラーページを返す。`/token` は `invalid_client` で拒否し、認可コードを消費しない。`/userinfo` はその client のアクセストークンを拒否する
 - [ ] `request`、`request_uri`、`registration` には、それぞれ `request_not_supported`、`request_uri_not_supported`、`registration_not_supported` を返す
-- [ ] `id_token_hint` は自分が発行したものか検証し、セッションのユーザーと違えば `login_required` を返す
+- [ ] `id_token_hint` は自分が発行したものか検証し、通らなければ `invalid_request` を返す。セッションのユーザーと違えば、`prompt=none` なら `login_required` を返し、それ以外はパスキーのサインインに進めて、hint と違うユーザーでサインインしたら `login_required` を返す
+- [ ] `/userinfo` は GET と POST の両方で、`Authorization` ヘッダーの Bearer のアクセストークンを受け付ける
+- [ ] discovery に `response_types_supported: ["code"]`、`subject_types_supported: ["public"]`、`grant_types_supported: ["authorization_code"]`、`response_modes_supported: ["query"]`、`request_uri_parameter_supported: false` を明示し、省略による既定値で implicit、fragment、`request_uri` を広告しない（OIDC Discovery 1.0 §3）
 - [ ] トークンレスポンスに `Cache-Control: no-store` を付け、`redirect_uri` へのリダイレクトに 307 を使わない
 - [ ] JWT の `alg` は許可リスト（`Ed25519` と、RS256 を有効にしたときの `RS256`）で固定し、`typ` で ID トークンとアクセストークンを区別する
 - [ ] JWT の検証で `alg` と鍵の種類を結び付ける。`Ed25519` は `kty: OKP` / `crv: Ed25519` の鍵とだけ、`RS256` は RSA の鍵とだけ受け付け、`EdDSA`、`none`、鍵の種類と合わない `alg` は拒否する（RFC 8725 §3.1、RFC 9864 §4.1.2）
@@ -49,7 +51,7 @@
 - [ ] 登録時は、チャレンジと登録トークンの紐付けを確認してからトークンを消費する
 - [ ] 登録トークンは発行から 10 分で切れ、1 回だけ使える。期限切れや使用済みのトークンでは登録できない
 - [ ] サインイン中の認可リクエストは ID のハッシュで 15 分保存し（チャレンジより先に切れないようにする）、`__Host-` Cookie でブラウザに紐付け、`DELETE … RETURNING` で一度だけ取り出す。別のブラウザの Cookie や期限切れの行では再開できない
-- [ ] 再開時に client、`redirect_uri`、アクセス可否を確認し直し、`prompt=login` ではセッションの `auth_time` がリクエストの保存時刻以降であることを確認する
+- [ ] 再開時に client、`redirect_uri`、アクセス可否を確認し直し、`prompt=login` のときと public client のときは、セッションの `auth_time` がリクエストの保存時刻以降であることを確認する
 - [ ] 本人によるパスキーの追加は、セッションだけでは進めない。直前に、そのユーザーの既存のパスキーで UV 付きの再認証を求め、再認証と登録のチャレンジはどちらも同じセッションに紐付ける。別のセッションで発行されたチャレンジ、別のユーザーのパスキーによる再認証、再認証を飛ばした登録は拒否する（NIST SP 800-63B-4 §4.1.2.1）
 - [ ] 本人によるパスキーの追加と失効は、同一オリジンの確認を通ったリクエストだけを受け付ける
 - [ ] 1 人あたりのパスキーが上限（[実装に依存しない契約](cross-language-contract.md)の「パスキーの上限」）に達していれば、本人による追加も登録リンクによる登録も拒否する。上限の確認は挿入と同じ文の条件で行い、同時に追加しても上限を超えない
@@ -74,7 +76,7 @@
 - [ ] `POST /logout` は今のセッションの行を、`session_revoke` と `user_disable` はそのユーザーの全セッションの行を削除する。`passkey_revoke` と本人による失効は、失効させたパスキーから作ったセッションの行だけを外部キーの連鎖で削除し、別のパスキーから作ったセッションは残す
 - [ ] issuer、RP ID、origin は設定値から導き、リクエストの `Host` ヘッダーからは作らない
 - [ ] issuer が未設定または形式が不正なら、リクエストを処理せずエラーを返す
-- [ ] 状態を変える POST は `Sec-Fetch-Site`（なければ `Origin`）で同一オリジンかを確認する
+- [ ] セッションの Cookie で認証する状態を変える POST（`/webauthn/*`、`/logout`）は、`Sec-Fetch-Site` が `same-origin` か（なければ `Origin` が issuer と一致するか）を確認し、どちらのヘッダーもないリクエストは拒否する。`/authorize` はクロスサイトからの POST が正規の動作で、`/token` と `/userinfo` はサーバーからの呼び出しで Cookie を使わない（クライアント認証、PKCE、Bearer のアクセストークンで守る）ので、この確認の対象にしない
 - [ ] サインイン画面、登録画面、アカウントページは、CSP の `frame-ancestors 'none'` でクリックジャッキングを防ぐ
 - [ ] 登録リンクのトークンは URL のフラグメントに入れ、登録ページは `Referrer-Policy: no-referrer` にする
 

@@ -19,8 +19,8 @@
 | --- | --- | --- |
 | Cloudflare のアカウント ID | 1Password（CI は Environment の `CLOUDFLARE_ACCOUNT_ID`、手元は Vault のアイテム）。リポジトリには置かない | Terraform、`cf` のスクリプト、CI、R2 の backend の endpoint |
 | ゾーン（ドメイン） | デプロイの設定ファイル | Terraform（ゾーン ID はここから引く） |
-| issuer のホスト名 | デプロイの設定ファイル | Terraform（DNS、カスタムドメイン）、IdP の Worker と管理用の Worker の環境変数 |
-| 管理用のホスト名 | デプロイの設定ファイル | Terraform（DNS、カスタムドメイン、mTLS、WAF）、管理用の Worker の環境変数 |
+| issuer のホスト名 | デプロイの設定ファイル | IdP の Worker の `cloudflare.config.ts`（カスタムドメイン）、IdP の Worker と管理用の Worker の環境変数 |
+| 管理用のホスト名 | デプロイの設定ファイル | 管理用の Worker の `cloudflare.config.ts`（カスタムドメイン）、Terraform（mTLS、WAF）、管理用の Worker の環境変数 |
 | D1 のデータベースの名前 | デプロイの設定ファイル | `cf` のスクリプト（ID は名前から引く） |
 | Terraform の state を置く R2 のバケットの名前 | デプロイの設定ファイル | `cf` のスクリプト（作成）、`terraform init` の backend の設定 |
 | 1Password の Environment と Vault のアイテムの名前 | デプロイの設定ファイル | 生成スクリプト、Secret の登録スクリプト、手元の Terraform、1Password の連携のスクリプト |
@@ -58,9 +58,10 @@
 
 **Terraform とスクリプトの分担**
 
-基盤はできるだけコードで持つ（IaC）。宣言できるものは Terraform に、手続きでしか表せないものは `cf` を使うシェルスクリプトに置き、手作業の手順を残さない。望む状態を宣言し、実際の状態をそれに合わせ続ける形にするため（[宣言とリコンシリエーション](../philosophy/system-design/declarative-and-reconciliation.md)）。
+基盤はできるだけコードで持つ（IaC）。宣言できるものは Terraform に、手続きでしか表せないものは `cf` を使うシェルスクリプトに置き、手作業の手順を残さない。例外は、ダッシュボードでしかできない操作と認証情報を作る操作だけで、[ブートストラップ](../deployment/bootstrap.md)の前提に列挙する。望む状態を宣言し、実際の状態をそれに合わせ続ける形にするため（[宣言とリコンシリエーション](../philosophy/system-design/declarative-and-reconciliation.md)）。
 
-- Terraform（Cloudflare provider）が持つもの：DNS、Worker のカスタムドメイン、WAF のカスタムルール（mTLS）、レート制限ルール、管理用のホスト名への mTLS の割り当て、CSR から発行するクライアント証明書、fail closed の設定。
+- Terraform（Cloudflare provider）が持つもの：DNS（Worker のカスタムドメインが作るレコードを除く）、WAF のカスタムルール（mTLS）、レート制限ルール、管理用のホスト名への mTLS の割り当て、CSR から発行するクライアント証明書、fail closed の設定。
+- Worker のカスタムドメインは、それぞれの Worker の `cloudflare.config.ts`（`worker.domains`）が持ち、`cf deploy` が Worker と一緒に付ける（Cloudflare「Cloudflare config」）。`workers.dev` とプレビューの URL の無効化（`workersDev`、`previewUrls`）も同じファイルで宣言する。Terraform と `cf` の両方がカスタムドメインを持つと、片方の変更をもう片方が戻しうる。また、Terraform に持たせると、最初の apply がまだない Worker にドメインを付けることになる。カスタムドメインは、Cloudflare が DNS のレコードと証明書を作るので、Terraform はそのホスト名の DNS のレコードを持たない。ホスト名の値はデプロイの設定ファイルから渡し、`cloudflare.config.ts` に書かない。
 - `cf` のシェルスクリプトが持つもの：D1 のデータベースの作成、D1 のマイグレーション、Worker のデプロイ、Worker Secret の登録、D1 が production バックエンドにあることの確認、鍵の生成、Terraform の state を置く R2 のバケットの作成。
 - D1 のデータベースを Terraform に置かないのは、plan の認証情報に D1 の権限を一切持たせないため（下の PR の `terraform plan` の認証情報を参照）。provider の `cloudflare_d1_database` は `D1 Read` か `D1 Write` の権限を要し（Terraform Cloudflare provider「cloudflare_d1_database」の Accepted Permissions）、`terraform plan` は既定で既存のリソースの現状を読む（HashiCorp「terraform plan」の Introduction）。Terraform に D1 のデータベースがあると、plan のトークンに D1 の権限が要る。D1 のデータベースは作った後に変えるものがほとんどなく、宣言で持つ利点も小さい。
 - Terraform には秘密を渡さない。state は入力の値を保存するため。証明書と CSR は秘密ではないので Terraform に渡してよい。
@@ -100,7 +101,7 @@
 [1Password Environments と GitHub Actions](../deployment/secret.md) は、PR の検証の job に OIDC の権限も 1Password の認証情報も渡さないとしている。`terraform plan` は state と Cloudflare の現状を読むので、認証情報なしでは動かない。
 
 - 例外として、plan の job にだけ、読み取り専用の Environment（plan 用の読み取り専用の API トークンと、state のバケットの読み取り専用の R2 の認証情報）を渡す。デプロイ用の Environment とは分ける。
-- plan 用のトークンは、Terraform が持つもの（DNS、WAF、SSL と証明書、mTLS の割り当て、Worker のカスタムドメインなど）の読み取りだけにし、D1 の権限は読み取りも含めて一切持たせない。Cloudflare API の D1 のクエリ（「Query D1 Database」と「Raw D1 Database Query」）は `D1 Read` の権限でも受け付けると書かれていて（それぞれの Accepted Permissions）、`D1 Read` があればユーザーのデータを読める可能性があるため（どこまでできるかは[未決事項](open-questions.md)で確かめる）。
+- plan 用のトークンは、Terraform が持つもの（DNS、WAF、SSL と証明書、mTLS の割り当て、fail closed の設定など）の読み取りだけにし、D1 の権限は読み取りも含めて一切持たせない。Cloudflare API の D1 のクエリ（「Query D1 Database」と「Raw D1 Database Query」）は `D1 Read` の権限でも受け付けると書かれていて（それぞれの Accepted Permissions）、`D1 Read` があればユーザーのデータを読める可能性があるため（どこまでできるかは[未決事項](open-questions.md)で確かめる）。
 - destination は、plan の workflow と、同じリポジトリのブランチからの `pull_request` のイベントに限り、GitHub Environment `production` は使わない。fork からの PR には渡さない。
 - 理由：plan を PR に載せることで、基盤の変更をマージの前にレビューでき、手動の承認を置かない流れでの唯一の関門（PR のレビュー）を意味のあるものにするため。
 - 残るリスク：読み取り専用なので、トークンが漏れても変更はできない。残るのは、そのトークンの範囲で読めるものの機密性。workflow の path を固定しても、そのトークンで何が動くかは限れない。同じリポジトリの PR は、plan の workflow も Terraform のコードも書き換えられ、Terraform は plan の時点でもコード（provider や data source）を動かすので、トークンを持ち出せる。そのため、範囲を読まれても困らないもの（基盤の設定）に絞り、D1 を外す。
@@ -109,8 +110,8 @@
 **API トークン**
 
 - 役割ごとに分ける。どれもデプロイ先のアカウントに限り、アカウントごとに別のトークンを作る。
-  - Terraform 用：DNS、WAF、SSL と証明書、Worker のカスタムドメイン。D1 の権限は持たせない。
-  - デプロイ用：Workers の編集と、マイグレーションのための D1 の編集。
+  - Terraform 用：DNS、WAF、SSL と証明書、fail closed の設定に要る Workers のルート。D1 の権限は持たせない。
+  - デプロイ用：Workers の編集、Worker のカスタムドメインを付けるためのゾーンの Workers のルートの編集と DNS の編集、マイグレーションのための D1 の編集。必要な権限の正確な名前は、実装で `cf deploy` が成功する最小の組み合わせを確かめて記録する。
   - plan 用（上の例外）：Terraform 用と同じ範囲の読み取りだけ。D1 の権限は読み取りも持たせない。
 - D1 のデータベースの作成は、最初の構築のときだけ、運用者の手元の `cf` のセッションで行う（[ブートストラップ](../deployment/bootstrap.md)の段階 1）。CI のトークンには D1 の作成の権限を持たせない。
 - どれも 1Password Environments と GitHub OIDC で、実行時に CI に渡す。
@@ -151,7 +152,7 @@
 **署名鍵**
 
 - Worker Secret は書き込み専用で、登録した値を読み出せない。署名鍵の正本とバックアップは 1Password の Vault のアイテムに置き、Worker Secret にはそこから登録する。鍵は上の生成スクリプトで生成し、平文のままディスクに書かない（[トークン設計](tokens.md)参照）。
-- Worker Secret は、Ed25519 の鍵の current と previous の 2 つを常に置く。RS256 を有効にするときだけ、RSA の鍵（4096 bit）の current と previous を足して 4 つにする。既定のデプロイは RSA の鍵を持たない（[トークン設計](tokens.md)参照）。
+- Worker Secret は、Ed25519 の鍵の current を常に置き、最初のローテーションの後は previous も置く。RS256 を有効にするときだけ、RSA の鍵（4096 bit）の current（とローテーションの後の previous）を足す。既定のデプロイは RSA の鍵を持たない（[トークン設計](tokens.md)参照）。
 - RS256 を有効にするのも無効にするのも、RSA の Secret をスクリプトで登録するか外してデプロイすることで行う。無効にするのは、`RS256` を登録した client がないことを `idpctl clients_list` で確かめ、最後の client を `Ed25519` に変えてから ID トークンの有効期限（5 分）が過ぎた後にする（[トークン設計](tokens.md)参照）。
 - 管理用の Worker は署名鍵をバインドしない。RS256 が有効かどうかは、IdP の Worker への Service Binding で discovery を読んで判断する。
 - 同じデプロイの Worker を作り直すときは、1Password のアイテムから登録し直す。

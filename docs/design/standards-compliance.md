@@ -5,7 +5,7 @@ OIDC と WebAuthn は、仕様の MUST だけでなくセキュリティ上の S
 | 規格 | 主な準拠ポイント |
 | --- | --- |
 | OpenID Connect Core 1.0 | 認可コードフロー（`response_type=code`）のみ。`prompt`（`none` / `login`）と `max_age` を正しく扱い、`auth_time` と `nonce` を ID トークンに入れる。クレームは要求されたスコープの分だけ返す |
-| OpenID Connect Discovery 1.0 | `/.well-known/openid-configuration` を公開する。`id_token_signing_alg_values_supported` は設定された署名鍵から導き、既定は `["Ed25519"]`、RS256 を有効にしたデプロイでは `["Ed25519", "RS256"]` にする（RS256 を無効にしている間は §3 から外れる。下の例外を参照）。実装していない機能は載せない。`code_challenge_methods_supported: ["S256"]`（RFC 8414）、`token_endpoint_auth_methods_supported: ["client_secret_basic", "none"]`、`authorization_response_iss_parameter_supported: true`（RFC 9207）を明示する。`scopes_supported` は `openid` と `profile` だけにする |
+| OpenID Connect Discovery 1.0 | `/.well-known/openid-configuration` を公開する。`id_token_signing_alg_values_supported` は設定された署名鍵から導き、既定は `["Ed25519"]`、RS256 を有効にしたデプロイでは `["Ed25519", "RS256"]` にする（RS256 を無効にしている間は §3 から外れる。下の例外を参照）。§3 で省略すると既定値で対応を意味する項目は、対応しない機能を広告しないように明示する。`response_types_supported: ["code"]`、`subject_types_supported: ["public"]`（どちらも §3 で REQUIRED）、`grant_types_supported: ["authorization_code"]`（省略時の既定は `["authorization_code", "implicit"]`）、`response_modes_supported: ["query"]`（省略時の既定は `["query", "fragment"]`）、`request_uri_parameter_supported: false`（省略時の既定は true）、`request_parameter_supported: false`、`claims_parameter_supported: false` を載せる。省略しても対応を意味しない任意の項目のうち、実装していない機能は載せない。`code_challenge_methods_supported: ["S256"]`（RFC 8414）、`token_endpoint_auth_methods_supported: ["client_secret_basic", "none"]`、`authorization_response_iss_parameter_supported: true`（RFC 9207）を明示する。`scopes_supported` は `openid` と `profile` だけにする |
 | OAuth 2.0（RFC 6749）と Security BCP（RFC 9700） | implicit と password グラントは提供しない。クライアント認証は client\_secret\_basic（RFC 6749 でサーバーに必須の方式）と、public client 向けの none だけにする。redirect URI は完全一致で、例外はネイティブアプリのループバックのポートだけ（RFC 9700 §2.1）。PKCE ダウングレード対策（RFC 9700 §2.1.1）は、`code_challenge` のない認可リクエストを拒否することで満たす |
 | OAuth 2.0 for Native Apps（RFC 8252） | redirect URI の 3 方式（ループバック、カスタムスキーム、https）をすべて受け付ける。client type を登録時に記録し、public client には毎回ユーザーの操作を求める |
 | OAuth 2.0 for Browser-Based Applications（RFC 10017） | ブラウザだけで動く SPA は受け付けず、BFF（confidential client）にしてもらう |
@@ -23,7 +23,8 @@ OIDC と WebAuthn は、仕様の MUST だけでなくセキュリティ上の S
 - リクエストに `state` があれば、成功・エラーどちらのレスポンスにもその値をそのまま返す。
 - Core 15.1 の必須機能を満たす（RS256 による ID トークンの署名だけは、RS256 を有効にしたデプロイで満たす。下の例外を参照）。`prompt`（`none` / `login`）と `max_age` を正しく処理し、`max_age` があれば ID トークンに `auth_time` を入れる（`max_age=0` は `prompt=login` と同じ扱い）。`display`、`claims_locales`、`acr_values` は、送られてもエラーにせず、値を無視する。`ui_locales` は UI の言語の最初の候補として使い、対応しない言語が含まれてもエラーにしない（§3.1.2.1 の SHOULD NOT。[認証フロー](authentication.md)の画面と言語を参照）。`claims` パラメータには対応しないので、`acr` を Essential Claim として要求されることはなく、§5.5.1.1 の場合は起きない。
 - `prompt=none` に他の値が混ざっていたらエラーにする。
-- `id_token_hint` があれば自分が発行したものか検証し、セッションのユーザーと違えば `login_required` を返す。
+- `id_token_hint` があれば、自分が発行したもの（`iss` が issuer で、current か previous の鍵で署名が通る）か検証し、通らなければ検証済みの `redirect_uri` に `invalid_request` を返す。`exp` は確かめない。§3.1.2.2 の 5 は、OP が発行者であることを確かめなければならない（MUST）とし、RP にセッションがあるか最近あったなら、`exp` を過ぎた ID トークンも受け入れるべき（SHOULD）としている。ID トークンは 5 分で切れ、hint はサインインの条件を狭めるだけで権限を与えないので、期限は見ない。§3.1.2.1 は、hint のユーザーがサインイン済みか、その要求でサインインしたなら成功を返し、そうでなければ `login_required` などのエラーを返さなければならない（MUST）としている。そこで、セッションのユーザーが hint の `sub` と違うとき、`prompt=none` なら `login_required` を返し、それ以外はパスキーのサインインに進め、サインインしたユーザーが hint の `sub` と違えば `login_required` を返す（[認証フロー](authentication.md)参照）。
+- `/userinfo` は GET と POST の両方を受け付ける（§5.3 の MUST）。アクセストークンは `Authorization` ヘッダーの Bearer で受け取る（§5.3.1、RFC 6750 §2.1。リソースサーバーに必須の方式）。本文とクエリでの受け渡し（RFC 6750 §2.2・§2.3、どちらも任意）には対応しない。
 - 対応しない `request`、`request_uri`、`registration` には、それぞれ `request_not_supported`、`request_uri_not_supported`、`registration_not_supported` を返す。対応しない `response_mode` には、エラーパラメータなしの 400 を返す。
 - トークンレスポンスには `Cache-Control: no-store` を付ける。
 - `redirect_uri` へのリダイレクトには 307 を使わない（303 か 302）。
@@ -40,13 +41,22 @@ OIDC と WebAuthn は、仕様の MUST だけでなくセキュリティ上の S
 - OIDC Discovery 1.0 §3 と OIDC Core 1.0 §15.1 からの逸脱は、RS256 を無効にしている間に限られる。RFC 9068 §2.1 からの逸脱は、上のとおりアクセストークンの署名が常に `Ed25519` なので、RS256 を有効にしても残る（アクセストークンを RS256 で署名できるようにはしない）。RSA を必要とする RP をつなぐときは、運用者が RSA の鍵を設定して RS256 を有効にし、その RP に `RS256` を登録する。
 - ID トークンの署名のアルゴリズムは client ごとに必ず明示して登録するので、OIDC Core 1.0 §3.1.3.7 の 7（`alg` は既定の RS256 か、登録時に送った `id_token_signed_response_alg` であるべき（SHOULD））の後者に当たる。
 
-**認可コードの再利用（RFC 6749 §4.1.2）**
+**例外：CORS に対応しない**
 
-- 再利用されたコードは拒否しなければならず（MUST）、可能なら発行済みのトークンを失効させるべき（SHOULD）とされている。コードは `DELETE … RETURNING` で消費するので、2 回目は行が見つからず拒否され、MUST を満たす。アクセストークンはステートレスな JWT で失効させる手段がないため、「可能なら」が条件の SHOULD は対象にならず、準拠している。再利用されたときの影響は、トークンの短い有効期限と PKCE で抑える。
+- IdP はどのエンドポイントでも CORS のヘッダーを返さない。
+- 外れる SHOULD：OIDC Core 1.0 §5.3 は UserInfo Endpoint が CORS に対応すべき（SHOULD）とし、OIDC Discovery 1.0 §3 は Token Endpoint、UserInfo Endpoint、`jwks_uri` が、§4 は設定の情報のエンドポイントが、CORS に対応すべき（SHOULD）としている。
+- 理由：ブラウザだけで動く SPA は登録せず、BFF にしてもらう（RFC 10017 §6。[クライアントの種類](clients.md)参照）。RP はすべてサーバー側かネイティブアプリなので、ブラウザから IdP のエンドポイントを直接呼ぶ正規の利用者がいない。CORS を開くと、ブラウザから `/token` と `/userinfo` を呼ぶ経路が増えるだけで、利点がない。
+- ブラウザだけで動く RP を受け付けることにしたときに見直す。
+
+**例外：再利用された認可コードの発行済みトークンを失効させない（RFC 6749 §4.1.2）**
+
+- 再利用されたコードは拒否しなければならず（MUST）、可能なら発行済みのトークンを失効させるべき（SHOULD）とされている。コードは `DELETE … RETURNING` で消費するので、2 回目は行が見つからず拒否され、MUST を満たす。
+- 外れる SHOULD：アクセストークンをステートレスな JWT にしたので、発行済みのトークンを失効させる手段がない。失効できないのは設計の選択の結果なので、「可能なら」を理由に準拠とはせず、例外として記録する。
+- 理由と補い：トークンを D1 で照合する形にすると、`/userinfo` のたびに読み取りが増え、トークンの短さ（5 分）に比べて得るものが小さい。再利用されたときの影響は、トークンの短い有効期限と PKCE で抑える。リフレッシュトークンを発行しないので、長く使える値は残らない。
 
 **WebAuthn で守ること**
 
-- 公開鍵のアルゴリズムは、Level 3 の推奨どおり -8（Ed25519）、-7（ES256）、-257（RS256）を提示する。Workers の WebCrypto は Ed25519 にも対応している。
+- 公開鍵のアルゴリズムは、Level 3 の推奨どおり -8（EdDSA）、-7（ES256）、-257（RS256）を提示する。Workers の WebCrypto は Ed25519 にも対応している。RFC 9864 §4.2.2 は COSE の -8 も Deprecated にしたが、WebAuthn Level 3 §5.4 は、後方互換のために、完全指定の -19（Ed25519）を `pubKeyCredParams` に含めることを推奨せず（NOT RECOMMENDED）、代わりに、または併せて -8 を使うよう求めている。そのため、JOSE では `EdDSA` を拒否して `Ed25519` を使う一方、WebAuthn では仕様の指示どおり -8 を使う。食い違いではなく、それぞれの仕様に従った結果である。
 - チャレンジはサーバー側で乱数から生成して一時保存し、有効期間はセレモニーのタイムアウトの推奨範囲（300000〜600000 ミリ秒、既定 300000 ミリ秒）の上限と同程度にすべき（SHOULD）とされている（§13.4.3）。これに従い、登録とサインインのどちらもチャレンジを 10 分有効にし、ブラウザに渡す options の `timeout` も 600000 ミリ秒と明示して、クライアント側のタイムアウトとサーバー側の有効期間を揃える。
 - `clientDataJSON` の `type`、`challenge`、`origin` を検証し、`crossOrigin` が true のものは拒否する。
 - `rpIdHash`、UP フラグ、UV フラグを検証し、BE / BS フラグの組み合わせが不正なもの（BS だけが立っているなど）は拒否する。

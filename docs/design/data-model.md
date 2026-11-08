@@ -75,7 +75,7 @@ CREATE TABLE client_access (
 -- 行が 1 つもない主体や client は、無効として扱う（fail-closed）。
 -- 状態を変える行は、今の状態と違う値のときだけ、同じ文の条件（INSERT … SELECT … WHERE）で追記する。
 -- 同じ値への変更は行を足さず、共有コアがエラーとして拒否する。
--- 理由の列は持たない（自由記述の個人情報を持たないため）。誰がなぜ変えたかは audit_log に同じバッチで書く
+-- 理由の列は持たない（自由記述の個人情報を持たないため）。誰が変えたかは audit_log に同じバッチで書き、理由はどこにも記録しない
 CREATE TABLE user_enablement_events (
   id          INTEGER PRIMARY KEY,
   user_id     TEXT NOT NULL REFERENCES users(id),
@@ -130,7 +130,7 @@ CREATE TABLE auth_codes    (code_hash TEXT PRIMARY KEY,
                             client_id TEXT NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
                             user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
                             session_token_hash TEXT NOT NULL REFERENCES sessions(token_hash) ON DELETE CASCADE,  -- 発行の根拠になったセッション
-                            redirect_uri TEXT NOT NULL, code_challenge TEXT NOT NULL, nonce TEXT, scope TEXT,
+                            redirect_uri TEXT NOT NULL, code_challenge TEXT NOT NULL, nonce TEXT, scope TEXT NOT NULL,
                             auth_time INTEGER NOT NULL, expires_at INTEGER NOT NULL);
 -- サインインを挟む間だけ保持する、検証済みの認可リクエスト（15 分。チャレンジの 10 分より先に切れないようにする）。ID は __Host- Cookie でブラウザに渡す
 CREATE TABLE authorize_requests (id_hash TEXT PRIMARY KEY,
@@ -239,18 +239,18 @@ JOIN client_enablement ce ON ce.client_id = a.client_id AND ce.enablement = 'ena
 CREATE TABLE audit_log (
   id             INTEGER PRIMARY KEY,     -- D1 が採番する。同じ秒の行も書き込んだ順に並ぶ
   occurred_at    INTEGER NOT NULL,        -- UNIX 秒（when）
-  actor          TEXT NOT NULL CHECK (actor IN ('admin', 'user')),  -- 操作者の種類（who）。admin は管理用の Worker が書く管理操作、user は IdP の Worker が書く本人の操作
+  actor          TEXT NOT NULL CHECK (actor IN ('admin', 'user', 'break_glass')),  -- 操作者の種類（who）。admin は管理用の Worker が書く管理操作、user は IdP の Worker が書く本人の操作、break_glass は基盤の権限で手で書く行
   admin_name     TEXT,                    -- 管理者の名前。管理用の Worker が、許可リストでクライアント証明書のフィンガープリントから解決した値（自己申告ではない）
   admin_cert_sha256 TEXT,                 -- 操作に使ったクライアント証明書の SHA-256 フィンガープリント。同じ管理者の証明書のどれが使われたかを追える
   writer_version TEXT NOT NULL,           -- 書き込んだ Worker（IdP か管理用）のバージョン（where）
   operation      TEXT NOT NULL,           -- 操作名（user_create、passkey_add など。what）
-  target         TEXT NOT NULL,           -- 'user:<id>' | 'client:<id>' | 'group:<id>'
+  target         TEXT NOT NULL,           -- 'user:<id>' | 'client:<id>' | 'group:<id>' | 'schema' | 'none'（下記）
   result         TEXT NOT NULL CHECK (result IN ('success', 'failure')),
-  detail_json    TEXT NOT NULL DEFAULT '{}',  -- 操作ごとの補足（変更した値、失敗の理由など）を JSON オブジェクトで持つ
-  -- 管理操作の行は管理者の名前と証明書を必ず持ち、本人の操作の行は持たない
+  detail_json    TEXT NOT NULL DEFAULT '{}',  -- 操作ごとの補足を JSON オブジェクトで持つ。値は ID、列挙値、数値、時刻だけで、名前と自由記述は入れない（下記）
+  -- 管理操作の行は管理者の名前と証明書を必ず持ち、本人の操作と break-glass の行は持たない
   CHECK ((actor = 'admin' AND admin_name IS NOT NULL AND admin_cert_sha256 IS NOT NULL)
-      OR (actor = 'user' AND admin_name IS NULL AND admin_cert_sha256 IS NULL)),
-  CHECK (actor = 'admin' OR result = 'success')  -- IdP の Worker は成功の行だけを書く（下記）
+      OR (actor IN ('user', 'break_glass') AND admin_name IS NULL AND admin_cert_sha256 IS NULL)),
+  CHECK (actor = 'admin' OR result = 'success')  -- IdP の Worker と break-glass は成功の行だけを書く（下記）
 );
 -- audit_tail は id の新しい順に読む（主キーの順なので索引は要らない）
 CREATE INDEX audit_log_target      ON audit_log (target, id);       -- 対象で絞り込む
@@ -289,14 +289,17 @@ BEGIN SELECT RAISE(ABORT, 'groups are never deleted'); END;
 - 成功した操作は、操作と同じバッチで 1 行を書く。管理用の Worker は、失敗した操作も記録する。バッチが丸ごとロールバックされるので、その後に別の書き込みで `failure` の行を書く。失敗の行を書くのは、許可リストで管理者が確定した後の失敗だけにする。証明書の検証や許可リストで拒否したリクエストは、監査ログではなく管理用の Worker のログに残す。
 - IdP の Worker は `success` の行だけを書き、失敗や拒否は IdP の Worker のログに任せる。IdP の Worker のエンドポイントは認証前のリクエストからも呼べるので、失敗の行を書くと、誰でも D1 の 1 日の書き込み上限を監査ログの行で消費させられるため（[無料枠](free-tier.md)参照）。
 - IdP の Worker の行は、`credentials` への書き込みと同じ条件を付けて、同じバッチに置く。登録と追加は、挿入と同じ条件（`user_enablement` でユーザーが `enabled`、パスキーの本数が[上限](cross-language-contract.md)未満）を付けた `INSERT … SELECT` で書く。本人による失効は、削除と同じ条件（対象がそのユーザーのパスキーで、2 本以上ある）を付けた `INSERT … SELECT` を削除の直前の文に置く。条件が成り立たず書き込みが起きなければ、監査ログの行も書かれない。拒否されたのに成功の行が残ることはない。
-- グループは名前を変えられるので、`target` には ID（`group:<id>`）を入れ、操作時点の名前を `detail_json` に残す。
+- `target` と `detail_json` には、ID、列挙値、数値、時刻と、個人情報を含まない設定値（redirect URI、署名アルゴリズム）だけを入れる。ユーザーの表示名、グループ名、client の表示名と、自由記述（理由など）は入れない。監査ログの行は削除しないので、ここに入った個人情報は、`user_rename` で表示名を中立にしても、break-glass で `users` の行を消しても残り続けるため（設計原則 7）。名前は、`target` の ID から今の行を引いて表示する。
 - 対象が 2 つある操作は、`grant_add` などでは client を、`group_member_add` などではグループを `target` に入れ、もう一方（`user:<id>` や `group:<id>`）を `detail_json` に入れる。
-- 権限を広げる操作（`grant_add`、`group_member_add`）は、新たに使えるようになったユーザーと client の組を `detail_json` に残す。
-- 有効化と無効化（`user_enable`、`user_disable`、`client_enable`、`client_disable`、`group_enable`、`group_disable`）は、出来事の行と同じバッチで監査ログに 1 行を書き、理由を付けるときは `detail_json` に入れる。状態の正は出来事の表で、アクセスの判定は監査ログを読まない。
+- 権限を広げる操作（`grant_add`、`group_member_add`）は、新たに使えるようになったユーザーと client の組（どちらも ID）を `detail_json` に残す。
+- 有効化と無効化（`user_enable`、`user_disable`、`client_enable`、`client_disable`、`group_enable`、`group_disable`）は、出来事の行と同じバッチで監査ログに 1 行を書く。理由は受け取らず、記録しない。状態の正は出来事の表で、アクセスの判定は監査ログを読まない。
+- 名前の変更（`user_rename`、`group_rename`、`client_rename`）は、変更したことだけを残し、変更前と変更後の名前は残さない。
+- 失敗の行の `target` は、入力の検証を通った対象の ID にする。存在しない ID を指定した失敗（`not-found`）も、検証を通った ID をそのまま入れる。ID がまだ採番されていない作成の失敗や、ID の形式が不正な失敗は `none` にし、形式が不正な値そのものは書かない。
+- break-glass で手で書く行（[管理 CLI と管理用の Worker](idpctl.md)の break-glass を参照）は、`actor` を `break_glass`、`result` を `success` とし、管理者の列を持たない。基盤の権限の API トークンでは管理者を確かめられないので、名前や証明書を自己申告で書かない。トリガーの付け外しの行は `target` を `schema` にし、外したトリガーの名前を `detail_json` に入れる。
 - OWASP の「記録から除くデータ」に従い、セッション ID、トークン、シークレット、登録トークンは書かない。`detail_json` にも入れず、登録リンクの発行では有効期限だけを残す。
 - 行は削除しない。家族規模の件数なら、無料枠の DB サイズ（500 MB）に対して十分小さい。
 
-サインインは監査ログに書かず、IdP の Worker のログに任せる（サインイン自体はチャレンジ、セッション、sign count を D1 に書く）。期限切れの行は発行時に片付けるので、Cron は使わない。有効かどうかは取り出すときに必ず `expires_at` で判定するので、片付けが遅れても安全性は変わらない（容量にだけ影響する）。
+サインインは監査ログに書かず、IdP の Worker のログに任せる（サインイン自体はチャレンジ、セッション、sign count を D1 に書く）。パスキーで署名を検証するセレモニー（サインインと、本人による追加と失効の直前の再認証）は、どれも検証に成功したときに `sign_count` と `last_used_at` を同じバッチで更新し、sign count の後退の検知（[標準準拠](standards-compliance.md)参照）も同じ規則で行う。期限切れの行は発行時に片付けるので、Cron は使わない。有効かどうかは取り出すときに必ず `expires_at` で判定するので、片付けが遅れても安全性は変わらない（容量にだけ影響する）。
 
 **有効・無効と削除しない行**
 
@@ -306,5 +309,5 @@ BEGIN SELECT RAISE(ABORT, 'groups are never deleted'); END;
 - 出来事の表の更新と削除、`principals`、`users`、`clients`、`groups` の削除は、トリガーで常に拒否する。ユーザーや RP を終わらせるのは無効化で、行は残す。そのため client ID は主キーとして二度と使われず、再利用による取り違え（古い grant や監査ログの行が新しい RP を指すこと）が起きない。
 - 削除するのは、関係の行（所属は `group_member_remove`、grant は `grant_remove`）と、使い捨ての短命の行（セッション、認可コード、チャレンジ、登録トークン、`authorize_requests`、`idempotency_keys`）だけである。ユーザーの無効化でも、そのユーザーのセッションは削除する。
 - 無効化したユーザーの行は、表示名とパスキーの公開鍵を持ったまま残る。設計原則 7（必要な分しか持たない）との関係では、残すのは本人を指す最小限の値で、表示名は `user_rename` で中立な値に変えられる。パスキーの公開鍵は秘密ではないが、本人の認証器を指すので、不要なら管理者が `passkey_revoke` で最後の 1 本を除いて消せる。
-- 緊急に行を消す必要があるとき（誤って個人情報を表示名に入れたなど）は、基盤の権限の break-glass で、先にトリガーを外してから消し、終わったらトリガーを戻す。出来事の表は ON DELETE なしで参照し、自分の削除を拒否するトリガーも持つので、出来事の表のトリガーも外して出来事の行を先に消す。外すトリガーと消す順番は[管理 CLI と管理用の Worker](idpctl.md)の break-glass にまとめる。共有コアにはこの経路を置かない。
+- 緊急に行を消す必要があるとき（誤って個人情報を表示名に入れたなど）は、基盤の権限の break-glass で、先にトリガーを外してから消し、終わったらトリガーを戻す。出来事の表は ON DELETE なしで参照し、自分の削除を拒否するトリガーも持つので、出来事の表のトリガーも外して出来事の行を先に消す。外すトリガーと消す順番は[管理 CLI と管理用の Worker](idpctl.md)の break-glass にまとめる。共有コアにはこの経路を置かない。監査ログは名前を持たないので、この作業で監査ログの行を消す必要はない。
 - D1 がトリガー（`CREATE TRIGGER` と `RAISE(ABORT, …)`）をマイグレーションで受け付け、実行時に効くことは、実装の前に確かめる（[未決事項](open-questions.md)参照）。D1 のドキュメントは SQLite のクエリエンジンを使うとだけ書き、トリガーの可否を明記していない（Cloudflare「SQL statements」）。外部キーは D1 で常に有効で、SQLite の `PRAGMA foreign_keys = on` と同じに働く（Cloudflare「Define foreign keys」）。
