@@ -41,7 +41,8 @@
 
 - 段階 4 の許可リストの変更は、段階 5 のデプロイで初めて効く。段階 5 より前に管理 API を呼んでも、空の許可リストですべて拒否される。
 - 署名鍵の登録を最初のデプロイの後（段階 5b）に置くのは、Worker Secret が Worker に属する値で、Worker がないうちは登録先がないため。署名鍵を CI の 1Password Environment に置いてデプロイと一緒に上げる形は取らない。デプロイ用の認証情報に署名鍵まで持たせると、CI が漏れたときの影響が全ユーザーのトークンの偽造にまで広がるため。
-- 段階 5b の登録の方法は、`cf` が平文をディスクに書かずに Secret を登録できるかで決まる（`cf deploy --secrets-file` か `cf workers versions create --secrets-file` が標準入力やパイプを受け付けるか。[未決事項](../design/open-questions.md)参照）。受け付けなければ、Cloudflare API で登録する。どちらの方法でも、登録すると IdP の Worker の新しいバージョンができる。
+- 段階 5b の登録の方法は、`cf` が平文をディスクに書かずに Secret を登録できるかで決まる（`cf deploy --secrets-file` か `cf workers versions create --secrets-file` が標準入力やパイプを受け付けるか。[未決事項](../design/open-questions.md)参照）。受け付けなければ、Cloudflare API で登録する。どちらの方法でも、登録すると IdP の Worker の新しいバージョンができる。今の登録スクリプトは、`cf workers secrets update` に要求の本文を標準入力から渡す形で実装した。受け付けられるかは最初の実行で確かめる（[実行手順](runbook.md)の未確認のこと）。
+- 各段階で運用者が実行するスクリプトと順番は[実行手順](runbook.md)にまとめる。
 - 段階 3 と 4 の生成スクリプトと、段階 5b の登録スクリプトは秘密を扱うので、`-x` を付けない（[デプロイと設定](../design/deployment.md)のシェルスクリプトの規則を参照）。
 - 段階 7 の登録リンクの平文は `idpctl` が `0600` のファイルに書き、パスだけを表示する（[管理 CLI と管理用の Worker](../design/idpctl.md)参照）。
 
