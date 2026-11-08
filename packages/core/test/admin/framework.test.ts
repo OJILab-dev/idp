@@ -63,9 +63,14 @@ describe("the operation catalogue", () => {
     expect(counts).toEqual({ read: 7, user: 13, rp: 7, access: 2 });
   });
 
-  it("registers each operation once", () => {
+  it("registers each of the 29 operations exactly once", () => {
     const names = ADMIN_OPERATIONS.map((o) => o.name);
     expect(new Set(names).size).toBe(names.length);
+    expect([...names].sort()).toEqual([...OPERATION_NAMES].sort());
+  });
+
+  it("marks only enroll_link_issue as establishing identity", () => {
+    expect(ADMIN_OPERATIONS.filter((o) => o.establishesIdentity).map((o) => o.name)).toEqual(["enroll_link_issue"]);
   });
 
   it.each(ADMIN_OPERATIONS.map((o) => [o.name, o] as const))("classifies %s as idpctl.md does", (name, operation) => {

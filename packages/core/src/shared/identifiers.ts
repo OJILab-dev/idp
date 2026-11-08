@@ -56,6 +56,25 @@ export function newUuidV4(): string {
   return crypto.randomUUID();
 }
 
+// WebAuthn Level 3 §5.4.3 (rawId) caps a credential ID at 1023 bytes.
+const MAX_CREDENTIAL_ID_BYTES = 1023;
+
+/**
+ * Checks a WebAuthn credential ID as stored in credentials.id: 1 to 1023 bytes as canonical unpadded base64url.
+ *
+ * @param value The untrusted input.
+ * @returns Whether the value is a well-formed credential ID; it says nothing about whether the passkey exists.
+ */
+export function isCredentialId(value: string): boolean {
+  try {
+    const bytes = base64urlDecode(value);
+    return bytes.length > 0 && bytes.length <= MAX_CREDENTIAL_ID_BYTES;
+  } catch (error) {
+    if (error instanceof InvalidBase64urlError) return false;
+    throw error;
+  }
+}
+
 /**
  * Checks a client ID: 3 to 64 lowercase letters, digits, or hyphens, starting and ending with a letter or digit.
  *
