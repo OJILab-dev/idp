@@ -41,4 +41,20 @@ describe("fail-closed configuration", () => {
     const res = await call(f, "GET", "/.well-known/openid-configuration", { origin: "https://evil.example.net" });
     expect(res.status).toBe(404);
   });
+
+  it.each([
+    ["POST", "/token"],
+    ["GET", "/authorize"],
+    ["GET", "/userinfo"],
+  ])("refuses plain http %s %s without processing it", async (method, path) => {
+    const f = fixture();
+    const res = await call(f, method, path, {
+      origin: "http://idp.example.com",
+      headers: { authorization: `Basic ${btoa("app:secret")}` },
+      ...(method === "POST" ? { form: { grant_type: "authorization_code", code: "x" } } : {}),
+    });
+    expect(res.status).toBe(404);
+    expect(res.headers.get("www-authenticate")).toBeNull();
+    expect(await res.text()).toBe("Not Found");
+  });
 });

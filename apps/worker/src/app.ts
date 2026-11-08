@@ -76,9 +76,11 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
       return c.text("The identity provider is misconfigured.", 500);
     }
     // The custom domain is the only route, but a request on any other host (a re-enabled workers.dev) is refused
-    // rather than answered with endpoints derived from the configured issuer.
-    if (new URL(c.req.url).hostname !== config.issuer.rpId) {
-      log({ result: "refused", reason: "host" });
+    // rather than answered with endpoints derived from the configured issuer. Plain http is refused the same way:
+    // a client secret, code, or Bearer token sent over it is already exposed, and answering would invite a retry.
+    const url = new URL(c.req.url);
+    if (url.protocol !== "https:" || url.hostname !== config.issuer.rpId) {
+      log({ result: "refused", reason: url.protocol === "https:" ? "host" : "scheme" });
       return c.notFound();
     }
     c.set("config", config);
