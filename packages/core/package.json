@@ -6,5 +6,8 @@
     "./shared": "./src/shared/index.ts",
     "./user": "./src/user/index.ts",
     "./admin": "./src/admin/index.ts"
+  },
+  "dependencies": {
+    "zod": "4.6.7"
   }
 }
