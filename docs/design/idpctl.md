@@ -231,6 +231,18 @@ ID トークンの署名アルゴリズム（[トークン設計](tokens.md)参�
 - `idpctl` は受け取った平文を権限 `0600` のファイルに書き出し、パスだけを表示する。平文を標準出力に出さないので、AI のコンテキストにも流れない。
 - 登録リンクは発行から 10 分で切れるので、管理者は本人に渡すその場で `enroll_link_issue` を実行し、メールではなく対面など信頼できる経路で渡す（[認証フロー](authentication.md)参照）。
 
+**`idpctl` の手元の振る舞い**
+
+ここに書くのは `idpctl` の手元の入出力の決定で、管理用の Worker の規則には関わらない。
+
+- **設定**：管理 API のホスト名は `--host` か環境変数 `IDPCTL_HOST`、クライアント証明書のパスは `--cert` か環境変数 `IDPCTL_CERT` で渡し、フラグが環境変数より優先する。ホスト名は英小文字の DNS 名だけを受け付け、スキーム、ポート、パス、利用者情報、IP アドレス、末尾のドットを含むものは、何も送らずに使い方の誤りにする。クライアント証明書を意図しない相手に出さないため。管理者の秘密鍵は上のとおり標準入力からだけ読み、秘密鍵のパスを受け取るフラグも環境変数も置かない。鍵は ECDSA の P-384 か P-256 だけを受け付け、証明書と対にならなければ何も送らない。
+- **接続**：TLS 1.2 以上で、サーバーの証明書はシステムのルート証明書で必ず検証する。リダイレクトには従わない。管理 API はリダイレクトを返さず、従うとクライアント証明書を別のホストに出しうるため。
+- **再試行**：応答が届かなかったとき（接続の失敗や 1 回ごとの時間切れ）と、problem details でない 502、503、504（エッジが Worker に届けなかった応答）のときだけ、同じ要求をそのまま送り直す。回数は `--retries`（既定 2）、1 回ごとの時間切れは `--timeout`（既定 30 秒）で変えられる。`Idempotency-Key` は 1 回の実行ごとに 1 つ作り、再試行では同じキーと同じ本文を送る。管理用の Worker が返した problem details は、`internal` も含めて再試行しない。
+- **出力**：成功の応答の本文は JSON のまま整形して標準出力に出す。ログと problem details は `slog` のテキストの形で標準エラー出力に出し、problem details は `kind`、ステータス、`title`、`detail`、`validation-failed` の JSON Pointer の一覧を表示する。
+- **IdP が発行する秘密の書き出し**：秘密を返す操作（confidential client の `client_create`、`client_rotate_secret`、`enroll_link_issue`）は、書き出し先の `--secret-out` を必須にする。登録リンクは登録トークンを含むので、秘密として扱う。ファイルは要求を送る前に、権限 `0600` で、既存のファイルやシンボリックリンクがあれば失敗する排他的な作成で作る。書き出せないパスのせいで、受け取れない秘密をサーバーに発行させないため。操作が失敗すれば、ファイルを消す。標準出力には、秘密のメンバーを除き、代わりに `<メンバー名>_file` として書き出したファイルの絶対パスを入れた JSON を出す。秘密を返さない操作に `--secret-out` を渡すと、使い方の誤りにする。`secret-not-replayable` のときは、やり直し方（`client_create` なら `client_rotate_secret`、ほかは同じ操作を新しいキーで実行し直す）を標準エラー出力に表示する。
+- **引数**：位置の引数は操作の対象の ID と値で、`grant_add` と `grant_remove` は主体（`user:<id>` か `group:<id>`）、client ID の順に受け取る。一覧のページングは `--limit` と `--cursor` で渡し、応答の `next_cursor` と `prev_cursor` を次の呼び出しの `--cursor` に使う。絞り込みは、`clients_list` が `--id-token-alg`、`grants_list` が `--client` と `--principal`、`audit_tail` が `--target`、`--operation`、`--since`、`--until` を受け取る。`client_create` は redirect URI を繰り返しの `--redirect-uri` で、`client_set_redirects` は位置の引数で受け取る。値はどれも手元で検証しない。
+- **終了コード**：`idpctl` はステータスではなく `type` で分岐し、`kind` ごとに別の終了コードを返す。スクリプトが標準エラー出力を解釈せずに分岐できるようにするため。成功は 0、problem details 以外の失敗（通信の失敗、エッジのブロックの応答などの管理 API の形でない応答、手元の入出力の失敗）は 1、引数と手元の設定の誤り（何も送っていない）は 2 にする。`kind` ごとには、`validation-failed` を 10、`not-found` を 11、`already-exists` を 12、`state-conflict` を 13、`limit-reached` を 14、`last-passkey` を 15、`algorithm-disabled` を 16、`secret-not-replayable` を 17、`idempotency-key-reused` を 18、`forbidden` を 19、`internal` を 20 とし、この版の `idpctl` が知らない `kind` は 21 にする。仕様に `kind` を足すと、`idpctl` のテストが終了コードの割り当ての漏れを検出する。
+
 **監査ログ**
 
 - 管理用の Worker は管理操作を監査ログに書き、操作者として、許可リストで確定した管理者の名前と、使われた証明書のフィンガープリントを残す。本人のパスキー操作（登録リンクによる登録、本人による追加と失効）は IdP の Worker が同じ表に書く。セッション ID、トークン、シークレット、登録トークンは書かない（スキーマは[データモデル](data-model.md)参照）。失敗した操作も `failure` の行として記録する（IdP の Worker は成功の行だけを書く）。
