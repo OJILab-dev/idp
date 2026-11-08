@@ -128,6 +128,14 @@ describe("self-service add", () => {
     expect(await f.count("audit_log")).toBe(0);
   });
 
+  it("issues no registration challenge when the signer's sign count moved after verification", async () => {
+    const request = await begin();
+    f.beforeBatch(/'add_register'/, () => f.run("UPDATE credentials SET sign_count = sign_count + 1 WHERE id = ?", idOf(first)));
+    expect((await reauth(first, request.challenge)).kind).toBe("rejected");
+    expect(await f.count("challenges", "purpose = 'add_register'")).toBe(0);
+    expect(await f.query("SELECT sign_count FROM credentials WHERE id = ?", idOf(first))).toEqual([{ sign_count: 1 }]);
+  });
+
   it("consumes the re-authentication challenge once", async () => {
     const request = await begin();
     const response = await authenticationResponse(first, request.challenge, rp);
@@ -233,6 +241,15 @@ describe("self-service revoke", () => {
     expect(await f.count("audit_log")).toBe(0);
     // The challenge is consumed even though the revocation was refused.
     expect(await f.count("challenges")).toBe(0);
+  });
+
+  it("deletes nothing when the signer's sign count moved after verification", async () => {
+    const request = await begin(idOf(second));
+    f.beforeBatch(/DELETE FROM credentials/, () => f.run("UPDATE credentials SET sign_count = sign_count + 1 WHERE id = ?", idOf(first)));
+    expect((await verify(idOf(second), first, request.challenge)).kind).toBe("rejected");
+    expect(await f.count("credentials", "user_id = ?", USER)).toBe(2);
+    expect(await f.count("audit_log")).toBe(0);
+    expect(await f.query("SELECT sign_count FROM credentials WHERE id = ?", idOf(first))).toEqual([{ sign_count: 1 }]);
   });
 
   it("deletes nothing when the challenge is consumed concurrently", async () => {
