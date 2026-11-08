@@ -71,6 +71,7 @@ stackごとに行う操作:
 2. workflowが必要とする変数だけを登録する。
 3. `Destinations > GitHub Actions`から対象repositoryを接続する。
 4. destinationを`main` branch、deploy workflow、GitHub Environment `production`へ限定する。
+   例外として、IdPのPRの`terraform plan`に使う読み取り専用の`<stack-name>-plan` Environmentは、下の「制約」の例外の条件へ限定します。
 5. 表示されたWorkload IDとEnvironment IDを控える。
 6. 生成後のrepositoryで次を実行する。
 
@@ -85,7 +86,7 @@ GitHub Freeのprivate repositoryでも一貫して参照できるよう、これ
 
 ## Workflowでの参照
 
-deploy jobだけに`id-token: write`を付与します。
+deploy jobだけに`id-token: write`を付与します（例外はIdPのPRの`terraform plan` jobで、下の「制約」を参照）。
 `1password/load-secrets-action`はEnvironmentの変数をmaskし、`export-env: true`によって後続stepへ公開します。
 
 ```yaml
@@ -140,6 +141,17 @@ destinationはrepository名だけで許可せず、少なくとも次を固定�
 - deploy workflowのpath
 - `main` branch
 - GitHub Environment `production`
+
+例外として、IdPのPRの`terraform plan`に使う読み取り専用のEnvironmentのdestinationは、`main` branch、deploy workflow、GitHub Environment `production`の代わりに、次を固定します。
+
+- Organizationとrepository
+- plan workflowのpath
+- 同じrepositoryのbranchからの`pull_request` eventだけ（forkからのPRには渡さない）
+- GitHub Environment `production`を使わない
+- EnvironmentのCloudflare API Tokenに、D1の権限を読み取りも含めて一切持たせない
+
+workflow pathの固定は、そのcredentialで何が動くかを限りません。同じrepositoryのPRはplan workflowもTerraformのコードも書き換えられるため、残るリスクはこのcredentialで読めるものの機密性です。条件と理由は[デプロイと設定](../design/deployment.md)の「PR の `terraform plan` の認証情報（例外）」を参照してください。
+これらの条件で限定できない場合は、PRの`terraform plan`をやめます。
 
 workflow fileをrenameするとdestination条件と一致しなくなります。
 renameと条件更新は同じ移行作業として扱います。

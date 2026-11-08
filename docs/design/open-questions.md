@@ -16,9 +16,11 @@
 デプロイのパイプライン（[デプロイと設定](deployment.md)参照）は、次を前提にしている。どれかが成り立たなければ、wrangler に戻さず、Cloudflare API かダッシュボードで行う形に設計を見直す。
 
 - [ ] `cf`（`cf workers deployments` など）か Cloudflare API で、Worker を前のバージョンにロールバックできるか。Cloudflare「Rollbacks」はダッシュボードと `wrangler rollback` しか説明していない。できなければ、ロールバックはダッシュボードで行う手順にする
-- [ ] Terraform の Cloudflare provider が、D1 のデータベース、Worker のカスタムドメイン、WAF のカスタムルールとレート制限ルール、CSR からのクライアント証明書、管理用のホスト名への mTLS の割り当て、fail closed の設定を扱えるか。扱えないものは `cf` か Cloudflare API のスクリプトにする
+- [ ] Terraform の Cloudflare provider が、Worker のカスタムドメイン、WAF のカスタムルールとレート制限ルール、CSR からのクライアント証明書、管理用のホスト名への mTLS の割り当て、fail closed の設定を扱えるか。扱えないものは `cf` か Cloudflare API のスクリプトにする
 - [ ] `cf` で R2 のバケットを作れるか（Terraform の state のバケットは Terraform より先に要る）
-- [ ] 1Password Environments の GitHub Actions の destination を、plan の workflow の PR のイベントに限れるか。限れなければ、PR の `terraform plan` をやめる（[デプロイと設定](deployment.md)の例外を参照）
+- [ ] `cf` で D1 のデータベースを APAC のリージョンを指定して作れるか（plan のトークンから D1 の権限を外すため、D1 のデータベースは Terraform に置かない）。作れなければ、Cloudflare API の「Create D1 Database」のスクリプトにする
+- [ ] 1Password Environments の GitHub Actions の destination を、plan の workflow の、同じリポジトリのブランチからの `pull_request` のイベントに限れるか。限れなければ、PR の `terraform plan` をやめる（[デプロイと設定](deployment.md)の例外を参照）
+- [ ] `D1 Read` の権限だけのトークンで、Cloudflare API の D1 のクエリ（「Query D1 Database」と「Raw D1 Database Query」）を実行できるか、できるなら読み取りだけか書き込みもできるか。ドキュメントは両方の Accepted Permissions に `D1 Read` を挙げるが、実行できる文の範囲は書いていない。結果によらず、plan のトークンには D1 の権限を持たせない（[デプロイと設定](deployment.md)の例外を参照）。デプロイ用のトークンの範囲を見直すときの根拠にもする
 - [ ] Takumi Guard の下で、固定した pnpm のセットアップの Action と `pnpm install --frozen-lockfile` が動くこと（利用者は pnpm への対応を確認済み。実装で軽く確かめる）
 
 管理用の Worker（[管理 CLI と管理用の Worker](idpctl.md)参照）は、次が成り立つことを前提にしている。どれかが成り立たなければ、実装に入る前に設計を見直す。

@@ -83,6 +83,10 @@
 - [Cloudflare Observability：Pricing（Free の 0.5 GB / 日、7 日、取り込みの停止）](https://developers.cloudflare.com/observability/pricing/)
 - [Terraform：Remote R2 backend](https://developers.cloudflare.com/terraform/advanced-topics/remote-backend/)
 - [Terraform Cloudflare provider](https://registry.terraform.io/providers/cloudflare/cloudflare/latest/docs)
+- [Terraform Cloudflare provider：cloudflare_d1_database（Accepted Permissions は `D1 Read` か `D1 Write`）](https://github.com/cloudflare/terraform-provider-cloudflare/blob/main/docs/resources/d1_database.md)
+- [HashiCorp：terraform plan（既定で既存のリモートのオブジェクトの現状を読む）](https://developer.hashicorp.com/terraform/cli/commands/plan)
+- [API：Query D1 Database（Accepted Permissions に `D1 Read`）](https://developers.cloudflare.com/api/resources/d1/subresources/database/methods/query/)
+- [API：Raw D1 Database Query（Accepted Permissions に `D1 Read`）](https://developers.cloudflare.com/api/resources/d1/subresources/database/methods/raw/)
 
 **言語・ライブラリ**
 
