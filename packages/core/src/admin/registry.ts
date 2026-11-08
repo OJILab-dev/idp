@@ -10,12 +10,14 @@ import {
   clientSetRedirects,
   clientsList,
 } from "./clients.js";
+import { auditTail } from "./audit-tail.js";
 import { accessCheck, grantAdd, grantRemove, grantsList } from "./grants.js";
+import { enrollLinkIssue, passkeyRevoke } from "./passkeys.js";
 import { groupCreate, groupDisable, groupEnable, groupMemberAdd, groupMemberRemove, groupRename, groupsList } from "./groups.js";
 import type { AdminOperation, OperationName } from "./operation.js";
 import { sessionRevoke, userCreate, userDisable, userEnable, userGet, userRename, usersList } from "./users.js";
 
-/** Every implemented admin operation. */
+/** Every admin operation: the 29 of docs/design/idpctl.md, each exactly once. */
 export const ADMIN_OPERATIONS: readonly AdminOperation[] = [
   usersList,
   userGet,
@@ -23,10 +25,13 @@ export const ADMIN_OPERATIONS: readonly AdminOperation[] = [
   groupsList,
   grantsList,
   accessCheck,
+  auditTail,
   userCreate,
   userRename,
   userDisable,
   userEnable,
+  enrollLinkIssue,
+  passkeyRevoke,
   sessionRevoke,
   groupCreate,
   groupRename,
