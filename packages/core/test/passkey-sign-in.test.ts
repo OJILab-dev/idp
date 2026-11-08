@@ -4,6 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { sha256Base64url } from "../src/shared/index.js";
 import {
+  addBegin,
   authorize,
   listOwnPasskeys,
   resumeAuthorize,
@@ -140,12 +141,30 @@ describe("signInVerify", () => {
     expect(await f.count("sessions")).toBe(0);
   });
 
-  it("rejects an expired challenge and a challenge issued for another purpose", async () => {
+  it("rejects an expired challenge", async () => {
     const id = await startAuthorize();
     const { challenge } = await options(id);
     f.clock.advance(600);
     expect(await verify(id, await assertion(passkey, challenge))).toMatchObject({ reason: "invalid_challenge" });
-    expect(await verify(id, await assertion(passkey, "bm90LWEtY2hhbGxlbmdl"))).toMatchObject({ reason: "invalid_challenge" });
+  });
+
+  it("rejects a real, live challenge issued for another purpose", async () => {
+    const id = await startAuthorize();
+    const session = await f.addSession(USER, idOf(passkey));
+    const reauth = await addBegin(f.passkeyDeps, { sessionToken: session });
+    if (reauth.kind !== "options") throw new Error(reauth.reason);
+    expect(await f.count("challenges", "challenge = ? AND purpose = 'add_reauth'", reauth.options.challenge)).toBe(1);
+    expect(await verify(id, await assertion(passkey, reauth.options.challenge))).toEqual({ kind: "rejected", reason: "invalid_challenge" });
+    expect(await f.count("sessions")).toBe(1);
+  });
+
+  it("rejects an assertion whose user handle is another user's", async () => {
+    const id = await startAuthorize();
+    const { challenge } = await options(id);
+    const [other] = await f.query("SELECT user_handle FROM users WHERE id = ?", OTHER_USER);
+    const response = await assertion(passkey, challenge, { userHandle: other?.["user_handle"] as Uint8Array });
+    expect(await verify(id, response)).toEqual({ kind: "rejected", reason: "verification_failed" });
+    expect(await f.count("sessions")).toBe(0);
   });
 
   it("requires user verification and the IdP's origin", async () => {

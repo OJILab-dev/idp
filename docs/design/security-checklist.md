@@ -76,7 +76,7 @@
 - [ ] `POST /logout` は今のセッションの行を、`session_revoke` と `user_disable` はそのユーザーの全セッションの行を削除する。`passkey_revoke` と本人による失効は、失効させたパスキーから作ったセッションの行だけを外部キーの連鎖で削除し、別のパスキーから作ったセッションは残す
 - [ ] issuer、RP ID、origin は設定値から導き、リクエストの `Host` ヘッダーからは作らない
 - [ ] issuer が未設定または形式が不正なら、リクエストを処理せずエラーを返す
-- [ ] セッションの Cookie で認証する状態を変える POST（`/webauthn/*`、`/logout`）は、`Sec-Fetch-Site` が `same-origin` か（なければ `Origin` が issuer と一致するか）を確認し、どちらのヘッダーもないリクエストは拒否する。`/authorize` はクロスサイトからの POST が正規の動作で、`/token` と `/userinfo` はサーバーからの呼び出しで Cookie を使わない（クライアント認証、PKCE、Bearer のアクセストークンで守る）ので、この確認の対象にしない
+- [ ] セッションの Cookie で認証する状態を変える POST（`/webauthn/*`、`/authorize/resume`、`/logout`）は、`Sec-Fetch-Site` が `same-origin` か（なければ `Origin` が issuer と一致するか）を確認し、どちらのヘッダーもないリクエストは拒否する。`/authorize` はクロスサイトからの POST が正規の動作で、`/token` と `/userinfo` はサーバーからの呼び出しで Cookie を使わない（クライアント認証、PKCE、Bearer のアクセストークンで守る）ので、この確認の対象にしない
 - [ ] サインイン画面、登録画面、アカウントページは、CSP の `frame-ancestors 'none'` でクリックジャッキングを防ぐ
 - [ ] 登録リンクのトークンは URL のフラグメントに入れ、登録ページは `Referrer-Policy: no-referrer` にする
 

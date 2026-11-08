@@ -25,6 +25,17 @@ export {
 export { listOwnPasskeys, type OwnPasskey, type OwnPasskeysResult } from "./webauthn/credentials.js";
 export { enrollOptions, enrollVerify, type EnrollOptionsResult, type EnrollVerifyResult } from "./webauthn/enroll.js";
 export {
+  addBegin,
+  addOptions,
+  addVerify,
+  revokeBegin,
+  revokeVerify,
+  type AddOptionsResult,
+  type AddVerifyResult,
+  type ReauthOptionsResult,
+  type RevokeVerifyResult,
+} from "./webauthn/self-service.js";
+export {
   signInOptions,
   signInVerify,
   type SignInOptionsResult,
