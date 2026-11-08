@@ -42,6 +42,22 @@ export async function findActiveSession(
 }
 
 /**
+ * Ends the current session (`POST /logout`). Only this session's row is deleted; the user's other sessions stay.
+ * The unused codes issued from it go with it through the foreign key (data-model.md).
+ *
+ * Idempotent: an absent, malformed, unknown, or already deleted cookie is a no-op, so the HTTP layer can always clear
+ * the cookie and report success. The same-origin check belongs to the HTTP layer.
+ *
+ * @param deps The database.
+ * @param sessionToken The session cookie's value; `undefined` when absent.
+ * @throws {DatabaseError} The delete failed.
+ */
+export async function logout(deps: Pick<OidcDeps, "db">, sessionToken: string | undefined): Promise<void> {
+  if (sessionToken === undefined || !isRandomTokenFormat(sessionToken)) return;
+  await deps.db.batch([{ sql: "DELETE FROM sessions WHERE token_hash = ?", params: [await sha256Base64url(sessionToken)] }]);
+}
+
+/**
  * Checks whether a user may use a client right now.
  *
  * @param db The database.
