@@ -34,8 +34,20 @@ const KTY_RSA = 3;
 const CRV_P256 = 1;
 const CRV_ED25519 = 6;
 
-// RFC 8230 §6 and RFC 7518 §3.3 both require at least 2048-bit RSA keys.
-const MIN_RSA_MODULUS_BYTES = 256;
+// RFC 8230 §6 and RFC 7518 §3.3 both require at least 2048-bit RSA keys. 4096 bits caps the cost of a verification
+// that anyone can trigger with a key they registered; authenticators use 2048.
+const MIN_RSA_MODULUS_BITS = 2048;
+const MAX_RSA_MODULUS_BITS = 4096;
+
+// The only public exponent accepted: what authenticators (TPM included) use. e = 1 would make every signature its
+// own message, and small exponents invite padding forgeries, so nothing else is let through.
+const RSA_EXPONENT_65537 = [0x01, 0x00, 0x01];
+
+// The bit length of an unsigned big-endian integer without leading zero bytes.
+function bitLength(bytes: Uint8Array): number {
+  const first = bytes[0] ?? 0;
+  return first === 0 ? 0 : (bytes.length - 1) * 8 + (32 - Math.clz32(first));
+}
 
 function bytesParam(map: ReadonlyMap<number | string, CborValue>, label: number): Uint8Array {
   const value = map.get(label);
@@ -49,8 +61,8 @@ function bytesParam(map: ReadonlyMap<number | string, CborValue>, label: number)
  * @param bytes The CBOR-encoded COSE_Key.
  * @returns The algorithm and a WebCrypto key usable for `verify`.
  * @throws {InvalidCoseKeyError} The bytes are not a CBOR map; the key type, curve, and algorithm are not one of
- *   OKP/Ed25519/-8, EC2/P-256/-7, or RSA/-257; a coordinate has the wrong length; the RSA modulus is shorter than
- *   2048 bits; or WebCrypto rejects the key (for example a point not on the curve).
+ *   OKP/Ed25519/-8, EC2/P-256/-7, or RSA/-257; a coordinate has the wrong length; the RSA modulus is not 2048 to
+ *   4096 bits or the exponent is not 65537; or WebCrypto rejects the key (for example a point not on the curve).
  */
 export async function importCosePublicKey(bytes: Uint8Array): Promise<CosePublicKey> {
   let map: CborValue;
@@ -82,13 +94,19 @@ export async function importCosePublicKey(bytes: Uint8Array): Promise<CosePublic
     if (kty === KTY_RSA && alg === -257) {
       const n = bytesParam(map, CRV_OR_N);
       const e = bytesParam(map, X_OR_E);
-      if (n.length < MIN_RSA_MODULUS_BYTES || n[0] === 0) throw new InvalidCoseKeyError("RSA modulus is shorter than 2048 bits");
-      if (e.length === 0 || e.length > 4 || e[0] === 0) throw new InvalidCoseKeyError("RSA exponent is malformed");
+      // Counted on the bytes (a leading 0x01 byte is 2041 bits, not 2048), then confirmed on the imported key.
+      const bits = bitLength(n);
+      if (bits < MIN_RSA_MODULUS_BITS || bits > MAX_RSA_MODULUS_BITS) throw new InvalidCoseKeyError("RSA modulus is not 2048 to 4096 bits");
+      if (e.length !== RSA_EXPONENT_65537.length || !e.every((byte, i) => byte === RSA_EXPONENT_65537[i])) {
+        throw new InvalidCoseKeyError("RSA public exponent is not 65537");
+      }
       const jwk = { kty: "RSA", n: base64urlEncode(n), e: base64urlEncode(e), ext: true };
-      return {
-        alg,
-        key: await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]),
-      };
+      const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
+      const { modulusLength } = key.algorithm as { readonly modulusLength: number };
+      if (modulusLength < MIN_RSA_MODULUS_BITS || modulusLength > MAX_RSA_MODULUS_BITS) {
+        throw new InvalidCoseKeyError("RSA modulus is not 2048 to 4096 bits");
+      }
+      return { alg, key };
     }
   } catch (error) {
     if (error instanceof InvalidCoseKeyError) throw error;

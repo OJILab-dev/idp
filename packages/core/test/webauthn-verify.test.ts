@@ -187,6 +187,11 @@ describe("authentication (§7.2)", () => {
     expect((await authenticate(synced, {}, { signCount: 0 })).signCount).toBe(0);
   });
 
+  it("rejects the ED flag with no extension bytes after it", async () => {
+    const credential = await generateCredential(-8);
+    await expect(authenticate(credential, { flags: 0x01 | 0x04 | 0x08 | 0x10 | 0x80 })).rejects.toThrow(/authenticator data is malformed/);
+  });
+
   it("rejects authenticator data with trailing bytes or attested credential data", async () => {
     const credential = await generateCredential(-8);
     const response = await authenticationResponse(credential, CHALLENGE, rp);
@@ -217,6 +222,10 @@ describe("CBOR subset", () => {
     expect(() => decodeCbor(new Uint8Array(bytes))).toThrow(InvalidCborError);
   });
 
+  it.each([0xe0, 0xf3])("rejects the simple value below 20 encoded as 0x%s", (initial) => {
+    expect(() => decodeCbor(new Uint8Array([initial]))).toThrow(InvalidCborError);
+  });
+
   it("round-trips the values WebAuthn uses", () => {
     const value = new Map<number | string, unknown>([[1, -7], ["a", [true, false, null, "x", new Uint8Array([1, 2])]], [-300, 70000]]);
     expect(decodeCbor(encodeCbor(value as never))).toEqual(value);
@@ -241,6 +250,40 @@ describe("COSE keys and signatures", () => {
       await expect(importCosePublicKey(encodeCbor(key as never))).rejects.toBeInstanceOf(InvalidCoseKeyError);
     }
     await expect(importCosePublicKey(new Uint8Array([0x00]))).rejects.toBeInstanceOf(InvalidCoseKeyError);
+  });
+
+  describe("RSA keys", () => {
+    async function rsaParts(): Promise<{ readonly n: Uint8Array }> {
+      const credential = await generateCredential(-257);
+      const map = decodeCbor(credential.cosePublicKey) as ReadonlyMap<number, Uint8Array>;
+      return { n: map.get(-1) ?? new Uint8Array() };
+    }
+
+    function rsaKey(n: Uint8Array, e: readonly number[] = [1, 0, 1]): Uint8Array {
+      return encodeCbor(new Map<number, CborInput>([[1, 3], [3, -257], [-1, n], [-2, new Uint8Array(e)]]));
+    }
+
+    it("accepts a 2048-bit modulus with exponent 65537", async () => {
+      const { n } = await rsaParts();
+      expect((await importCosePublicKey(rsaKey(n))).alg).toBe(-257);
+    });
+
+    it("rejects a 256-byte modulus that is only 2041 bits", async () => {
+      const { n } = await rsaParts();
+      const short = n.slice();
+      short[0] = 0x01;
+      await expect(importCosePublicKey(rsaKey(short))).rejects.toThrow(/2048 to 4096 bits/);
+    });
+
+    it("rejects a modulus above 4096 bits", async () => {
+      const long = new Uint8Array(513).fill(0xff);
+      await expect(importCosePublicKey(rsaKey(long))).rejects.toThrow(/2048 to 4096 bits/);
+    });
+
+    it.each([[[1]], [[2]], [[3]], [[1, 0, 3]], [[0, 1, 0, 1]], [[1, 0, 0, 1]]])("rejects the public exponent %j", async (e) => {
+      const { n } = await rsaParts();
+      await expect(importCosePublicKey(rsaKey(n, e))).rejects.toThrow(/exponent is not 65537/);
+    });
   });
 
   it("accepts only minimal DER for ES256 signatures", async () => {
