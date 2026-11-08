@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Miniflare } from "miniflare";
 import type { D1Database } from "@cloudflare/workers-types";
@@ -37,6 +37,13 @@ export function splitStatements(sql: string): readonly string[] {
   return statements;
 }
 
+/** Lists the migration files of `contract/migrations` in the order `cf d1 migrations apply` runs them. */
+export function migrationNames(): readonly string[] {
+  return readdirSync(migrationsDir)
+    .filter((name) => /^\d{4}_[a-z0-9_]+\.sql$/.test(name))
+    .sort();
+}
+
 /** Reads a migration file from `contract/migrations`. */
 export function readMigration(name: string): string {
   return readFileSync(join(migrationsDir, name), "utf8");
@@ -69,7 +76,7 @@ export async function createTestD1(): Promise<TestD1> {
     ],
   });
   const db = (await mf.getD1Database("DB")) as unknown as D1Database;
-  const statements = splitStatements(readMigration("0001_init.sql"));
+  const statements = migrationNames().flatMap((name) => splitStatements(readMigration(name)));
   await db.batch(statements.map((s) => db.prepare(s)));
   return { db, dispose: () => mf.dispose() };
 }
