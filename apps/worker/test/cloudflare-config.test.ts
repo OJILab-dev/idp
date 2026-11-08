@@ -9,7 +9,11 @@ describe("cloudflare.config.ts", () => {
     expect(worker.domains).toEqual([{ hostname: "idp.example.com", production: true, previews: false }]);
     expect(worker.workersDev).toBe(false);
     expect(worker.previewUrls).toBe(false);
-    expect(worker.env).toMatchObject({ DB: { type: "d1", id: D1_ID }, ISSUER: { type: "text", value: "https://idp.example.com" } });
+    expect(worker.env).toMatchObject({
+      DB: { type: "d1", id: D1_ID },
+      ISSUER: { type: "text", value: "https://idp.example.com" },
+      CF_VERSION_METADATA: { type: "version-metadata" },
+    });
     // The pages stay pure assets: nothing is routed to the Worker before the asset lookup (free-tier.md).
     expect(worker.assets?.runWorkerFirst).toBe(false);
     // Workers Logs must not see the id_token_hint, state, or nonce of /authorize.

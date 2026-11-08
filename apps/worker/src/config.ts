@@ -15,6 +15,8 @@ export type Env = {
   readonly SIGNING_KEY_ED25519_PREVIOUS?: string;
   readonly SIGNING_KEY_RSA_CURRENT?: string;
   readonly SIGNING_KEY_RSA_PREVIOUS?: string;
+  /** The version metadata binding; its ID becomes audit_log.writer_version of the user's own passkey operations. */
+  readonly CF_VERSION_METADATA?: WorkerVersionMetadata;
 };
 
 /** The validated configuration. */
@@ -22,6 +24,8 @@ export type WorkerConfig = {
   readonly db: Database;
   readonly issuer: Issuer;
   readonly keys: SigningKeySet;
+  /** `idp@<version id>`, written to the audit rows of passkey enrollment, add, and self-revocation. */
+  readonly writerVersion: string;
 };
 
 /** Thrown when the configuration is missing or malformed; the message names the setting, never a key. */
@@ -38,10 +42,13 @@ function isD1Binding(value: unknown): value is D1Database {
  *
  * @param env The Worker's environment.
  * @returns The configuration.
- * @throws {InvalidConfigError} The D1 binding is missing, the issuer is invalid, or the signing keys are invalid.
+ * @throws {InvalidConfigError} The D1 binding is missing, the issuer is invalid, the signing keys are invalid, or the
+ *   version metadata has no version ID.
  */
 export async function parseWorkerConfig(env: Env): Promise<WorkerConfig> {
   if (!isD1Binding(env.DB)) throw new InvalidConfigError("DB is not a D1 binding");
+  const versionId = env.CF_VERSION_METADATA?.id;
+  if (typeof versionId !== "string" || versionId === "") throw new InvalidConfigError("CF_VERSION_METADATA has no version id");
   let issuer: Issuer;
   try {
     issuer = parseIssuer(env.ISSUER);
@@ -62,7 +69,7 @@ export async function parseWorkerConfig(env: Env): Promise<WorkerConfig> {
     if (!(error instanceof InvalidSigningKeyConfigError)) throw error;
     throw new InvalidConfigError(`signing keys: ${error.message}`);
   }
-  return { db: createD1Database(env.DB), issuer, keys };
+  return { db: createD1Database(env.DB), issuer, keys, writerVersion: `idp@${versionId}` };
 }
 
 const parsed = new WeakMap<Env, Promise<WorkerConfig>>();

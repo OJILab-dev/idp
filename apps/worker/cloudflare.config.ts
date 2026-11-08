@@ -54,6 +54,8 @@ export function workerConfig(env: DeployEnv): CloudflareWorkerConfig {
     env: {
       DB: bindings.d1({ id: d1Id }),
       ISSUER: bindings.text(issuer.url),
+      // The Worker refuses every request without it: the audit rows of the user's own passkey operations need it.
+      CF_VERSION_METADATA: bindings.versionMetadata(),
     },
   };
 }

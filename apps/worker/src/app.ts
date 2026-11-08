@@ -13,13 +13,16 @@ import {
   type AuthorizeDecision,
   type Clock,
   type OidcDeps,
+  type PasskeyDeps,
   type RandomSource,
 } from "@idp/core/user";
 import { InvalidConfigError, workerConfig, type Env, type WorkerConfig } from "./config.js";
 import { renderErrorPage } from "./error-page.js";
 import { COOKIES, clearCookie, isSameOrigin, log, readCookie, readForm, writeCookie } from "./http.js";
+import { mountWebauthnRoutes } from "./webauthn.js";
 
-type AppEnv = { Bindings: Env; Variables: { config: WorkerConfig } };
+/** The Hono environment of every route: the Worker's bindings and the validated config. */
+export type AppEnv = { Bindings: Env; Variables: { config: WorkerConfig } };
 
 /** What the app takes besides the environment; the tests fix both, the Worker uses the system ones. */
 export type AppOptions = {
@@ -43,6 +46,11 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
   function deps(c: Context<AppEnv>): OidcDeps {
     const { db, issuer, keys } = c.get("config");
     return { db, issuer, keys, clock: options.clock, random: options.random };
+  }
+
+  function passkeyDeps(c: Context<AppEnv>): PasskeyDeps {
+    const { db, issuer, writerVersion } = c.get("config");
+    return { db, issuer, writerVersion, clock: options.clock, random: options.random };
   }
 
   // Redirects use 302 for GET and 303 for POST, never 307, which would replay the form body to the RP
@@ -153,8 +161,7 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
     return c.body(null, 204);
   });
 
-  // The /webauthn/* routes (sign-in, enrollment, and the account page's API) are mounted here by the passkey PR;
-  // until then they fall through to the 404 below.
+  mountWebauthnRoutes(app, passkeyDeps, options.clock);
 
   app.notFound((c) => c.text("Not Found", 404));
   app.onError((error, c) => {

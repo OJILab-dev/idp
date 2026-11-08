@@ -1,13 +1,13 @@
 // The sign-in page (docs/design/authentication.md, steps 4 to 6). Each load takes one challenge bound to the
 // authorize request cookie; the conditional (autofill) request and the button share it, and the button aborts the
 // conditional request first. After /webauthn/auth/verify the form posts to /authorize/resume.
-import { api, applyMessages, describeFailure, element, getAssertion, pageLocale, showStatus, supportsPasskeys, t } from "./common.js";
+import { ApiError, api, applyMessages, describeFailure, element, getAssertion, pageLocale, showStatus, supportsPasskeys, t } from "./common.js";
 
 const locale = pageLocale();
 applyMessages(locale);
 
-async function finish(assertion: unknown): Promise<void> {
-  await api("POST", "/webauthn/auth/verify", assertion);
+async function finish(credential: unknown): Promise<void> {
+  await api("POST", "/webauthn/auth/verify", { credential });
   // A form POST rather than a fetch: the response is the redirect to the RP, which the browser must follow.
   element<HTMLFormElement>("resume").submit();
 }
@@ -18,7 +18,17 @@ async function main(): Promise<void> {
     showStatus("error", t(locale, "unsupported_browser"));
     return;
   }
-  const options = await api("POST", "/webauthn/auth/options");
+  let options: unknown;
+  try {
+    options = await api("POST", "/webauthn/auth/options");
+  } catch (error) {
+    // The authorize request is gone (expired, or already resumed): only the app can start a new one.
+    if (error instanceof ApiError && error.type === "passkey_rejected") {
+      showStatus("error", t(locale, "signin_restart"));
+      return;
+    }
+    throw error;
+  }
   let conditional: AbortController | undefined;
   let failed = false;
 

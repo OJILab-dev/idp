@@ -17,11 +17,12 @@ import {
   type UiLocale,
 } from "./common.js";
 
-/** One row of `GET /webauthn/credentials`: only what the design lets the API return. */
+/** One row of `GET /webauthn/credentials` (the core's OwnPasskey): only what the design lets the API return. */
 type PasskeyRow = {
-  readonly id: string;
+  readonly credential_id: string;
   readonly created_at: number;
   readonly last_used_at: number | null;
+  readonly created_via: "enroll" | "self";
   readonly backup_state: boolean;
 };
 
@@ -51,7 +52,7 @@ function render(): void {
       revoke.textContent = t(locale, "account_revoke");
       // The last passkey cannot be revoked (the Worker refuses it too); offering the button would only fail.
       revoke.disabled = rows.length < 2;
-      revoke.addEventListener("click", () => void run(() => revokePasskey(row.id)));
+      revoke.addEventListener("click", () => void run(() => revokePasskey(row.credential_id)));
       item.append(kind, times, revoke);
       return item;
     }),
@@ -67,16 +68,19 @@ async function load(): Promise<void> {
 
 async function addPasskey(): Promise<void> {
   const reauth = await api("POST", "/webauthn/add/begin");
-  const assertion = await getAssertion(reauth);
-  const creation = await api("POST", "/webauthn/add/options", assertion);
-  await api("POST", "/webauthn/add/verify", await createCredential(creation));
+  const creation = await api("POST", "/webauthn/add/options", { credential: await getAssertion(reauth) });
+  await api("POST", "/webauthn/add/verify", { credential: await createCredential(creation) });
   await load();
 }
 
 async function revokePasskey(credentialId: string): Promise<void> {
   const reauth = await api("POST", "/webauthn/revoke/begin", { credential_id: credentialId });
-  await api("POST", "/webauthn/revoke/verify", await getAssertion(reauth));
-  await load();
+  const result = (await api("POST", "/webauthn/revoke/verify", { credential_id: credentialId, credential: await getAssertion(reauth) })) as {
+    readonly session_ended: boolean;
+  };
+  // Revoking the passkey this session was signed in with ends the session too (authentication.md, revocation step 4).
+  if (result.session_ended) signedOut(t(locale, "account_revoked_signed_out"));
+  else await load();
 }
 
 async function signOut(): Promise<void> {
@@ -96,6 +100,8 @@ async function run(action: () => Promise<void>): Promise<void> {
     await action();
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) signedOut(t(locale, "account_no_session"));
+    else if (error instanceof ApiError && error.type === "limit_reached") showStatus("error", t(locale, "account_limit"));
+    else if (error instanceof ApiError && error.type === "last_passkey") showStatus("error", t(locale, "account_last_passkey"));
     else showStatus("error", describeFailure(locale, error));
   }
 }

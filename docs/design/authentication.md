@@ -123,7 +123,9 @@
 - CSP は `default-src 'self'` と `frame-ancestors 'none'` にし、インラインのスクリプト、外部のフォント、画像、アクセス解析は使わない。
 - エラーの表示は汎用の文と、問い合わせのためのエラーの種類だけにし、内部の詳細を出さない。
 - キーボードだけで操作でき、入力欄にラベルがあり、エラーが支援技術に読み上げられるようにする。
-- 対象のブラウザが決まったら、WebAuthn Level 3 の `PublicKeyCredential.parseCreationOptionsFromJSON()`（§5.1.8）、`parseRequestOptionsFromJSON()`（§5.1.9）、`toJSON()`（§5.1）を使い、options と応答の手書きの変換を減らすことを検討する。
+- ページは WebAuthn Level 3 の `PublicKeyCredential.parseCreationOptionsFromJSON()`（§5.1.8）、`parseRequestOptionsFromJSON()`（§5.1.9）、`toJSON()`（§5.1）を使い、options と応答を手で変換しない。これらを持たない古いブラウザでは、パスキーに対応していない旨だけを表示する。
+- `/webauthn/*` の要求の本文は JSON のオブジェクトにする。ブラウザの応答（`toJSON()` の結果）は `credential` に入れ、登録リンクのトークンは `token`、失効させるパスキーは `credential_id` で送る。options を返す API は options の JSON をそのまま返す。
+- `/webauthn/*` のエラーの応答は、エラーの種類だけを持つ JSON にし、どの確認で拒否したかを区別しない。種類は、本文が不正（`invalid_request`、400）、セッションがない（`no_session`、401）、同一オリジンの確認に失敗（`cross_origin_request`、403）、本数の上限（`limit_reached`、409）、最後の 1 本（`last_passkey`、409）、それ以外のすべての拒否（`passkey_rejected`、403）の 6 つだけにする。チャレンジ、認可リクエスト、登録トークン、署名、パスキーの持ち主、ユーザーの無効化、登録済みの credential ID のどれで拒否したかは、まとめて `passkey_rejected` にする。区別して返すのは、本人が次にとる行動が変わるもの（アプリからサインインし直す、パスキーを削除してから追加する、追加してから削除する）だけである。共有コアが返した理由は Worker のログにだけ書く。
 
 UI は多言語にする（ページと、Worker のエラーページの両方）。
 

@@ -1,4 +1,4 @@
-// The IdP Worker: the OIDC endpoints and, from the passkey PR on, the /webauthn/* API. The three pages (sign-in,
+// The IdP Worker: the OIDC endpoints and the /webauthn/* API. The three pages (sign-in,
 // enrollment, account) are static assets served before the Worker runs (docs/design/free-tier.md).
 import { cryptoRandomSource, systemClock } from "@idp/core/user";
 import { createApp, type AppOptions } from "./app.js";

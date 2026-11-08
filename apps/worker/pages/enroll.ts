@@ -1,6 +1,7 @@
 // The enrollment page (docs/design/authentication.md, "パスキーの登録"). The one-time token arrives in the URL
 // fragment, so it never reaches a server log; it is removed from the address bar before anything else runs.
 import {
+  ApiError,
   api,
   applyMessages,
   createCredential,
@@ -20,6 +21,13 @@ wireLanguageSelector(locale, (next) => (locale = next));
 const token = location.hash.slice(1);
 history.replaceState(null, "", location.pathname + location.search);
 
+// The Worker's refusals the user can act on: the link is no longer usable, or the passkey limit is reached.
+function describeRefusal(error: unknown): string {
+  if (error instanceof ApiError && error.type === "passkey_rejected") return t(locale, "enroll_invalid");
+  if (error instanceof ApiError && error.type === "limit_reached") return t(locale, "enroll_limit");
+  return describeFailure(locale, error);
+}
+
 async function enroll(button: HTMLButtonElement): Promise<void> {
   button.disabled = true;
   showStatus("error", "");
@@ -29,16 +37,18 @@ async function enroll(button: HTMLButtonElement): Promise<void> {
     options = await api("POST", "/webauthn/register/options", { token });
     credential = await createCredential(options);
   } catch (error) {
-    showStatus("error", describeFailure(locale, error));
-    button.disabled = false;
+    showStatus("error", describeRefusal(error));
+    // The token is not consumed by options, so a cancelled ceremony can be retried; a refused link cannot.
+    button.disabled = error instanceof ApiError;
     return;
   }
   try {
     await api("POST", "/webauthn/register/verify", { token, credential });
   } catch (error) {
-    // The token may already be consumed with the passkey saved (a lost response), so registering again would fail;
-    // the user is sent to sign in instead of being asked to retry.
-    showStatus("error", error instanceof TypeError ? t(locale, "enroll_lost") : describeFailure(locale, error));
+    // Without an answer (the connection dropped, or the Worker failed after its batch) the token may already be
+    // consumed with the passkey saved, so registering again would fail; the user is sent to sign in instead.
+    const lost = !(error instanceof ApiError) || error.status >= 500;
+    showStatus("error", lost ? t(locale, "enroll_lost") : describeRefusal(error));
     return;
   }
   button.hidden = true;
