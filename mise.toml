@@ -1,5 +1,7 @@
 [tools]
 actionlint = "1.7.12"
+go = "1.27.3"
+"go:github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen" = "2.8.1"
 node = "26.12.1"
 pinact = "4.1.1"
 pnpm = "11.28.8"
@@ -17,3 +19,18 @@ run = "pinact run -check -verify-comment"
 [tasks."actions:update"]
 description = "Update external Actions and reusable workflows"
 run = "pinact run -update"
+
+[tasks."idpctl:generate"]
+description = "Regenerate the idpctl admin API client from contract/openapi/admin.json"
+dir = "cmd/idpctl"
+run = "go generate ./internal/adminapi"
+
+[tasks."idpctl:check"]
+description = "Check formatting, vet, build, and test idpctl, including the generated-code drift check"
+dir = "cmd/idpctl"
+run = [
+  "test -z \"$(gofmt -l .)\" || { gofmt -l .; exit 1; }",
+  "go vet ./...",
+  "go build ./...",
+  "go test -count=1 ./...",
+]

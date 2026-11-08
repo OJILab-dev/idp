@@ -1,0 +1,7 @@
+# Generates the admin API types and client from contract/openapi/admin.json.
+# Run through generate.go (go generate) with the oapi-codegen pinned in mise.toml.
+package: adminapi
+output: adminapi.gen.go
+generate:
+  models: true
+  client: true
