@@ -110,7 +110,9 @@ ID トークンの署名アルゴリズム（[トークン設計](tokens.md)参�
 - RS256 が無効なデプロイでは、管理用の Worker は `client_create` と `client_set_id_token_alg` での `RS256` の指定を拒否する。有効かどうかは IdP の Worker の discovery から判断し、判断できなければ拒否する（fail-closed）。
 - `clients_list` は client ごとのアルゴリズムを返し、アルゴリズムで絞り込める。RS256 を無効にする前に、`RS256` を登録した client が残っていないことをこれで確かめる。
 
-`access_check(user, client)` は、許可か拒否かに加えて、どの grant にマッチしたか（直接付与か、どのグループ経由か。または何が足りないか。無効なユーザー、client、グループを含む）を返す。
+`access_check(user, client)` は、許可か拒否かに加えて、どの grant にマッチしたか（直接付与か、どのグループ経由か。または何が足りないか。無効なユーザー、client、グループを含む）を返す。許可か拒否かは `effective_access` ビューそのものから読み、説明は同じスナップショットの行から組み立てる。説明がビューの判定と食い違えば、`access_check` は `internal` を返す。説明の組み立てがビューの定義からずれたことを、黙って誤った説明を返さずに検出するため。
+
+`client_rotate_secret` は confidential client だけが対象で、public client への要求は `state-conflict` を返す。`client_set_id_token_alg` で今と同じアルゴリズムを指定した要求は、状態を変えない `PUT` として成功を返す。
 
 ユーザーとグループは同じ主体として扱う（[認可](authorization.md)参照）。
 

@@ -1,8 +1,27 @@
 // Admin use cases (the idpctl operations). Only the admin Worker may import this module.
 
-export type { AccessPair } from "./access.js";
+export type { AccessPair, Principal } from "./access.js";
+export {
+  MAX_REDIRECT_URIS,
+  type ClientCreateResult,
+  type ClientRenameResult,
+  type ClientRotateSecretResult,
+  type ClientSetIdTokenAlgResult,
+  type ClientSetRedirectsResult,
+  type ClientSummary,
+  type IdTokenAlg,
+} from "./clients.js";
 export { enablementOperationName, type Enablement, type EnablementResource, type EnablementResult } from "./enablement.js";
 export { executeOperation, type ExecuteOptions } from "./execute.js";
+export type {
+  AccessCheckResult,
+  AccessDenialReason,
+  AccessGrant,
+  GrantAddResult,
+  GrantRemoveResult,
+  GrantSummary,
+  PrincipalRef,
+} from "./grants.js";
 export type { GroupCreateResult, GroupMemberAddResult, GroupRenameResult, GroupSummary } from "./groups.js";
 export { IDEMPOTENCY_TTL_SECONDS, canonicalJson, requestHash } from "./idempotency.js";
 export {

@@ -136,6 +136,43 @@
       { "value": "", "reason": "empty" }
     ]
   },
+  "redirect_uri": {
+    "source": "docs/design/clients.md (RFC 8252 §7, §8.3; RFC 9700 §2.1; RFC 6749 §3.1.2)",
+    "valid": [
+      { "value": "https://app.example.com/callback", "kind": "https" },
+      { "value": "https://app.example.com/cb?tenant=a", "kind": "https" },
+      { "value": "https://app.example.com:8443/cb", "kind": "https" },
+      { "value": "http://127.0.0.1/callback", "kind": "loopback" },
+      { "value": "http://[::1]/callback", "kind": "loopback" },
+      { "value": "com.example.app:/oauth2redirect", "kind": "custom-scheme" },
+      { "value": "com.example.app:/", "kind": "custom-scheme" }
+    ],
+    "invalid": [
+      { "value": "", "reason": "empty" },
+      { "value": "/callback", "reason": "not absolute" },
+      { "value": "http://app.example.com/cb", "reason": "plain http to a host that is not a loopback IP literal" },
+      { "value": "http://localhost/cb", "reason": "localhost (RFC 8252 §8.3)" },
+      { "value": "https://localhost/cb", "reason": "localhost" },
+      { "value": "http://127.0.0.1:8080/cb", "reason": "loopback with a port; the port is not registered (RFC 8252 §7.3)" },
+      { "value": "http://127.0.0.2/cb", "reason": "loopback IP other than 127.0.0.1 and ::1" },
+      { "value": "https://app.example.com/cb#x", "reason": "fragment (RFC 6749 §3.1.2)" },
+      { "value": "https://app.example.com/cb#", "reason": "empty fragment" },
+      { "value": "https://user@app.example.com/cb", "reason": "userinfo" },
+      { "value": "https://*.example.com/cb", "reason": "wildcard (RFC 9700 §2.1 exact matching)" },
+      { "value": "https://APP.example.com/cb", "reason": "not canonical (uppercase host)" },
+      { "value": "https://app.example.com", "reason": "not canonical (no path)" },
+      { "value": "https://app.example.com:443/cb", "reason": "not canonical (default port)" },
+      { "value": "https://app.example.com/a b", "reason": "space" },
+      { "value": "https://app.example.com/café", "reason": "non-ASCII" },
+      { "value": "myapp:/cb", "reason": "custom scheme that is not a reverse domain name" },
+      { "value": "com.example.app://cb", "reason": "custom scheme with an authority" },
+      { "value": "com.example.app:cb", "reason": "custom scheme without a path" },
+      { "value": "Com.Example.App:/cb", "reason": "uppercase scheme" },
+      { "value": "com..app:/cb", "reason": "empty label" },
+      { "value": "javascript:alert(1)", "reason": "javascript scheme" }
+    ],
+    "confidential_rejects": ["http://127.0.0.1/callback", "com.example.app:/oauth2redirect"]
+  },
   "random_token": {
     "valid": ["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA", "__________________________________________8", "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"],
     "invalid": [
