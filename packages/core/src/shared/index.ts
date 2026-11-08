@@ -5,6 +5,7 @@ export { InvalidBase64urlError, base64urlDecode, base64urlEncode } from "./base6
 export { DatabaseError, type Database, type SqlRow, type SqlStatement, type SqlStatementResult, type SqlValue } from "./db.js";
 export { sha256Base64url } from "./hash.js";
 export { isClientId, isRandomTokenFormat, isUuidV4, newUuidV4, randomToken } from "./identifiers.js";
+export { InvalidIssuerError, parseIssuer, type Issuer } from "./issuer.js";
 export { InvalidJwkError, jwkThumbprint } from "./jwk.js";
 
 /**

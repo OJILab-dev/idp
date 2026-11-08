@@ -21,7 +21,7 @@ D1 に保存する値の形と、管理 API の形を、どの実装からも独
 | 署名鍵 | JWK で Worker Secret に置く。リポジトリの生成スクリプトで生成し、IdP の Worker が読む。鍵の種類ごとに current と previous を持つ（[トークン設計](tokens.md)参照） |
 | 署名鍵の種類 | Ed25519 の鍵（`kty: OKP`、`crv: Ed25519`）を常に持つ。RS256 を有効にするときだけ、RSA の鍵を足す。RSA のモジュラスは 4096 bit。RFC 7518 §3.3 は 2048 bit 以上を求めている（MUST）。NIST SP 800-57 Part 1 Rev. 5 §5.6.1.1 の Table 2 では、RSA の 2048 bit のセキュリティ強度は 112 bit、3072 bit は 128 bit で、4096 bit は表にない（3072 bit と 192 bit に当たる 7680 bit の間にあり、128 bit 以上）。RSA の署名は Ed25519 より重いが、RSA を使うのは `RS256` を登録した client の ID トークンだけなので、その分の CPU 時間だけを受け入れる（[未決事項](open-questions.md)で実測する） |
 | 署名鍵の `kid` | RFC 7638 の JWK thumbprint（SHA-256、base64url でパディングなし）。必須のメンバーは、Ed25519 では `crv`、`kty`、`x`（RFC 8037 §2）、RSA では `e`、`kty`、`n`（RFC 7638 §3.2） |
-| 秘密鍵の JWK | `use: sig` と、Ed25519 の鍵には `alg: Ed25519`、RSA の鍵には `alg: RS256` を持たせる。`alg: EdDSA` の鍵は不正として拒否する |
+| 秘密鍵の JWK | `use: sig` と、Ed25519 の鍵には `alg: Ed25519`、RSA の鍵には `alg: RS256` を持たせる。`alg: EdDSA` の鍵は不正として拒否する。Ed25519 の `d` は 32 バイト（RFC 8032 §5.1.5）。RSA の鍵は `d` と CRT のメンバー（`p`、`q`、`dp`、`dq`、`qi`。RFC 7518 §6.3.2）をすべて持つ。`kid` のメンバーを持つ場合は、JWK thumbprint と一致しなければならない |
 | JWKS に載せる値 | 鍵ごとに、公開鍵のメンバー（Ed25519 は `kty`、`crv`、`x`（RFC 8037 §2）、RSA は `kty`、`n`、`e`）と、`kid`、`alg`、`use` だけ。秘密鍵のメンバー（`d` など）は載せない |
 | ID トークンの署名アルゴリズム | `clients.id_token_signed_response_alg` に `Ed25519` か `RS256` のどちらかを必ず持つ。省略時の既定（OIDC Dynamic Client Registration 1.0 §2 では RS256）には頼らない。アクセストークンは常に `Ed25519` |
 | トークンのクレーム | [トークン設計](tokens.md)の表と「クレームの一覧」を唯一の一覧とし、テストベクタで照らし合わせる |

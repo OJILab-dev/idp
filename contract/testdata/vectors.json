@@ -149,5 +149,115 @@
       { "value": "0f8fad5b-d9cb-469f-a165-70867728950e", "reason": "a UUID" },
       { "value": "", "reason": "empty" }
     ]
+  },
+  "issuer": {
+    "valid": [
+      { "value": "https://idp.example.com", "rp_id": "idp.example.com", "origin": "https://idp.example.com" },
+      { "value": "https://login.example.org", "rp_id": "login.example.org", "origin": "https://login.example.org" }
+    ],
+    "invalid": [
+      { "value": "", "reason": "empty" },
+      { "value": "idp.example.com", "reason": "no scheme" },
+      { "value": "http://idp.example.com", "reason": "http" },
+      { "value": "https://", "reason": "no host" },
+      { "value": "https://idp.example.com/", "reason": "trailing slash" },
+      { "value": "https://idp.example.com/oidc", "reason": "path" },
+      { "value": "https://idp.example.com?a=b", "reason": "query" },
+      { "value": "https://idp.example.com?", "reason": "empty query" },
+      { "value": "https://idp.example.com#top", "reason": "fragment" },
+      { "value": "https://idp.example.com#", "reason": "empty fragment" },
+      { "value": "https://idp.example.com:8443", "reason": "port" },
+      { "value": "https://idp.example.com:443", "reason": "explicit default port" },
+      { "value": "https://user@idp.example.com", "reason": "userinfo" },
+      { "value": "https://192.0.2.1", "reason": "IPv4 address" },
+      { "value": "https://[2001:db8::1]", "reason": "IPv6 address" },
+      { "value": "https://IDP.example.com", "reason": "uppercase host (not the canonical form)" },
+      { "value": "https://idp.example.com.", "reason": "trailing dot" },
+      { "value": " https://idp.example.com", "reason": "leading whitespace" },
+      { "value": "https://idp.example.com\n", "reason": "trailing newline" },
+      { "value": "https://idp example.com", "reason": "space in host" }
+    ]
+  },
+  "signing_key_jwk": {
+    "valid": [
+      {
+        "source": "RFC 8037 Appendix A.1 with use and alg",
+        "jwk": { "kty": "OKP", "crv": "Ed25519", "d": "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A", "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo", "use": "sig", "alg": "Ed25519" },
+        "public_jwk": { "kty": "OKP", "crv": "Ed25519", "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo", "kid": "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k", "alg": "Ed25519", "use": "sig" }
+      },
+      {
+        "source": "RFC 8037 Appendix A.1 with use, alg, and the matching kid",
+        "jwk": { "kty": "OKP", "crv": "Ed25519", "d": "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A", "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo", "use": "sig", "alg": "Ed25519", "kid": "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k" },
+        "public_jwk": { "kty": "OKP", "crv": "Ed25519", "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo", "kid": "kPrK_qmxVWaYVA9wwBF6Iuo3vVzz7TxHCTwXBygrS4k", "alg": "Ed25519", "use": "sig" }
+      }
+    ],
+    "invalid_ed25519": [
+      { "reason": "not JSON", "secret": "{kty: OKP}" },
+      { "reason": "a JSON array", "secret": "[]" },
+      { "reason": "use missing", "secret": "{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"d\":\"nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A\",\"x\":\"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\",\"alg\":\"Ed25519\"}" },
+      { "reason": "use enc", "secret": "{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"d\":\"nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A\",\"x\":\"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\",\"use\":\"enc\",\"alg\":\"Ed25519\"}" },
+      { "reason": "alg missing", "secret": "{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"d\":\"nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A\",\"x\":\"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\",\"use\":\"sig\"}" },
+      { "reason": "alg EdDSA (RFC 9864 §4.1.2)", "secret": "{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"d\":\"nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A\",\"x\":\"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\",\"use\":\"sig\",\"alg\":\"EdDSA\"}" },
+      { "reason": "alg RS256 on an OKP key", "secret": "{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"d\":\"nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A\",\"x\":\"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\",\"use\":\"sig\",\"alg\":\"RS256\"}" },
+      { "reason": "d missing (a public key)", "secret": "{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"x\":\"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\",\"use\":\"sig\",\"alg\":\"Ed25519\"}" },
+      { "reason": "d is not 32 bytes", "secret": "{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"d\":\"AAECAwQF\",\"x\":\"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\",\"use\":\"sig\",\"alg\":\"Ed25519\"}" },
+      { "reason": "d is not canonical base64url", "secret": "{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"d\":\"nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A=\",\"x\":\"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\",\"use\":\"sig\",\"alg\":\"Ed25519\"}" },
+      { "reason": "x does not belong to d", "secret": "{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"d\":\"nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A\",\"x\":\"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\",\"use\":\"sig\",\"alg\":\"Ed25519\"}" },
+      { "reason": "kid is not the thumbprint", "secret": "{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"d\":\"nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A\",\"x\":\"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\",\"use\":\"sig\",\"alg\":\"Ed25519\",\"kid\":\"2026-11-08\"}" },
+      { "reason": "crv X25519", "secret": "{\"kty\":\"OKP\",\"crv\":\"X25519\",\"d\":\"nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A\",\"x\":\"11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo\",\"use\":\"sig\",\"alg\":\"Ed25519\"}" }
+    ]
+  },
+  "jws_ed25519": [
+    {
+      "source": "RFC 8037 Appendix A.4 (Ed25519 is deterministic, RFC 8032 §5.1.6)",
+      "jwk": { "kty": "OKP", "crv": "Ed25519", "d": "nWGxne_9WmC6hEr0kuwsxERJxWl7MmkZcDusAxyuf2A", "x": "11qYAYKxCrfVS_7TyWQHOg7hcvPapiMlrwIaaPcHURo" },
+      "signing_input": "eyJhbGciOiJFZERTQSJ9.RXhhbXBsZSBvZiBFZDI1NTE5IHNpZ25pbmc",
+      "signature": "hgyY0il_MGCjP0JzlnLWG1PPOt7-09PGcvMg3AIbQR6dWbhijcNR4ki4iylGjg5BhVsPt9g7sVvpAr_MuM0KAg"
+    }
+  ],
+  "discovery": {
+    "issuer": "https://idp.example.com",
+    "ed25519_only": {
+      "issuer": "https://idp.example.com",
+      "authorization_endpoint": "https://idp.example.com/authorize",
+      "token_endpoint": "https://idp.example.com/token",
+      "userinfo_endpoint": "https://idp.example.com/userinfo",
+      "jwks_uri": "https://idp.example.com/jwks",
+      "response_types_supported": ["code"],
+      "subject_types_supported": ["public"],
+      "grant_types_supported": ["authorization_code"],
+      "response_modes_supported": ["query"],
+      "request_uri_parameter_supported": false,
+      "request_parameter_supported": false,
+      "claims_parameter_supported": false,
+      "code_challenge_methods_supported": ["S256"],
+      "token_endpoint_auth_methods_supported": ["client_secret_basic", "none"],
+      "authorization_response_iss_parameter_supported": true,
+      "scopes_supported": ["openid", "profile"],
+      "id_token_signing_alg_values_supported": ["Ed25519"]
+    },
+    "with_rs256_id_token_signing_alg_values_supported": ["Ed25519", "RS256"]
+  },
+  "token_claims": {
+    "id_token": [
+      {
+        "case": "openid and profile with a nonce",
+        "input": { "issuer": "https://idp.example.com", "sub": "0f8fad5b-d9cb-469f-a165-70867728950e", "client_id": "my-app", "auth_time": 1793000000, "nonce": "n-0S6_WzA2Mj", "scopes": ["openid", "profile"], "name": "Alice", "now": 1793000100 },
+        "claims": { "iss": "https://idp.example.com", "sub": "0f8fad5b-d9cb-469f-a165-70867728950e", "aud": "my-app", "exp": 1793000400, "iat": 1793000100, "auth_time": 1793000000, "nonce": "n-0S6_WzA2Mj", "name": "Alice" }
+      },
+      {
+        "case": "openid only without a nonce: no name and no nonce",
+        "input": { "issuer": "https://idp.example.com", "sub": "0f8fad5b-d9cb-469f-a165-70867728950e", "client_id": "my-app", "auth_time": 1793000000, "scopes": ["openid"], "name": "Alice", "now": 1793000100 },
+        "claims": { "iss": "https://idp.example.com", "sub": "0f8fad5b-d9cb-469f-a165-70867728950e", "aud": "my-app", "exp": 1793000400, "iat": 1793000100, "auth_time": 1793000000 }
+      }
+    ],
+    "access_token": [
+      {
+        "case": "openid and profile (jti is random and checked for format only)",
+        "input": { "issuer": "https://idp.example.com", "sub": "0f8fad5b-d9cb-469f-a165-70867728950e", "client_id": "my-app", "scopes": ["openid", "profile"], "now": 1793000100 },
+        "claims": { "iss": "https://idp.example.com", "sub": "0f8fad5b-d9cb-469f-a165-70867728950e", "aud": "https://idp.example.com", "client_id": "my-app", "scope": "openid profile", "exp": 1793000400, "iat": 1793000100 }
+      }
+    ],
+    "id_token_forbidden": ["azp", "at_hash", "c_hash", "acr", "amr", "sid", "preferred_username", "scope", "email", "email_verified", "client_id", "jti"]
   }
 }
