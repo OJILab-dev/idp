@@ -90,6 +90,13 @@ export function enablementOperationName(resource: EnablementResource, enablement
   return `${resource}_${enablement === "enabled" ? "enable" : "disable"}`;
 }
 
+/**
+ * The body of `POST /v1/{users|clients|groups}/{id}/enablement-events`. Its value picks the operation through
+ * {@link enablementOperationName}; the operation's own input holds only the ID, so the request hash still covers the
+ * path and the operation name tells enable from disable.
+ */
+export const enablementEventSchema = z.strictObject({ enablement: z.enum(["enabled", "disabled"]) });
+
 /** The result of an enablement change. */
 export type EnablementResult = {
   readonly id: string;

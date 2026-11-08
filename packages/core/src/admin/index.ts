@@ -13,7 +13,7 @@ export {
   type ClientSummary,
   type IdTokenAlg,
 } from "./clients.js";
-export { enablementOperationName, type Enablement, type EnablementResource, type EnablementResult } from "./enablement.js";
+export { enablementEventSchema, enablementOperationName, type Enablement, type EnablementResource, type EnablementResult } from "./enablement.js";
 export { executeOperation, type ExecuteOptions } from "./execute.js";
 export type {
   AccessCheckResult,
@@ -46,5 +46,5 @@ export {
 export { decodeCursor, encodeCursor, type Cursor, type CursorKey, type Page } from "./paging.js";
 export { AdminProblem, PROBLEM_STATUS, problemType, type ProblemDetails } from "./problem.js";
 export { ADMIN_OPERATIONS, findOperation } from "./registry.js";
-export { DEFAULT_PAGE_LIMIT, MAX_NAME_LENGTH, MAX_PAGE_LIMIT } from "./schemas.js";
+export { DEFAULT_PAGE_LIMIT, MAX_NAME_LENGTH, MAX_PAGE_LIMIT, parseInput } from "./schemas.js";
 export type { PasskeySummary, SessionRevokeResult, UserCreateResult, UserDetail, UserRenameResult, UserSummary } from "./users.js";

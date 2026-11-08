@@ -1,9 +1,22 @@
-// The admin Worker: the admin API behind edge mTLS and the certificate allowlist.
-// Until it is implemented, every request is refused (design principle 4: fail-closed).
+// The admin Worker: the admin API behind edge mTLS and the certificate allowlist (docs/design/idpctl.md).
+import { createApp } from "./app.js";
+import type { Env } from "./config.js";
 
-/** Handles every request to the admin host. */
-async function fetch(_request: Request): Promise<Response> {
-  return new Response(null, { status: 503, headers: { "cache-control": "no-store" } });
+export type { Env } from "./config.js";
+
+const app = createApp();
+
+/**
+ * Handles every request to the admin host.
+ *
+ * Cache-Control: no-store is set here, on the way out, so no response (a secret, a list, a refusal) can be cached
+ * whichever path produced it (idpctl.md, "IdP が発行する秘密の扱い").
+ */
+async function fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  const response = await app.fetch(request, env, ctx);
+  const out = new Response(response.body, response);
+  out.headers.set("cache-control", "no-store");
+  return out;
 }
 
-export default { fetch } satisfies ExportedHandler;
+export default { fetch } satisfies ExportedHandler<Env>;
