@@ -281,6 +281,25 @@ CREATE TRIGGER groups_no_delete BEFORE DELETE ON groups
 BEGIN SELECT RAISE(ABORT, 'groups are never deleted'); END;
 ```
 
+マイグレーションは `contract/migrations/` に番号順に置き、各ファイルはこのドキュメントの SQL のブロックと、出てくる順に 1 対 1 で同じ内容にする（ずれはテストで検出する）。適用済みのマイグレーションは書き換えず、変更は次の番号のファイルとして足す。上のブロックが `0001_init.sql`、下のブロックが `0002_audit_log_append_only.sql` である。
+
+`0002_audit_log_append_only.sql` は、監査ログを出来事の表と同じく追記だけの表にする。`0001` の時点では監査ログの更新と削除を拒否するトリガーがなく、「行は削除しない」が共有コアの規律だけに頼っていた。本人による失効の条件のように、監査ログの行があることを前提にする書き込みもあるので、D1 の側で強制する。`REPLACE`（`INSERT OR REPLACE` を含む）は衝突した行を消すときに DELETE のトリガーを起こさない（SQLite「The ON CONFLICT Clause」の REPLACE の説明。DELETE のトリガーは recursive triggers が有効なときだけ起こる）ので、既にある `id` を名指しする挿入も拒否する。共有コアは `id` を名指しせず、D1 の採番に任せる。
+
+```sql
+-- 監査ログは追記だけの表にする。更新と削除は、共有コアの誤りや手で流した SQL でも D1 が拒否する。
+-- 本人による失効の条件など、監査ログの行があることに頼る書き込みがあるため、0001 の出来事の表と同じ形で守る。
+-- REPLACE は衝突した行を消すときに DELETE のトリガーを起こさない（recursive_triggers が無効のため）ので、
+-- 既にある id を名指しする INSERT も拒否する。共有コアは id を D1 の採番に任せ、名指ししない。
+-- break-glass でも監査ログの行は消さない（idpctl.md 参照）
+CREATE TRIGGER audit_log_no_update BEFORE UPDATE ON audit_log
+BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END;
+CREATE TRIGGER audit_log_no_delete BEFORE DELETE ON audit_log
+BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END;
+CREATE TRIGGER audit_log_no_replace BEFORE INSERT ON audit_log
+WHEN NEW.id IS NOT NULL AND EXISTS (SELECT 1 FROM audit_log WHERE id = NEW.id)
+BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END;
+```
+
 上の 16 テーブルのほかに監査ログ用のテーブル `audit_log` を 1 つ置き、管理操作と本人のパスキー操作を記録する。カラムは OWASP Logging Cheat Sheet の「いつ、どこで、誰が、何を」に対応させ、値の形は [実装に依存しない契約](cross-language-contract.md)で固定する。管理者は `idpctl` の `audit_tail` で、いつでも新しい順に読める。
 
 - 管理操作の行の操作者は、管理用の Worker が mTLS のクライアント証明書のフィンガープリントを許可リストで解決した管理者の名前で、操作する側の自己申告ではない（[管理 CLI と管理用の Worker](idpctl.md)参照）。
@@ -299,7 +318,7 @@ BEGIN SELECT RAISE(ABORT, 'groups are never deleted'); END;
 - 失敗の行の `target` は、入力の検証を通った対象の ID にする。存在しない ID を指定した失敗（`not-found`）も、検証を通った ID をそのまま入れる。ID がまだ採番されていない作成の失敗や、ID の形式が不正な失敗は `none` にし、形式が不正な値そのものは書かない。
 - break-glass で手で書く行（[管理 CLI と管理用の Worker](idpctl.md)の break-glass を参照）は、`actor` を `break_glass`、`result` を `success` とし、管理者の列を持たない。基盤の権限の API トークンでは管理者を確かめられないので、名前や証明書を自己申告で書かない。トリガーの付け外しの行は `target` を `schema` にし、外したトリガーの名前を `detail_json` に入れる。
 - OWASP の「記録から除くデータ」に従い、セッション ID、トークン、シークレット、登録トークンは書かない。`detail_json` にも入れず、登録リンクの発行では有効期限だけを残す。
-- 行は削除しない。家族規模の件数なら、無料枠の DB サイズ（500 MB）に対して十分小さい。
+- 行は更新も削除もしない（`0002_audit_log_append_only.sql` のトリガーで拒否する）。家族規模の件数なら、無料枠の DB サイズ（500 MB）に対して十分小さい。
 
 サインインは監査ログに書かず、IdP の Worker のログに任せる（サインイン自体はチャレンジ、セッション、sign count を D1 に書く）。パスキーで署名を検証するセレモニー（サインインと、本人による追加と失効の直前の再認証）は、どれも検証に成功したときに `sign_count` と `last_used_at` を同じバッチで更新し、sign count の後退の検知（[標準準拠](standards-compliance.md)参照）も同じ規則で行う。期限切れの行は発行時に片付けるので、Cron は使わない。有効かどうかは取り出すときに必ず `expires_at` で判定するので、片付けが遅れても安全性は変わらない（容量にだけ影響する）。
 
