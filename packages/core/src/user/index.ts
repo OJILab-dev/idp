@@ -13,10 +13,27 @@ export {
   type ResumeInput,
 } from "./authorize.js";
 export { CorruptRowError, loadClient, type RegisteredClient } from "./clients.js";
-export { cryptoRandomSource, systemClock, type Clock, type OidcDeps, type RandomSource } from "./deps.js";
+export { cryptoRandomSource, systemClock, type Clock, type OidcDeps, type PasskeyDeps, type RandomSource } from "./deps.js";
+export {
+  CHALLENGE_LIFETIME_SECONDS,
+  type CreationOptionsJson,
+  type CredentialDescriptorJson,
+  type PasskeyRejection,
+  type PasskeyRejectionReason,
+  type RequestOptionsJson,
+} from "./webauthn/ceremony.js";
+export { listOwnPasskeys, type OwnPasskey, type OwnPasskeysResult } from "./webauthn/credentials.js";
+export { enrollOptions, enrollVerify, type EnrollOptionsResult, type EnrollVerifyResult } from "./webauthn/enroll.js";
+export {
+  signInOptions,
+  signInVerify,
+  type SignInOptionsResult,
+  type SignInVerifyInput,
+  type SignInVerifyResult,
+} from "./webauthn/sign-in.js";
 export { asUiLocale, selectUiLocale, type UiLocale } from "./locale.js";
 export { isRegisteredRedirectUri, matchesRegisteredRedirectUri } from "./redirect-uri.js";
-export { findActiveSession, hasAccess, logout, type ActiveSession } from "./sessions.js";
+export { SESSION_LIFETIME_SECONDS, findActiveSession, hasAccess, logout, type ActiveSession } from "./sessions.js";
 export {
   exchangeToken,
   type TokenErrorCode,

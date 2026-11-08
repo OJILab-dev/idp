@@ -37,6 +37,19 @@ export type OidcDeps = {
   readonly random: RandomSource;
 };
 
+/**
+ * The dependencies of the passkey ceremonies. They sign nothing, so they take no signing keys; they write the
+ * user's own audit rows, so they take the Worker's version for writer_version.
+ */
+export type PasskeyDeps = {
+  readonly db: Database;
+  readonly issuer: Issuer;
+  readonly clock: Clock;
+  readonly random: RandomSource;
+  /** The IdP Worker's version, written to audit_log.writer_version; never empty. */
+  readonly writerVersion: string;
+};
+
 /** The Worker's clock: the system time in whole seconds. */
 export const systemClock: Clock = {
   now(): number {
