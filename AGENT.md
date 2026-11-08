@@ -40,8 +40,9 @@ GITHUB_TOKEN="$(gh auth token)" mise run actions:check
 
 ## Cloudflare CLI
 
-Cloudflare の操作には、mise が固定した `cf` CLI を `mise exec -- cf` で使います。グローバルに入れた `cf` に頼ってはいけません。
-`cf` のバージョンを変えるときは `mise.toml` を書き換えて `mise lock` を実行し、`mise.lock` と `.mise/locks/` をまとめてコミットします。
+Cloudflare の操作には、ルートの `package.json` で固定した `cf` CLI を `pnpm exec cf …` で使います。グローバルに入れた `cf` に頼ってはいけません。
+`cf` のバージョンは範囲ではなく完全なバージョンで指定し、`package.json` と `pnpm-lock.yaml` をまとめてコミットします。
+公開から 14 日たっていない版は、`pnpm-workspace.yaml` の `minimumReleaseAge` で入れられません。この設定と `allowBuilds` を緩めてはいけません。
 `cf auth login` は運用者が実行します。エージェントは Cloudflare の認証情報を作成、読み出し、受け渡ししてはいけません。
 
 ## Repository settings
@@ -80,6 +81,13 @@ OP_ENVIRONMENT_ID='<environment-id>' \
 このリポジトリは Organization 共通の Workload Identity Provider と GitHub OIDC を使います（[docs/deployment/secret.md](docs/deployment/secret.md) 参照）。
 
 ## Project commands
+
+Setup はリポジトリのルートで次を実行します。
+
+```sh
+mise install
+pnpm install --frozen-lockfile
+```
 
 実装はまだありません。
 共有コアと 2 つの Worker（pnpm の workspace：`packages/core`、`apps/worker`、`apps/admin-worker`）、`idpctl`（Go）、e2e（Playwright）を追加したら、それぞれの Setup、Build、Test、Check の正規コマンドをこの節へ記録してください。

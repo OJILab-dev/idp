@@ -49,11 +49,38 @@ url = "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_
 url_api = "https://api.github.com/repos/rhysd/actionlint/releases/assets/384924919"
 provenance = "github-attestations"
 
-[[tools."npm:cf"]]
-version = "1.0.0-beta.21"
-aube = { path = ".mise/locks/npm-cf/1.0.0-beta.21", digest = "sha256:8c9f2bf5e0b46ae3acae5e716ad2a2804b7d6415b581c297bd2174d8adfe0255" }
-backend = "npm:cf"
-specifiers = ["1.0.0-beta.21"]
+[[tools.node]]
+version = "26.12.1"
+backend = "core:node"
+specifiers = ["26.12.1"]
+
+[tools.node."platforms.linux-arm64"]
+checksum = "sha256:a6c01af459dd8972ab3fb08ee5da81244d26ba8c4944a62d5bbba8c597ae154f"
+url = "https://nodejs.org/dist/v26.12.1/node-v26.12.1-linux-arm64.tar.gz"
+
+[tools.node."platforms.linux-arm64-musl"]
+checksum = "sha256:c3694551f6cb888fe0befb4cb2e13ffe45b0bb2528ec141e7c3a29a7d7974d13"
+url = "https://unofficial-builds.nodejs.org/download/release/v26.12.1/node-v26.12.1-linux-arm64-musl.tar.gz"
+
+[tools.node."platforms.linux-x64"]
+checksum = "sha256:0fd1eb7770598f52a21995edf6ed35fc690400fa437c2386af329519e9143132"
+url = "https://nodejs.org/dist/v26.12.1/node-v26.12.1-linux-x64.tar.gz"
+
+[tools.node."platforms.linux-x64-musl"]
+checksum = "sha256:8bf9cc0e7f8e3c7ec5368dca19242cad651b6b09d35bcdcf290ac3f80925e8dd"
+url = "https://unofficial-builds.nodejs.org/download/release/v26.12.1/node-v26.12.1-linux-x64-musl.tar.gz"
+
+[tools.node."platforms.macos-arm64"]
+checksum = "sha256:1901d539912c02afa10d1cc126943a8855a7eedebe830119463470db5e6c59e8"
+url = "https://nodejs.org/dist/v26.12.1/node-v26.12.1-darwin-arm64.tar.gz"
+
+[tools.node."platforms.macos-x64"]
+checksum = "sha256:b85c2ea4420ad0bc4abf2dc6cf1f55130ed681f1cabf60cf3f526e4c9e2712ff"
+url = "https://nodejs.org/dist/v26.12.1/node-v26.12.1-darwin-x64.tar.gz"
+
+[tools.node."platforms.windows-x64"]
+checksum = "sha256:b3efd5c70cba3308ed46e7e699a9b8aac075bbc6b027fcb39c84c31acc25e2b4"
+url = "https://nodejs.org/dist/v26.12.1/node-v26.12.1-win-x64.zip"
 
 [[tools.pinact]]
 version = "4.1.1"
@@ -100,6 +127,44 @@ provenance = "github-attestations"
 checksum = "sha256:88db480a3f8833d7233b482a72c97308df558ebceb0d3214775889239901f6a9"
 url = "https://github.com/suzuki-shunsuke/pinact/releases/download/v4.1.1/pinact_windows_amd64.zip"
 url_api = "https://api.github.com/repos/suzuki-shunsuke/pinact/releases/assets/494702288"
+provenance = "github-attestations"
+
+[[tools.pnpm]]
+version = "11.28.8"
+backend = "aqua:pnpm/pnpm"
+specifiers = ["11.28.8"]
+
+[tools.pnpm."platforms.linux-arm64"]
+checksum = "sha256:539f748383e206d5ad33dded451ae7c69132ac7c435feb34a866a43073f162e4"
+url = "https://github.com/pnpm/pnpm/releases/download/v11.28.8/pnpm-linux-arm64.tar.gz"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/667216934"
+provenance = "github-attestations"
+
+[tools.pnpm."platforms.linux-arm64-musl"]
+provenance = "github-attestations"
+
+[tools.pnpm."platforms.linux-x64"]
+checksum = "sha256:15e1a7159d323418021877c5a3fd91080059613355c3cd5ac9a648415b942712"
+url = "https://github.com/pnpm/pnpm/releases/download/v11.28.8/pnpm-linux-x64.tar.gz"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/667216939"
+provenance = "github-attestations"
+
+[tools.pnpm."platforms.linux-x64-musl"]
+checksum = "sha256:84db31d8e6dcde61c8f924f805ae6b3af2885ca3e65e2d910f5267270da85014"
+url = "https://github.com/pnpm/pnpm/releases/download/v11.28.8/pnpm-linux-x64-musl.tar.gz"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/667216935"
+provenance = "github-attestations"
+
+[tools.pnpm."platforms.macos-arm64"]
+checksum = "sha256:a2c05d2b7269ca19bd7b87e0cfae6ad58d17597b474ef304efeb1d0320cb35ea"
+url = "https://github.com/pnpm/pnpm/releases/download/v11.28.8/pnpm-darwin-arm64.tar.gz"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/667216937"
+provenance = "github-attestations"
+
+[tools.pnpm."platforms.windows-x64"]
+checksum = "sha256:f950e3df10a2504f419c0a13bcacf3aa6a26b124ee0b553a6e42d33a27df44b5"
+url = "https://github.com/pnpm/pnpm/releases/download/v11.28.8/pnpm-win32-x64.zip"
+url_api = "https://api.github.com/repos/pnpm/pnpm/releases/assets/667216936"
 provenance = "github-attestations"
 
 [[tools.shellcheck]]
