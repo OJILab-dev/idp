@@ -1,8 +1,9 @@
 // redirect_uri matching: exact string comparison, with the one exception RFC 8252 §7.3 requires for native apps on a
-// loopback IP literal, whose port is chosen at run time (RFC 9700 §2.1, docs/design/clients.md).
+// loopback IP literal, whose port is chosen at run time (RFC 9700 §2.1, docs/design/clients.md). Which URIs may be
+// registered at all is src/shared/redirect-uri-registration.ts; both use its one list of loopback hosts.
+import { LOOPBACK_REDIRECT_HOSTS as LOOPBACK_HOSTS } from "../shared/index.js";
 
 // Only IP literals count as loopback; localhost is NOT RECOMMENDED (RFC 8252 §8.3) and is compared exactly.
-const LOOPBACK_HOSTS: ReadonlySet<string> = new Set(["127.0.0.1", "[::1]"]);
 
 /**
  * Checks a requested redirect_uri against one registered value.
