@@ -1,6 +1,22 @@
 // User-facing use cases (OIDC, passkey sign-in and enrollment, self-service on the account page).
 // The IdP Worker imports only this module and src/shared; importing src/admin is a lint error.
 
+export {
+  AUTH_CODE_LIFETIME_SECONDS,
+  AUTHORIZE_REQUEST_LIFETIME_SECONDS,
+  authorize,
+  resumeAuthorize,
+  type AuthorizeDecision,
+  type AuthorizeErrorPageReason,
+  type AuthorizeInput,
+  type AuthorizeRedirectError,
+  type ResumeInput,
+} from "./authorize.js";
+export { CorruptRowError, loadClient, type RegisteredClient } from "./clients.js";
+export { cryptoRandomSource, systemClock, type Clock, type OidcDeps, type RandomSource } from "./deps.js";
+export { asUiLocale, selectUiLocale, type UiLocale } from "./locale.js";
+export { isRegisteredRedirectUri, matchesRegisteredRedirectUri } from "./redirect-uri.js";
+export { findActiveSession, hasAccess, type ActiveSession } from "./sessions.js";
 export { buildDiscoveryDocument, buildJwks, idTokenSigningAlgorithms, type DiscoveryDocument, type Jwks } from "./discovery.js";
 export {
   InvalidTokenError,
