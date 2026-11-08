@@ -175,6 +175,7 @@ describe("executeOperation", () => {
       idempotent: false,
       target: "none",
       input: z.strictObject({}),
+      output: z.null(),
       http: { method: "POST", path: "/v1/users", status: 201 },
       plan: async () => ({
         target: "none",

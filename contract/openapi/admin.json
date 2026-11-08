@@ -46,9 +46,85 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "readOnly": true,
+                      "type": "array",
+                      "items": {
+                        "readOnly": true,
+                        "type": "object",
+                        "properties": {
+                          "user_id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "enablement": {
+                            "type": "string",
+                            "enum": [
+                              "enabled",
+                              "disabled"
+                            ]
+                          },
+                          "created_at": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "passkey_count": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "user_id",
+                          "name",
+                          "enablement",
+                          "created_at",
+                          "passkey_count"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "prev_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "next_cursor",
+                    "prev_cursor"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -103,9 +179,39 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "user_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "user_id"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409Idempotent"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -141,9 +247,104 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "user_id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "enablement": {
+                      "type": "string",
+                      "enum": [
+                        "enabled",
+                        "disabled"
+                      ]
+                    },
+                    "created_at": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    },
+                    "passkeys": {
+                      "readOnly": true,
+                      "type": "array",
+                      "items": {
+                        "readOnly": true,
+                        "type": "object",
+                        "properties": {
+                          "credential_id": {
+                            "type": "string"
+                          },
+                          "created_at": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "last_used_at": {
+                            "anyOf": [
+                              {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 9007199254740991
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "created_via": {
+                            "type": "string",
+                            "enum": [
+                              "enroll",
+                              "self"
+                            ]
+                          },
+                          "backup_eligible": {
+                            "type": "boolean"
+                          },
+                          "backup_state": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "credential_id",
+                          "created_at",
+                          "last_used_at",
+                          "created_via",
+                          "backup_eligible",
+                          "backup_state"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "user_id",
+                    "name",
+                    "enablement",
+                    "created_at",
+                    "passkeys"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -210,9 +411,103 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "readOnly": true,
+                      "type": "array",
+                      "items": {
+                        "readOnly": true,
+                        "type": "object",
+                        "properties": {
+                          "client_id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "client_type": {
+                            "type": "string",
+                            "enum": [
+                              "confidential",
+                              "public"
+                            ]
+                          },
+                          "enablement": {
+                            "type": "string",
+                            "enum": [
+                              "enabled",
+                              "disabled"
+                            ]
+                          },
+                          "redirect_uris": {
+                            "readOnly": true,
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "id_token_alg": {
+                            "type": "string",
+                            "enum": [
+                              "Ed25519",
+                              "RS256"
+                            ]
+                          },
+                          "created_at": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "client_id",
+                          "name",
+                          "client_type",
+                          "enablement",
+                          "redirect_uris",
+                          "id_token_alg",
+                          "created_at"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "prev_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "next_cursor",
+                    "prev_cursor"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -296,9 +591,50 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "client_id": {
+                      "type": "string"
+                    },
+                    "client_type": {
+                      "type": "string",
+                      "enum": [
+                        "confidential",
+                        "public"
+                      ]
+                    },
+                    "client_secret": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "client_id",
+                    "client_type"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409Idempotent"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -353,9 +689,95 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "readOnly": true,
+                      "type": "array",
+                      "items": {
+                        "readOnly": true,
+                        "type": "object",
+                        "properties": {
+                          "group_id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "enablement": {
+                            "type": "string",
+                            "enum": [
+                              "enabled",
+                              "disabled"
+                            ]
+                          },
+                          "created_at": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "members": {
+                            "readOnly": true,
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
+                          "clients": {
+                            "readOnly": true,
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        "required": [
+                          "group_id",
+                          "name",
+                          "enablement",
+                          "created_at",
+                          "members",
+                          "clients"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "prev_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "next_cursor",
+                    "prev_cursor"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -410,9 +832,39 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "group_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "group_id"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409Idempotent"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -483,9 +935,80 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "readOnly": true,
+                      "type": "array",
+                      "items": {
+                        "readOnly": true,
+                        "type": "object",
+                        "properties": {
+                          "principal": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^user:[\\s\\S]{0,}$"
+                              },
+                              {
+                                "type": "string",
+                                "pattern": "^group:[\\s\\S]{0,}$"
+                              }
+                            ]
+                          },
+                          "client_id": {
+                            "type": "string"
+                          },
+                          "created_at": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          }
+                        },
+                        "required": [
+                          "principal",
+                          "client_id",
+                          "created_at"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "prev_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "next_cursor",
+                    "prev_cursor"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -529,9 +1052,150 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "user_id": {
+                      "type": "string"
+                    },
+                    "client_id": {
+                      "type": "string"
+                    },
+                    "allowed": {
+                      "type": "boolean"
+                    },
+                    "user_enablement": {
+                      "type": "string",
+                      "enum": [
+                        "enabled",
+                        "disabled"
+                      ]
+                    },
+                    "client_enablement": {
+                      "type": "string",
+                      "enum": [
+                        "enabled",
+                        "disabled"
+                      ]
+                    },
+                    "grants": {
+                      "readOnly": true,
+                      "type": "array",
+                      "items": {
+                        "oneOf": [
+                          {
+                            "readOnly": true,
+                            "type": "object",
+                            "properties": {
+                              "via": {
+                                "type": "string",
+                                "const": "direct"
+                              },
+                              "principal": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "pattern": "^user:[\\s\\S]{0,}$"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "pattern": "^group:[\\s\\S]{0,}$"
+                                  }
+                                ]
+                              },
+                              "counts": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "via",
+                              "principal",
+                              "counts"
+                            ],
+                            "additionalProperties": false
+                          },
+                          {
+                            "readOnly": true,
+                            "type": "object",
+                            "properties": {
+                              "via": {
+                                "type": "string",
+                                "const": "group"
+                              },
+                              "principal": {
+                                "anyOf": [
+                                  {
+                                    "type": "string",
+                                    "pattern": "^user:[\\s\\S]{0,}$"
+                                  },
+                                  {
+                                    "type": "string",
+                                    "pattern": "^group:[\\s\\S]{0,}$"
+                                  }
+                                ]
+                              },
+                              "group_enablement": {
+                                "type": "string",
+                                "enum": [
+                                  "enabled",
+                                  "disabled"
+                                ]
+                              },
+                              "counts": {
+                                "type": "boolean"
+                              }
+                            },
+                            "required": [
+                              "via",
+                              "principal",
+                              "group_enablement",
+                              "counts"
+                            ],
+                            "additionalProperties": false
+                          }
+                        ]
+                      }
+                    },
+                    "denied_because": {
+                      "readOnly": true,
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "user-disabled",
+                          "client-disabled",
+                          "no-grant",
+                          "group-disabled"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "user_id",
+                    "client_id",
+                    "allowed",
+                    "user_enablement",
+                    "client_enablement",
+                    "grants",
+                    "denied_because"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -639,9 +1303,142 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "readOnly": true,
+                      "type": "array",
+                      "items": {
+                        "readOnly": true,
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 9007199254740991
+                          },
+                          "occurred_at": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 9007199254740991
+                          },
+                          "actor": {
+                            "type": "string",
+                            "enum": [
+                              "admin",
+                              "user",
+                              "break_glass"
+                            ]
+                          },
+                          "admin_name": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "admin_cert_sha256": {
+                            "type": [
+                              "string",
+                              "null"
+                            ]
+                          },
+                          "writer_version": {
+                            "type": "string"
+                          },
+                          "operation": {
+                            "type": "string"
+                          },
+                          "target": {
+                            "anyOf": [
+                              {
+                                "type": "string",
+                                "pattern": "^user:[\\s\\S]{0,}$"
+                              },
+                              {
+                                "type": "string",
+                                "pattern": "^client:[\\s\\S]{0,}$"
+                              },
+                              {
+                                "type": "string",
+                                "pattern": "^group:[\\s\\S]{0,}$"
+                              },
+                              {
+                                "type": "string",
+                                "const": "schema"
+                              },
+                              {
+                                "type": "string",
+                                "const": "none"
+                              }
+                            ]
+                          },
+                          "result": {
+                            "type": "string",
+                            "enum": [
+                              "success",
+                              "failure"
+                            ]
+                          },
+                          "detail": {
+                            "readOnly": true,
+                            "type": "object",
+                            "propertyNames": {
+                              "type": "string"
+                            },
+                            "additionalProperties": {}
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "occurred_at",
+                          "actor",
+                          "admin_name",
+                          "admin_cert_sha256",
+                          "writer_version",
+                          "operation",
+                          "target",
+                          "result",
+                          "detail"
+                        ],
+                        "additionalProperties": false
+                      }
+                    },
+                    "next_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "prev_cursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "next_cursor",
+                    "prev_cursor"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -696,9 +1493,40 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "user_id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "user_id",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -768,9 +1596,53 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "enablement": {
+                      "type": "string",
+                      "enum": [
+                        "enabled",
+                        "disabled"
+                      ]
+                    },
+                    "occurred_at": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "enablement",
+                    "occurred_at"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409Idempotent"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -816,9 +1688,49 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "user_id": {
+                      "type": "string"
+                    },
+                    "enrollment_link": {
+                      "type": "string"
+                    },
+                    "expires_at": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "user_id",
+                    "enrollment_link",
+                    "expires_at"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409Idempotent"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -862,9 +1774,40 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "user_id": {
+                      "type": "string"
+                    },
+                    "credential_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "user_id",
+                    "credential_id"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -900,9 +1843,42 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "user_id": {
+                      "type": "string"
+                    },
+                    "sessions_deleted": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "user_id",
+                    "sessions_deleted"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -957,9 +1933,40 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "group_id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "group_id",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -1029,9 +2036,53 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "enablement": {
+                      "type": "string",
+                      "enum": [
+                        "enabled",
+                        "disabled"
+                      ]
+                    },
+                    "occurred_at": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "enablement",
+                    "occurred_at"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409Idempotent"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -1075,9 +2126,62 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "group_id": {
+                      "type": "string"
+                    },
+                    "user_id": {
+                      "type": "string"
+                    },
+                    "newly_enabled": {
+                      "readOnly": true,
+                      "type": "array",
+                      "items": {
+                        "readOnly": true,
+                        "type": "object",
+                        "properties": {
+                          "user_id": {
+                            "type": "string"
+                          },
+                          "client_id": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "user_id",
+                          "client_id"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "group_id",
+                    "user_id",
+                    "newly_enabled"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -1119,9 +2223,40 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "group_id": {
+                      "type": "string"
+                    },
+                    "user_id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "group_id",
+                    "user_id"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -1176,9 +2311,40 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "client_id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "client_id",
+                    "name"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -1238,9 +2404,44 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "client_id": {
+                      "type": "string"
+                    },
+                    "redirect_uris": {
+                      "readOnly": true,
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "client_id",
+                    "redirect_uris"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -1286,9 +2487,43 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "client_id": {
+                      "type": "string"
+                    },
+                    "client_secret": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "client_id",
+                    "client_secret"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409Idempotent"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -1347,9 +2582,44 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "client_id": {
+                      "type": "string"
+                    },
+                    "id_token_alg": {
+                      "type": "string",
+                      "enum": [
+                        "Ed25519",
+                        "RS256"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "client_id",
+                    "id_token_alg"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -1419,9 +2689,53 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "enablement": {
+                      "type": "string",
+                      "enum": [
+                        "enabled",
+                        "disabled"
+                      ]
+                    },
+                    "occurred_at": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 9007199254740991
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "enablement",
+                    "occurred_at"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409Idempotent"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem422"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -1465,9 +2779,71 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "client_id": {
+                      "type": "string"
+                    },
+                    "principal": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^user:[\\s\\S]{0,}$"
+                        },
+                        {
+                          "type": "string",
+                          "pattern": "^group:[\\s\\S]{0,}$"
+                        }
+                      ]
+                    },
+                    "newly_enabled": {
+                      "readOnly": true,
+                      "type": "array",
+                      "items": {
+                        "readOnly": true,
+                        "type": "object",
+                        "properties": {
+                          "user_id": {
+                            "type": "string"
+                          },
+                          "client_id": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "user_id",
+                          "client_id"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "client_id",
+                    "principal",
+                    "newly_enabled"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -1509,9 +2885,49 @@
             "description": "Success.",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "client_id": {
+                      "type": "string"
+                    },
+                    "principal": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "pattern": "^user:[\\s\\S]{0,}$"
+                        },
+                        {
+                          "type": "string",
+                          "pattern": "^group:[\\s\\S]{0,}$"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "client_id",
+                    "principal"
+                  ],
+                  "additionalProperties": false
+                }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
           },
           "default": {
             "description": "An RFC 9457 problem; branch on `type`.",
@@ -1528,6 +2944,206 @@
     }
   },
   "components": {
+    "responses": {
+      "Problem400": {
+        "description": "An RFC 9457 problem of kind validation-failed.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "urn:ojilab:idp:problem:validation-failed"
+                      ]
+                    },
+                    "status": {
+                      "const": 400
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem403": {
+        "description": "An RFC 9457 problem of kind forbidden.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "urn:ojilab:idp:problem:forbidden"
+                      ]
+                    },
+                    "status": {
+                      "const": 403
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem404": {
+        "description": "An RFC 9457 problem of kind not-found.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "urn:ojilab:idp:problem:not-found"
+                      ]
+                    },
+                    "status": {
+                      "const": 404
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem409": {
+        "description": "An RFC 9457 problem of kind already-exists, state-conflict, limit-reached, last-passkey, algorithm-disabled.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "urn:ojilab:idp:problem:already-exists",
+                        "urn:ojilab:idp:problem:state-conflict",
+                        "urn:ojilab:idp:problem:limit-reached",
+                        "urn:ojilab:idp:problem:last-passkey",
+                        "urn:ojilab:idp:problem:algorithm-disabled"
+                      ]
+                    },
+                    "status": {
+                      "const": 409
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem409Idempotent": {
+        "description": "An RFC 9457 problem of kind already-exists, state-conflict, limit-reached, last-passkey, algorithm-disabled, secret-not-replayable.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "urn:ojilab:idp:problem:already-exists",
+                        "urn:ojilab:idp:problem:state-conflict",
+                        "urn:ojilab:idp:problem:limit-reached",
+                        "urn:ojilab:idp:problem:last-passkey",
+                        "urn:ojilab:idp:problem:algorithm-disabled",
+                        "urn:ojilab:idp:problem:secret-not-replayable"
+                      ]
+                    },
+                    "status": {
+                      "const": 409
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem422": {
+        "description": "An RFC 9457 problem of kind idempotency-key-reused.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "urn:ojilab:idp:problem:idempotency-key-reused"
+                      ]
+                    },
+                    "status": {
+                      "const": 422
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "Problem500": {
+        "description": "An RFC 9457 problem of kind internal.",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "urn:ojilab:idp:problem:internal"
+                      ]
+                    },
+                    "status": {
+                      "const": 500
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
     "schemas": {
       "Problem": {
         "type": "object",

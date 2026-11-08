@@ -1,5 +1,6 @@
 // enroll_link_issue and passkey_revoke (docs/design/idpctl.md, docs/design/authentication.md). Both use the shared
 // passkey rules, so the admin Worker and the IdP Worker apply the same limit and the same last-passkey rule.
+import { enrollLinkIssueOutput, passkeyRevokeOutput } from "./outputs.js";
 import { z } from "zod";
 import {
   isCredentialId,
@@ -41,6 +42,7 @@ export const enrollLinkIssue: WriteOperation<{ readonly user_id: string }, Enrol
   target: { kind: "user", field: "user_id" },
   input: z.strictObject({ user_id: uuidSchema }),
   http: { method: "POST", path: "/v1/users/{id}/enrollment-links", status: 201 },
+  output: enrollLinkIssueOutput,
   async plan(ctx, input) {
     const now = ctx.now();
     const userId = input.user_id;
@@ -98,6 +100,7 @@ export const passkeyRevoke: WriteOperation<PasskeyInput, PasskeyInput> = {
   target: { kind: "user", field: "user_id" },
   input: z.strictObject({ user_id: uuidSchema, credential_id: credentialIdSchema }),
   http: { method: "DELETE", path: "/v1/users/{id}/passkeys/{credential_id}", status: 200 },
+  output: passkeyRevokeOutput,
   async plan(_ctx, input) {
     const { user_id: userId, credential_id: credentialId } = input;
     const guard = passkeyRevocableCondition(userId, credentialId);

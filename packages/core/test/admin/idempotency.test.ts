@@ -17,6 +17,7 @@ const secretIssue: WriteOperation<{ readonly user_id: string }, { readonly secre
   idempotent: true,
   target: { kind: "user", field: "user_id" },
   input: z.strictObject({ user_id: z.string() }),
+  output: z.object({ secret: z.string() }).readonly(),
   http: { method: "POST", path: "/v1/clients/{id}/secrets", status: 201 },
   async plan() {
     const secret = randomToken();
