@@ -44,6 +44,7 @@ Cloudflare の操作には、ルートの `package.json` で固定した `cf` CL
 `cf` のバージョンは範囲ではなく完全なバージョンで指定し、`package.json` と `pnpm-lock.yaml` をまとめてコミットします。
 公開から 14 日たっていない版は、`pnpm-workspace.yaml` の `minimumReleaseAge` で入れられません。この設定と `allowBuilds` を緩めてはいけません。
 `cf auth login` は運用者が実行します。エージェントは Cloudflare の認証情報を作成、読み出し、受け渡ししてはいけません。
+運用者がすでに認証した `cf` と `op` のセッションの下で、エージェントがレビュー済みの生成スクリプトを実行することは許されます。その場合も、エージェント自身が Cloudflare の認証情報や秘密を作成、読み出し、表示、受け渡ししてはいけません（値はスクリプトの中で `cf` と `op` の間だけを流れます）。
 
 ## Repository settings
 

@@ -193,7 +193,7 @@ ID トークンの署名アルゴリズム（[トークン設計](tokens.md)参�
 
 - パラメータは `limit`（既定 50、最大 200）と、不透明な `cursor`。応答の本文は `items`、`next_cursor`、`prev_cursor`（どちらも文字列か `null`）を持つ。`Link` ヘッダー、総件数、ページ番号は返さない。
 - 並び順は、`audit_tail` が `id` の新しい順、ほかは作成の順（`created_at` と ID）。
-- カーソルは、最後の行の並びのキーを base64url にしたもので、署名しない。共有コアがカーソルを検証し、不正なら `validation-failed` を返す。秘密を含まず、並びのキーを知られても困らないので、署名は要らない。
+- カーソルは、向き（次か前か）と境界の行の並びのキーを base64url にしたもので、署名しない。`next_cursor` は向きが「次」で、そのページの最後の行のキーを持ち、`prev_cursor` は向きが「前」で、そのページの最初の行のキーを持つ。最初のページの `prev_cursor` と最後のページの `next_cursor` は `null` にする。共有コアがカーソルを検証し、不正なら `validation-failed` を返す。秘密を含まず、並びのキーを知られても困らないので、署名は要らない。
 - `audit_tail` は、`target`、`operation`、`since`、`until`（UNIX 秒）で絞り込める。
 - オフセットのページングにしない理由：行が追加されるとオフセットのページがずれ、`OFFSET` と総件数の `COUNT` は読み飛ばす行も読むので、D1 はそれも読み取りとして数える（[無料枠](free-tier.md)参照）。
 
@@ -214,5 +214,10 @@ ID トークンの署名アルゴリズム（[トークン設計](tokens.md)参�
 
 - 管理用の Worker やその mTLS が使えないときは、基盤の権限で `cf` CLI の `cf d1 query <DATABASE_ID>` を、break-glass 用の D1 の API トークンで実行する。このトークンは常設せず、必要になったときに作り、作業が終わったら失効させる（[デプロイと設定](deployment.md)参照）。`cf` はデータベースの名前ではなく ID を受け取り、既定でリモートのデータを対象にする（Cloudflare「cf for Wrangler users」の「What changes」）。`cf` はベータで、コマンドが安定版の前に変わりうる（Cloudflare「Cloudflare CLI」）。
 - break-glass の書き込みは共有コアを通らないので、パスキーの上限などの規則は SQL を書く人が守る必要があり、監査ログの行も手で書かなければ残らない。日常の管理には使わないので、このことを受け入れる。
-- 行の削除を拒否するトリガー（[データモデル](data-model.md)参照）は、break-glass でも外さない限り効く。誤って入れた個人情報を消すなど、緊急に行を消すときだけ、同じ作業の中で先にトリガーを外し、消した後に戻す。外したことと戻したことは、手で監査ログの行を書いて残す。
+- 行の削除を拒否するトリガー（[データモデル](data-model.md)参照）は、break-glass でも外さない限り効く。誤って入れた個人情報を消すなど、緊急に行を消すときだけ、同じ作業の中で先にトリガーを外し、消した後に戻す。外したことと戻したことは、手で監査ログの行を書いて残す。出来事の表は対象を ON DELETE なしで参照し、自分の削除を拒否するトリガーも持つので、対象ごとに次のトリガーを外し、出来事の行を先に消してから対象を消す。
+  - ユーザー：`principals_no_delete`、`users_no_delete`、`user_enablement_events_no_delete` を外し、`user_enablement_events` のそのユーザーの行を消してから、`principals` の行を消す。外部キーの連鎖で、`users` の行、パスキー、セッション、所属、grant、登録トークン、チャレンジ、認可コードも消える。
+  - グループ：`principals_no_delete`、`groups_no_delete`、`group_enablement_events_no_delete` を外し、`group_enablement_events` のそのグループの行を消してから、`principals` の行を消す。連鎖で `groups` の行、所属、grant も消える。
+  - client：`clients_no_delete`、`client_enablement_events_no_delete` を外し、`client_enablement_events` のその client の行を消してから、`clients` の行を消す。連鎖で grant、認可コード、`authorize_requests` も消える。
+  - 出来事の表の `*_no_update` のトリガーは外さない。外したトリガーは、マイグレーションと同じ定義で作り直す。`audit_log` の行は外部キーを持たないので残る。
+  - この順番は `sqlite3` で確かめた。出来事の行を残したまま対象を消すと、外部キーの制約で失敗する。
 - D1 の API トークンは日常の管理には使わない。扱いは[デプロイと設定](deployment.md)にまとめる。

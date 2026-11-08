@@ -32,7 +32,7 @@
 
 - [ ] 2 つの Worker が、どちらも Vite plugin の経路（`@cloudflare/vite-plugin@beta`）でビルドとデプロイ（`cf build`、`cf deploy`）をできるか。`cf` は Vite plugin を宣言していないプロジェクトを Wrangler でビルドする（Cloudflare「Develop, build, and deploy」の「How `cf` runs your project」）
 - [ ] `cf d1 migrations apply` で D1 のマイグレーションを適用できるか。ドキュメントはコマンド名と `--dir`、`--pattern`、`--table` を挙げるだけで、動作を説明していない（Cloudflare「Wrangler to cf reference」の「Configuration fields」）
-- [ ] Worker Secret（署名鍵）を、平文をディスクに書かずに登録できるか。`cf` は 1 つずつの Secret の登録にまだ対応しておらず、代わりに `cf deploy --secrets-file <PATH>` か `cf workers versions create` の `--secrets-file` で、新しいバージョンと一緒に Secret を上げられる（Cloudflare「Wrangler to cf reference」の「Commands not yet supported」）。入力は JSON か `.env` 形式のファイルで（Cloudflare「Develop, build, and deploy」の「Deploy」）、ファイルに書くと「平文のままディスクに書かない」規則に反する。標準入力やパイプ（`/dev/stdin` など）を受け付けるかはドキュメントにないので、これを確かめる。受け付けなければ、Cloudflare API かダッシュボードで登録する
+- [ ] Worker Secret（署名鍵）を、平文をディスクに書かずに登録できるか（[ブートストラップ](../deployment/bootstrap.md)の段階 5b と、鍵のローテーションの登録の方法がこれで決まる）。`cf` は 1 つずつの Secret の登録にまだ対応しておらず、代わりに `cf deploy --secrets-file <PATH>` か `cf workers versions create` の `--secrets-file` で、新しいバージョンと一緒に Secret を上げられる（Cloudflare「Wrangler to cf reference」の「Commands not yet supported」）。入力は JSON か `.env` 形式のファイルで（Cloudflare「Develop, build, and deploy」の「Deploy」）、ファイルに書くと「平文のままディスクに書かない」規則に反する。標準入力やパイプ（`/dev/stdin` など）を受け付けるかはドキュメントにないので、これを確かめる。受け付けなければ、Cloudflare API かダッシュボードで登録する
 - [ ] Time Travel の復元を `cf` か Cloudflare API でできるか。Time Travel のドキュメントは Wrangler のコマンドでしか説明していない（Cloudflare「Time Travel and backups」）
 
 RS256 を任意の機能として持つこと（[トークン設計](tokens.md)参照）は、次が成り立つことを前提にしている。

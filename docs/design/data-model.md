@@ -6,7 +6,8 @@
 -- 付与の主体。user と group の共通の親で、grant はどちらにも同じ形（principal × client）で付ける。
 -- (id, kind) の複合外部キーで、1 つの ID が user と group の両方になることを防ぐ。
 -- principals、users、clients、groups の行は削除しない（末尾のトリガーで拒否する）。止めるのは無効化で行う。
--- 外部キーの ON DELETE CASCADE は、break-glass でトリガーを外して行を消すとき（下記）にだけ働く
+-- 外部キーの ON DELETE CASCADE は、break-glass でトリガーを外して行を消すとき（下記）にだけ働く。
+-- 出来事の表は ON DELETE なしで参照するので、主体や client を消す前に、その出来事の行を先に消す必要がある
 CREATE TABLE principals (
   id   TEXT PRIMARY KEY,                -- UUIDv4。user なら users.id、group なら groups.id と同じ値
   kind TEXT NOT NULL CHECK (kind IN ('user', 'group')),
@@ -305,5 +306,5 @@ BEGIN SELECT RAISE(ABORT, 'groups are never deleted'); END;
 - 出来事の表の更新と削除、`principals`、`users`、`clients`、`groups` の削除は、トリガーで常に拒否する。ユーザーや RP を終わらせるのは無効化で、行は残す。そのため client ID は主キーとして二度と使われず、再利用による取り違え（古い grant や監査ログの行が新しい RP を指すこと）が起きない。
 - 削除するのは、関係の行（所属は `group_member_remove`、grant は `grant_remove`）と、使い捨ての短命の行（セッション、認可コード、チャレンジ、登録トークン、`authorize_requests`、`idempotency_keys`）だけである。ユーザーの無効化でも、そのユーザーのセッションは削除する。
 - 無効化したユーザーの行は、表示名とパスキーの公開鍵を持ったまま残る。設計原則 7（必要な分しか持たない）との関係では、残すのは本人を指す最小限の値で、表示名は `user_rename` で中立な値に変えられる。パスキーの公開鍵は秘密ではないが、本人の認証器を指すので、不要なら管理者が `passkey_revoke` で最後の 1 本を除いて消せる。
-- 緊急に行を消す必要があるとき（誤って個人情報を表示名に入れたなど）は、基盤の権限の break-glass で、先にトリガーを外してから消し、終わったらトリガーを戻す（[管理 CLI と管理用の Worker](idpctl.md)の break-glass を参照）。共有コアにはこの経路を置かない。
+- 緊急に行を消す必要があるとき（誤って個人情報を表示名に入れたなど）は、基盤の権限の break-glass で、先にトリガーを外してから消し、終わったらトリガーを戻す。出来事の表は ON DELETE なしで参照し、自分の削除を拒否するトリガーも持つので、出来事の表のトリガーも外して出来事の行を先に消す。外すトリガーと消す順番は[管理 CLI と管理用の Worker](idpctl.md)の break-glass にまとめる。共有コアにはこの経路を置かない。
 - D1 がトリガー（`CREATE TRIGGER` と `RAISE(ABORT, …)`）をマイグレーションで受け付け、実行時に効くことは、実装の前に確かめる（[未決事項](open-questions.md)参照）。D1 のドキュメントは SQLite のクエリエンジンを使うとだけ書き、トリガーの可否を明記していない（Cloudflare「SQL statements」）。外部キーは D1 で常に有効で、SQLite の `PRAGMA foreign_keys = on` と同じに働く（Cloudflare「Define foreign keys」）。

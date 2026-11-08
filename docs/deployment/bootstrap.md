@@ -10,21 +10,31 @@
 - 管理者の名前（許可リストの名前）は、どの `users.id` にも結び付けない。管理者であることと、IdP の利用者であることは別の事実で、片方の欠陥がもう片方に広がらないようにするため（[将来拡張](../design/future-extensions.md)の管理権限の分離を参照）。
 - 許可リストが空なら、管理用の Worker はすべての管理リクエストを拒否する（fail-closed）。そのため、手順の順番を間違えても、管理 API が開いたままになることはない。
 
+## 実行する場所と認証情報
+
+- 段階 1〜4 は、最初の CI のデプロイより前なので、運用者の手元で実行する。実行するのは運用者か、運用者がすでに認証した `cf` と `op` のセッションの下のエージェントで、どちらでもリポジトリの同じスクリプトと Terraform の設定を使う（[AGENT.md](../../AGENT.md) 参照）。
+- `cf` のスクリプトは、運用者が `cf auth login` で認証したセッションを使う。
+- 手元の Terraform は、Terraform 用の API トークンと state の R2 の認証情報を、1Password の Vault のアイテムから `op` で実行時にプロセスの環境変数として受け取る。値をファイルやコマンドラインに書かない。CI 用の 1Password Environment とは別に、人が使う認証情報として Vault に置く（[1Password Environments と GitHub Actions](secret.md)の Vault と Environment の境界を参照）。
+- 段階 5 以降の Terraform の apply、マイグレーション、デプロイは、すべて CI で行い、手元からは行わない。
+
 ## 手順
 
-| 段階 | 行うこと | 道具 | 確かめること |
+| 段階 | 行うこと | 場所と道具 | 確かめること |
 | --- | --- | --- | --- |
 | 0 | issuer と管理用のホスト名を決める | — | issuer は運用を始めた後に変えない（[デプロイと設定](../design/deployment.md)のホスト名を変えるときの影響を参照） |
-| 1 | Terraform の state 用の R2 のバケットを作る。D1 のデータベースを APAC で作る | `cf` のスクリプト（バケット）、Terraform（D1） | D1 が production バックエンドにあること（Cloudflare API の「Get D1 Database」の `version`。[未決事項](../design/open-questions.md)参照） |
-| 2 | マイグレーション（テーブル、ビュー、トリガー）を適用する | `cf` のスクリプト | トリガーが更新と削除を拒否すること（[データモデル](../design/data-model.md)参照） |
-| 3 | トークンの署名鍵（Ed25519）を生成し、1Password と IdP の Worker の Worker Secret に入れる | 生成スクリプト | 出力が `kid` と公開鍵だけで、平文がディスクにないこと |
-| 4 | 管理者の鍵（ECDSA P-384）と CSR を生成し、クライアント証明書を発行する。管理用のホスト名で mTLS を有効にし、WAF のルールを置き、フィンガープリントを許可リストに足す | 生成スクリプト（鍵と CSR）、Terraform（証明書、mTLS、WAF）、リポジトリの設定（許可リスト） | 秘密鍵が 1Password にだけあり、出力が CSR とフィンガープリントだけであること |
-| 5 | 2 つの Worker を CI で最初にデプロイする | CI（[デプロイと設定](../design/deployment.md)のデプロイのパイプライン） | main へのマージから、apply、マイグレーション、2 つのデプロイが順に成功すること |
-| 6 | 動作を確かめる | — | discovery と JWKS に届くこと。証明書のない管理 API の要求が WAF で止まり、証明書のある要求が通ること |
-| 7 | `idpctl` で、自分のユーザー、登録リンク、自分のパスキー、グループ、最初の RP、grant を作る | `idpctl` | `access_check` で、自分がその RP を使えること |
+| 1 | Terraform の state 用の R2 のバケットを作る。D1 のデータベースを APAC で作る | 手元。`cf` のスクリプト（バケット）、Terraform（D1） | D1 が production バックエンドにあること（Cloudflare API の「Get D1 Database」の `version`。[未決事項](../design/open-questions.md)参照） |
+| 2 | マイグレーション（テーブル、ビュー、トリガー）を適用する | 手元。`cf` のスクリプト | トリガーが更新と削除を拒否すること（[データモデル](../design/data-model.md)参照） |
+| 3 | トークンの署名鍵（Ed25519）を生成し、1Password のアイテムにだけ入れる。Worker Secret には、まだ登録しない（Worker がまだないため。段階 5b で登録する） | 手元。生成スクリプト | 出力が `kid` と公開鍵だけで、平文がディスクにないこと |
+| 4 | 管理者の鍵（ECDSA P-384）と CSR を生成し、クライアント証明書を発行する。管理用のホスト名で mTLS を有効にし、WAF のルールを置き、フィンガープリントを許可リストに足す | 手元。生成スクリプト（鍵と CSR）、Terraform（証明書、mTLS、WAF）、リポジトリの設定（許可リスト） | 秘密鍵が 1Password にだけあり、出力が CSR とフィンガープリントだけであること |
+| 5 | 2 つの Worker を CI で最初にデプロイする | CI（[デプロイと設定](../design/deployment.md)のデプロイのパイプライン） | main へのマージから、apply、マイグレーション、2 つのデプロイが順に成功すること。IdP の Worker は署名鍵がないので、リクエストを処理せずエラーを返すこと（fail-closed） |
+| 5b | 段階 3 の署名鍵を、IdP の Worker の Worker Secret に登録する | 手元。Secret の登録スクリプト（1Password から読み、`cf` か Cloudflare API へパイプで渡す） | 出力が `kid` だけで、IdP の Worker の新しいバージョンが鍵を読めること |
+| 6 | 動作を確かめる | — | discovery と JWKS に届き、JWKS の `kid` が段階 3 の `kid` と一致すること。証明書のない管理 API の要求が WAF で止まり、証明書のある要求が通ること |
+| 7 | `idpctl` で、自分のユーザー、登録リンク、自分のパスキー、グループ、最初の RP、grant を作る | 手元。`idpctl` | `access_check` で、自分がその RP を使えること |
 
 - 段階 4 の許可リストの変更は、段階 5 のデプロイで初めて効く。段階 5 より前に管理 API を呼んでも、空の許可リストですべて拒否される。
-- 段階 3 と 4 の生成スクリプトは秘密を扱うので、`-x` を付けない（[デプロイと設定](../design/deployment.md)のシェルスクリプトの規則を参照）。
+- 署名鍵の登録を最初のデプロイの後（段階 5b）に置くのは、Worker Secret が Worker に属する値で、Worker がないうちは登録先がないため。署名鍵を CI の 1Password Environment に置いてデプロイと一緒に上げる形は取らない。デプロイ用の認証情報に署名鍵まで持たせると、CI が漏れたときの影響が全ユーザーのトークンの偽造にまで広がるため。
+- 段階 5b の登録の方法は、`cf` が平文をディスクに書かずに Secret を登録できるかで決まる（`cf deploy --secrets-file` か `cf workers versions create --secrets-file` が標準入力やパイプを受け付けるか。[未決事項](../design/open-questions.md)参照）。受け付けなければ、Cloudflare API で登録する。どちらの方法でも、登録すると IdP の Worker の新しいバージョンができる。
+- 段階 3 と 4 の生成スクリプトと、段階 5b の登録スクリプトは秘密を扱うので、`-x` を付けない（[デプロイと設定](../design/deployment.md)のシェルスクリプトの規則を参照）。
 - 段階 7 の登録リンクの平文は `idpctl` が `0600` のファイルに書き、パスだけを表示する（[管理 CLI と管理用の Worker](../design/idpctl.md)参照）。
 
 ## 失敗したとき

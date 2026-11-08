@@ -30,7 +30,7 @@ D1 に保存する値の形と、管理 API の形を、どの実装からも独
 | UI の言語 | BCP 47 の言語タグで、対応する言語（今は `en` と `ja`）のどれか。`authorize_requests.locale` とサインインページの `lang` クエリが同じ値を使う |
 | 管理 API のエラー | RFC 9457 の problem details。`type` は `urn:ojilab:idp:problem:<kind>` で、`kind` の一覧は共有コアで定義し OpenAPI の仕様に載せる（[管理 CLI と管理用の Worker](idpctl.md)参照） |
 | Idempotency-Key | トークン・シークレットと同じ形（32 バイトの乱数の base64url）。それ以外の形は拒否する |
-| 一覧のカーソル | 最後の行の並びのキーの base64url（パディングなし）。署名しない。共有コアが検証する |
+| 一覧のカーソル | 向き（次か前か）と境界の行の並びのキー（次はページの最後の行、前はページの最初の行）を base64url（パディングなし）にしたもの。署名しない。共有コアが検証する |
 | パスキーの上限 | 1 人あたりのパスキーの上限を、名前の付いた共有の値 `max_passkeys_per_user` として 1 か所で定める。今の値は 10。IdP の Worker の本人による追加と登録リンクによる登録の確認、管理用の Worker の `enroll_link_issue` の確認は、どれもこの値を使う。仕様が定める値ではない（NIST SP 800-63B-4 §4.1.2.1 は複数の認証器の結び付けを許可しなければならない（SHALL）とするが、上限は定めていない）ので、暫定の値として扱う。ほかのドキュメントは数を書かず、この行を参照する |
 | 監査ログ | 管理操作は管理用の Worker が、本人のパスキー操作は IdP の Worker が書くので、両者で同じ形にする。`actor` は `admin`（管理用の Worker）か `user`（IdP の Worker）。`admin` の行は、許可リストで確定した管理者の名前を `admin_name` に、使われたクライアント証明書の SHA-256 フィンガープリントを `admin_cert_sha256` に必ず持ち、`user` の行はどちらも持たない。`writer_version` は書き込んだ Worker のバージョン、`operation` は操作名（`idpctl` の操作名か、`passkey_enroll`・`passkey_add`・`passkey_self_revoke`）、`target` は `user:<id>`・`client:<id>`・`group:<id>` のどれか、`result` は `success` か `failure`（`user` の行は `success` だけ）、`detail_json` は JSON オブジェクトの文字列。セッション ID、トークン、シークレット、登録トークンは書かない（[データモデル](data-model.md)参照） |
 | 管理 API | 管理用の Worker の HTTPS API。仕様（OpenAPI など）は共有コアの入力のスキーマから生成し、`idpctl` の Go の型はその仕様から生成する。生成物は手で編集せず、仕様と生成物のずれは CI で検出する。これが Go と TypeScript の間の唯一の契約になる（[管理 CLI と管理用の Worker](idpctl.md)参照） |
