@@ -27,19 +27,6 @@ variable "zone" {
   }
 }
 
-variable "zone_singletons_owner" {
-  description = "Who owns the zone's entry point rulesets and mTLS hostname association: \"idp\" (this Terraform creates them; the zone serves only the IdP) or \"external\" (the zone is shared and managed elsewhere; this Terraform only outputs zone_singletons)."
-  type        = string
-  nullable    = false
-
-  # No default: guessing "idp" on a shared zone would make the first apply fight the zone owner's rulesets, and
-  # guessing "external" would silently leave the admin host without its edge rule (docs/design/domain-placement.md, 2).
-  validation {
-    condition     = contains(["idp", "external"], var.zone_singletons_owner)
-    error_message = "zone_singletons_owner must be \"idp\" or \"external\"."
-  }
-}
-
 variable "issuer_host" {
   description = "Hostname of the IdP Worker (the issuer is https://<issuer_host>). The Worker's custom domain owns its DNS record."
   type        = string
@@ -52,11 +39,11 @@ variable "issuer_host" {
 }
 
 variable "admin_host" {
-  description = "Hostname of the admin Worker. Terraform enables mTLS and the WAF custom rule on it."
+  description = "Hostname of the admin Worker. Terraform enables mTLS on it; the admin Worker's gate enforces it."
   type        = string
   nullable    = false
 
-  # Lowercase only, so that the WAF rule's lower(http.host) comparison can match it.
+  # Lowercase only: the admin Worker compares it with the request URL's host, which is always lowercase.
   validation {
     condition     = can(regex("^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$", var.admin_host))
     error_message = "admin_host must be a lowercase hostname without a port."

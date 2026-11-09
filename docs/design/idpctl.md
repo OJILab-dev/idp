@@ -14,7 +14,7 @@
 - `idpctl` が持つもの：引数の解釈、管理 API の呼び出し、出力の整形、手元の入出力（管理者の秘密鍵を標準入力から読む、IdP が発行する秘密を `0600` のファイルに書く）、`Idempotency-Key` の生成と自分の再試行での再利用だけ。ドメインの規則は評価せず、管理用の Worker が返すエラーをそのまま表示する。管理用の Worker が規則の唯一の判定者である。
 - 管理 API の仕様（OpenAPI など）は共有コアの入力のスキーマから生成し、`idpctl` の Go の型はその仕様から生成する。仕様は Go と TypeScript の間の契約として扱う（[実装に依存しない契約](cross-language-contract.md)参照）。
 - issuer は IdP の Worker と同じ値を管理用の Worker が設定として持ち、登録リンクの組み立てに使う。`idpctl` が持つ設定は、管理 API のホスト名だけにする。
-- 管理用の Worker は、設定された管理用のホスト名へのリクエストだけを受け付ける。`workers.dev` とプレビューの URL は無効にする。そこでは mTLS も WAF のルールも効かないため。無効化を忘れても、下の Worker 側の再確認で拒否される。ホスト名の確認は、URL が `https` で、ホストが管理用のホスト名と完全に一致する（ポートを含まない）ことで行い、違えば何もせずに `forbidden` を返す。
+- 管理用の Worker は、設定された管理用のホスト名へのリクエストだけを受け付ける。`workers.dev` とプレビューの URL は無効にする。そこでは mTLS が効かないため。無効化を忘れても、下の Worker 側の確認で拒否される。ホスト名の確認は、URL が `https` で、ホストが管理用のホスト名と完全に一致する（ポートを含まない）ことで行い、違えば何もせずに `forbidden` を返す。平文の HTTP の要求もこの確認で拒否し、リダイレクトはしない（`idpctl` はリダイレクトに従わず、平文で届いた要求の中身はすでに露出しているため）。
 - 管理用の Worker の設定の名前は次のとおり。D1 のバインディングは `DB`、IdP の Worker への Service Binding は `IDP`、issuer は `ISSUER`、管理用のホスト名は `ADMIN_HOST`、許可リストは `ADMIN_ALLOWLIST`（下の許可リストの節を参照）、Worker のバージョンのメタデータのバインディングは `CF_VERSION_METADATA` とする。監査ログの `writer_version` は `admin-worker@<バージョンの ID>` にする。
 - 設定は最初のリクエストの前に検証し、どれかが欠けているか形が違えば、すべてのリクエストを `internal` で拒否する（fail-closed）。管理用のホスト名は issuer と同じ規則（正規の形、ポートなし、IP アドレスでない）に従い、issuer のホスト名と同じ値も拒否する。管理 API を公開のエンドポイントと同じホストに置かないため。`IDP` だけは欠けても拒否せず、RS256 を無効として扱う（下記）。
 
@@ -29,17 +29,17 @@ D1 を手元から直接操作する形（D1 REST API）をやめ、管理 API �
 そのかわり、管理用のエンドポイントをインターネットに出すことになる。設計原則 1 は、次の形で保つ。
 
 - IdP の Worker は OIDC とパスキーのエンドポイントだけを出し、管理系のコードをバンドルに含めない（[技術選定](technology.md)の境界を参照）。
-- 管理 API は別のホスト名にだけ置き、エッジの mTLS で、有効なクライアント証明書を持たないリクエストを Worker に届く前に止める。
+- 管理 API は別のホスト名にだけ置き、mTLS で、有効なクライアント証明書を持たないリクエストを、管理用の Worker のゲートで、どの処理（D1 の読み書きを含む）よりも前に拒否する。以前は、エッジの WAF のカスタムルールで Worker に届く前に止めていたが、IdP がゾーンのルールセットを持たない決定（[ドメインの置き場所](domain-placement.md)の決定 ③）で外した。失うのは、そうした要求が 1 日のリクエスト上限に数えられないことだけで、管理 API に入れないことは変わらない。
 - 管理者の認証に IdP 自身は使わない。権限の根拠が守る対象の中に閉じること、IdP の欠陥がそのまま管理権限の奪取になること、IdP の障害時に直す手段も止まることを避けるため（[将来拡張](future-extensions.md)の管理権限の分離と同じ理由）。
 
 **管理者の認証（mTLS）**
 
 - クライアント証明書は Cloudflare の managed CA で発行する。自分の秘密鍵と CSR を使って発行でき（Cloudflare「Create a client certificate」）、API の発行要求が受け取るのは `csr` と `validity_days` だけである（Cloudflare API「Create Client Certificate」）。管理者の秘密鍵は Cloudflare にも IdP にも渡らない。
 - managed CA の証明書は、Free、Pro、Business ではゾーンあたり有効なもの 100 枚までで、上限を上げるには API Shield 付きの Enterprise が要る（Cloudflare「Client certificates (mTLS)」の「Limits」）。家族規模の管理者の数には十分である。自前の CA（BYO CA）は Enterprise でしか使えない（Cloudflare「Bring your own CA for mTLS」の「Availability」）。Cloudflare Access の mTLS は Free プランに含まれない（Cloudflare One「Mutual TLS」の「Availability」）。
-- 管理用のホスト名に mTLS を有効にし、WAF のカスタムルールで `(not cf.tls_client_auth.cert_verified or cf.tls_client_auth.cert_revoked)` に当たるリクエストを遮断する。`cf.tls_client_auth.cert_verified` は、有効だが失効した証明書にも `true` を返す（Cloudflare「cf.tls_client_auth.cert_verified」）。失効した証明書は、それを確かめる WAF のカスタムルールがなければ自動では遮断されない（Cloudflare「mTLS related features」の「WAF for Client Certificates」と「Certificate Revocation」）。そのため、失効の条件も同じルールに入れる。Free プランの WAF のカスタムルールでこのフィールドを使えるかは、実装の前に確かめる（[未決事項](open-questions.md)参照）。
-- 管理用の Worker は、エッジの判定を信じきらず、自分でも fail-closed で確かめ直す。`request.cf.tlsClientAuth.certVerified` が文字列の `"SUCCESS"` であること（Workers では真偽値ではなく文字列で、証明書がなければ `"NONE"`、失敗なら `"FAILED:…"` になる）、`certRevoked` が `"0"` であること、`certFingerprintSHA256` が許可リストにあることの 3 つがそろわなければ拒否する（Cloudflare「Client certificate variables」の「Workers variables」）。値がない、形が違うなど判定できない場合も拒否する。
-- 証明書の検証はアカウント単位の CA に対して行われ、同じアカウントのどのゾーンで発行した証明書でも、mTLS を有効にしたホストで通る（Cloudflare「Enable mTLS」の「CAs in use」）。IdP をサービスのアカウントに置く形（[ドメインの置き場所](domain-placement.md)の A2）では、サービスのために同じアカウントで発行した証明書や、アカウントのどのゾーンでも証明書を発行できる人が作った証明書も、エッジの mTLS と WAF のカスタムルールを通る。管理者の境界は、下の許可リストだけになる。許可リストにない証明書は管理 API に入れないが、管理用の Worker に届いて 1 日のリクエスト上限を使える。これを受け入れるリスクとして記録する（[デプロイと設定](deployment.md)の Cloudflare アカウントを参照）。
-- 管理用のホスト名の mTLS の割り当てと WAF のカスタムルールは、ゾーンに 1 つしかないもの（ゾーンの単一資源）なので、ゾーンの持ち主が持つ。ゾーンを IdP だけで使うなら IdP の Terraform が、サービスと共有するなら、IdP の Terraform が出力した定義をゾーンの持ち主が適用する（[ドメインの置き場所](domain-placement.md)の共存の設計の 2）。
+- 管理用のホスト名に mTLS を有効にする（managed CA へのホスト名の割り当て）。エッジは、そのホスト名への接続でクライアント証明書を求めて検証し、結果を Worker に渡す。エッジのルール（WAF のカスタムルール）では遮断しない（[ドメインの置き場所](domain-placement.md)の決定 ③）。証明書のない要求も、検証に失敗した要求も、失効した証明書の要求も、管理用の Worker に届く。失効した証明書は、有効なものと同じく検証を通るので（Cloudflare「cf.tls_client_auth.cert_verified」、「mTLS related features」の「Certificate Revocation」）、失効は別に確かめる必要がある。
+- 管理用の Worker のゲートが、mTLS の唯一の強制の箇所になり、fail-closed で確かめる。`request.cf.tlsClientAuth.certVerified` が文字列の `"SUCCESS"` であること（Workers では真偽値ではなく文字列で、証明書がなければ `"NONE"`、失敗なら `"FAILED:…"` になる）、`certRevoked` が `"0"` であること、`certFingerprintSHA256` が許可リストにあることの 3 つがそろわなければ拒否する（Cloudflare「Client certificate variables」の「Workers variables」）。値がない、形が違うなど判定できない場合も拒否する。ゲートは D1 にも IdP の Worker にも触れる前に動くので、拒否された要求は 1 日のリクエスト上限に 1 件数えられるだけで、D1 の上限は使わない。
+- 証明書の検証はアカウント単位の CA に対して行われ、同じアカウントのどのゾーンで発行した証明書でも、mTLS を有効にしたホストで通る（Cloudflare「Enable mTLS」の「CAs in use」）。IdP をサービスのアカウントに置く形（[ドメインの置き場所](domain-placement.md)の A2）では、サービスのために同じアカウントで発行した証明書や、アカウントのどのゾーンでも証明書を発行できる人が作った証明書も、エッジの検証を通る。管理者の境界は、下の許可リストだけになる。証明書のない要求も、許可リストにない証明書の要求も、管理 API には入れないが、管理用の Worker に届いて 1 日のリクエスト上限を使える。これを受け入れるリスクとして記録する（[無料枠](free-tier.md)、[デプロイと設定](deployment.md)の Cloudflare アカウントを参照）。
+- 管理用のホスト名の mTLS の割り当ては、ゾーンに 1 つしかない（ゾーンの managed CA に割り当てたホスト名の一覧を丸ごと持つ）。IdP の Terraform が、デプロイによらず持つ（[ドメインの置き場所](domain-placement.md)の共存の設計の 2）。
 - 管理用の Worker は、`request.cf.tlsVersion` が `TLSv1.2` か `TLSv1.3` でない要求を、ホスト名の確認と同じく何もせずに `forbidden` で拒否する。ゾーンの TLS の最小バージョンを IdP は持たないため（[デプロイと設定](deployment.md)の設定値）。
 
 **許可リストによる管理者の確定**
@@ -195,12 +195,12 @@ ID トークンの署名アルゴリズム（[トークン設計](tokens.md)参�
   - `algorithm-disabled`（409）：RS256 が無効なデプロイでの `RS256` の指定
   - `secret-not-replayable`（409）：秘密を返す操作の `Idempotency-Key` による再生（下記）
   - `idempotency-key-reused`（422）：同じ `Idempotency-Key` を別の要求に使った（下記）
-  - `forbidden`（403）：mTLS の再確認か許可リストで拒否した。理由は返さない
+  - `forbidden`（403）：ゲート（ホスト名とスキーム、TLS のバージョン、mTLS の検証の結果、許可リスト）で拒否した。理由は返さない
   - `internal`（500）：内部の詳細は返さず、管理用の Worker のログにだけ残す
 - `detail` には、秘密、トークン、SQL、スタックトレースを入れない。
 - `idpctl` は `type` で分岐し、表示のために `type` を日本語の文に対応付けてよい。規則の判定には使わない（規則の判定者は管理用の Worker だけ）。
 - 失敗した管理操作は、許可リストで管理者が確定した後なら、管理用の Worker が `failure` の監査ログの行を書く（[データモデル](data-model.md)参照）。
-- エッジの WAF が止めたリクエストは Cloudflare のブロックの応答になり、problem details ではない。
+- Cloudflare のエッジが Worker に届けずに返した応答（エラーやブロックのページ）は、problem details ではない。IdP はゾーンのルールで要求を止めない（[ドメインの置き場所](domain-placement.md)の決定 ③）が、Cloudflare 自身の応答はありうる。
 
 **Idempotency-Key（管理 API の作成と追記の POST）**
 

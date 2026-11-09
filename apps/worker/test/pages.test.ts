@@ -1,5 +1,6 @@
-// The static pages are plain assets (never run_worker_first), so their safety lives in the files themselves and in
-// _headers: no inline script or style, and the CSP and framing rules applied by the asset server.
+// The static pages' own safety: no inline script or style in the files, and the CSP and framing rules of _headers.
+// The Worker runs first and sets the same headers on every response it returns, the pages included; _headers stays
+// so that the pages keep them should the Worker ever stop running first.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";

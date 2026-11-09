@@ -17,7 +17,6 @@ usage() {
     "  plan    terraform plan with deployments/<deployment>.tfvars.json" \
     "  apply   terraform apply with deployments/<deployment>.tfvars.json; Terraform asks for approval" \
     "  output  print every output as JSON (non-secret): admin_client_certificates (certificates and fingerprints)" \
-    "          and zone_singletons (the IdP's zone rules, for the zone's owner when zone_singletons_owner is external)" \
     "" \
     "Credentials come from the 1Password item onepassword_cloudflare_item at run time and are never written down." \
     "" \
@@ -77,8 +76,7 @@ main() {
       "${terraform_command[@]}" apply "-var-file=${config}"
       ;;
     output)
-      # Every output at once: with an external zone owner the operator needs zone_singletons next to the
-      # certificates (docs/deployment/runbook.md, stage 4b').
+      # Every output at once, as JSON, so that the certificates and fingerprints can be read by a script.
       "${terraform_command[@]}" output -json
       ;;
     *)

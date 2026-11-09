@@ -18,6 +18,9 @@ describe("fail-closed configuration", () => {
     // The limiter is the only in-Worker guard on the pre-authentication D1 writes; it is never skipped.
     ["no Rate Limiting binding", ({ RATE_LIMITER: _, ...env }) => env],
     ["a Rate Limiting binding without limit()", (env) => ({ ...env, RATE_LIMITER: {} as unknown as RateLimit })],
+    // The pages are served through the Worker; without the binding there is nothing to serve them with.
+    ["no assets binding", ({ ASSETS: _, ...env }) => env],
+    ["an assets binding without fetch()", (env) => ({ ...env, ASSETS: {} as unknown as Fetcher })],
     // The version goes into every audit row the Worker writes; without it no row could say which code wrote it.
     ["no version metadata", ({ CF_VERSION_METADATA: _, ...env }) => env],
     ["an empty version id", (env) => ({ ...env, CF_VERSION_METADATA: { id: "", tag: "", timestamp: "" } })],

@@ -4,7 +4,8 @@ import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import type { Issuer } from "@idp/core/shared";
 
-// _headers covers the static pages; Worker responses need the same headers set in code (free-tier.md).
+// Set on every response the Worker returns, the static pages served through the assets binding included; _headers
+// carries the same values for the pages as a second copy (free-tier.md).
 const SECURITY_HEADERS: Readonly<Record<string, string>> = {
   // The only HTML the Worker renders is the error page, which needs nothing but its stylesheet.
   "content-security-policy": "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'",

@@ -102,7 +102,7 @@ func TestUnknownProblemTypeAndNonProblemResponses(t *testing.T) {
 		t.Errorf("unknown kind: exit %d, stderr:\n%s", got.code, got.stderr)
 	}
 
-	// The edge WAF answers with its own block page, not a problem.
+	// Cloudflare's edge answers with its own error or block page, not a problem.
 	h = newHarness(t, func(*http.Request, int) reply {
 		return reply{Status: 403, ContentType: "text/html", Body: "<html>blocked</html>"}
 	})

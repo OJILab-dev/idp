@@ -64,7 +64,7 @@
 - [ ] `/token` は、認可コードを発行したセッションが残っていて期限内であることを確認する。サインアウト、`session_revoke`、パスキーの失効、セッションの期限切れの後には、そのセッションから発行したコードを交換できない
 - [ ] 本人のパスキー操作（登録リンクによる登録、本人による追加と失効）は、`credentials` への書き込みと同じ条件を付けて、同じバッチで監査ログに 1 行を書く。条件が成り立たず書き込みが起きなかったとき（最後の 1 本の失効、上限、無効化など）は、成功の行を書かない
 - [ ] Worker は監査ログに `success` の行だけを書き、失敗と拒否は Worker のログに残す。認証前のリクエストで監査ログの行を書かせ、D1 の書き込み上限を消費させることはできない（管理用の Worker は、許可リストで管理者が確定した後の失敗の行も書く）
-- [ ] アカウントページ（`/account`）は純粋な静的アセットにし、`run_worker_first` の対象に含めない。`/authorize` を経由しないサインインは置かず、セッションがなければアプリからのサインインを案内する
+- [ ] アカウントページ（`/account`）は静的アセットにし、サーバーで描画しない（Worker は先に動いてホスト名、スキーム、TLS のバージョンを確かめ、アセットをそのまま返すだけ）。`/authorize` を経由しないサインインは置かず、セッションがなければアプリからのサインインを案内する
 - [ ] `GET /webauthn/credentials` は、セッションのユーザーのパスキーだけを、credential ID、作成日時、最終使用日時、追加の経路、backup state に限って返す。`Sec-Fetch-Site` が `same-origin` でないリクエスト（ヘッダーがないものを含む）、セッションのないリクエスト、無効化されたユーザーは拒否し、`Cache-Control: no-store` を付ける
 
 **セッションと通信**
@@ -76,11 +76,13 @@
 - [ ] `POST /logout` は今のセッションの行を、`session_revoke` と `user_disable` はそのユーザーの全セッションの行を削除する。`passkey_revoke` と本人による失効は、失効させたパスキーから作ったセッションの行だけを外部キーの連鎖で削除し、別のパスキーから作ったセッションは残す
 - [ ] issuer、RP ID、origin は設定値から導き、リクエストの `Host` ヘッダーからは作らない
 - [ ] issuer が未設定または形式が不正なら、リクエストを処理せずエラーを返す
-- [ ] IdP の Worker は、issuer のホスト名以外へのリクエストと `https` でないリクエストを、処理せずに 404 で拒否する。エッジでは、issuer のホスト名に絞ったシングルリダイレクトのルールが平文の HTTP を HTTPS にリダイレクトし、ゾーン全体の Always Use HTTPS には頼らない
-- [ ] IdP の Worker と管理用の Worker は、`request.cf.tlsVersion` が `TLSv1.2` か `TLSv1.3` でないリクエスト（値がない、知らない値を含む）を、何も処理せずに拒否する。ゾーンの TLS の最小バージョンは IdP が持たないので、エッジで TLS 1.0 と 1.1 の接続が成立しうること、Worker を通らない静的アセットのページには確認が効かないことを、RFC 8996 の例外として記録している（[ドメインの置き場所](domain-placement.md)の共存の設計の 3）
+- [ ] IdP の Worker は、静的なページを含むすべてのリクエストで先に動く（`run_worker_first` が真）。ゾーンのルール（シングルリダイレクト、Always Use HTTPS）には頼らない
+- [ ] IdP の Worker は、issuer のホスト名以外へのリクエストを、スキームによらず処理せずに 404 で拒否する。リダイレクトの `Location` を要求のホスト名から作らない
+- [ ] IdP の Worker は、issuer のホスト名への平文の HTTP のリクエストのうち、`GET` か `HEAD` で `Authorization` と `Cookie` を持たないものだけを、設定した issuer の同じパスとクエリへ 308 でリダイレクトする。ほかの平文のリクエスト（`POST /token` を含む）は、処理せずに 404 で拒否する。平文の要求にはページも返さない
+- [ ] IdP の Worker と管理用の Worker は、`request.cf.tlsVersion` が `TLSv1.2` か `TLSv1.3` でないリクエスト（値がない、知らない値を含む）を、何も処理せずに拒否する。IdP の Worker では静的なページにも効く。ゾーンの TLS の最小バージョンは IdP が持たないので、エッジで TLS 1.0 と 1.1 の接続そのものは成立しうることを、RFC 8996 の例外として記録している（[ドメインの置き場所](domain-placement.md)の共存の設計の 3）
 - [ ] 管理用の Worker の `IDP` の Service Binding は IdP の Worker の内部のエントリポイント `IdpInternal` に向け、公開の経路の TLS とレート制限の確認を、ヘッダーやパスで外す仕組みを持たない。RSA の鍵があるときは、管理用の Worker が RS256 を有効と判断できる
-- [ ] IdP の Worker は、接続元の IP ごとの Rate Limiting バインディングの上限を超えたリクエストを 429 で拒否する。バインディングがない、呼び出しが失敗した、接続元の IP が取れない場合も、処理せずに拒否する（fail-closed）。IP をログにも D1 にも書かない
-- [ ] IdP が置くゾーンのルール（WAF のカスタムルール、リダイレクト）は、IdP のホスト名に絞った条件を持つ。ゾーン全体の設定を Terraform で変えない
+- [ ] IdP の Worker は、自分で答えるパス（静的なページ以外）で、接続元の IP ごとの Rate Limiting バインディングの上限を超えたリクエストを 429 で拒否する。バインディングがない、呼び出しが失敗した、接続元の IP が取れない場合も、処理せずに拒否する（fail-closed）。IP をログにも D1 にも書かない
+- [ ] IdP の Terraform は、ゾーンのルールセット（WAF のカスタムルール、レート制限ルール、シングルリダイレクト）とゾーン全体の設定を持たない。ゾーンに置くのは、管理用のホスト名の mTLS の割り当てと、管理者のクライアント証明書だけ（[ドメインの置き場所](domain-placement.md)の決定 ③）
 - [ ] セッションの Cookie で認証する状態を変える POST（`/webauthn/*`、`/authorize/resume`、`/logout`）は、`Sec-Fetch-Site` が `same-origin` か（なければ `Origin` が issuer と一致するか）を確認し、どちらのヘッダーもないリクエストは拒否する。`/authorize` はクロスサイトからの POST が正規の動作で、`/token` と `/userinfo` はサーバーからの呼び出しで Cookie を使わない（クライアント認証、PKCE、Bearer のアクセストークンで守る）ので、この確認の対象にしない
 - [ ] サインイン画面、登録画面、アカウントページは、CSP の `frame-ancestors 'none'` でクリックジャッキングを防ぐ
 - [ ] 登録リンクのトークンは URL のフラグメントに入れ、登録ページは `Referrer-Policy: no-referrer` にする
@@ -98,8 +100,9 @@
 
 **管理用の Worker（mTLS）**
 
-- [ ] 管理用のホスト名の WAF のカスタムルールが、`(not cf.tls_client_auth.cert_verified or cf.tls_client_auth.cert_revoked)` に当たるリクエストを遮断する。証明書のないリクエスト、managed CA 以外の証明書、失効した証明書のそれぞれで、Worker に届かないことを確かめる
-- [ ] 管理用の Worker は、`request.cf.tlsClientAuth.certVerified` が `"SUCCESS"`、`certRevoked` が `"0"`、`certFingerprintSHA256` が許可リストにある、の 3 つがそろわないリクエストを拒否する。値がない、形が違う場合も拒否する（WAF を通らない経路を想定した fail-closed の再確認）
+- [ ] 管理用のホスト名に mTLS（managed CA）が割り当てられ、エッジがクライアント証明書を求めて、検証の結果を `request.cf.tlsClientAuth` で Worker に渡す。エッジのルールでは遮断しない（[ドメインの置き場所](domain-placement.md)の決定 ③）
+- [ ] 管理用の Worker のゲートが、mTLS の唯一の強制の箇所になる。`request.cf.tlsClientAuth.certVerified` が `"SUCCESS"`、`certRevoked` が `"0"`、`certFingerprintSHA256` が許可リストにある、の 3 つがそろわないリクエストを拒否する。値がない、形が違う場合も拒否する（fail-closed）。証明書のないリクエスト、managed CA 以外の証明書、失効した証明書のそれぞれで、`forbidden` が返り、D1 に触れないことを確かめる
+- [ ] 管理用の Worker は、平文の HTTP のリクエストをリダイレクトせず、`forbidden` で拒否する
 - [ ] 同じアカウントで発行した有効な証明書（IdP をサービスのアカウントに置くときは、サービスのために発行したものを含む）でも、許可リストにないものは拒否する。許可リストから消した証明書は、Cloudflare で失効させる前でも、そのデプロイの後は拒否する
 - [ ] 管理 API に、許可リストと監査ログを変える操作がない。許可リストは管理用の Worker の設定で、CI のデプロイでだけ変わる
 - [ ] 管理用の Worker は `workers.dev` とプレビューの URL を無効にし、設定された管理用のホスト名以外へのリクエストを拒否する

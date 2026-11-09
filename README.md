@@ -26,7 +26,7 @@ Cloudflare Workers の無料枠と D1 だけで動く、パスキー専用の最
 | 要素 | 役割 |
 | --- | --- |
 | IdP の Worker（TypeScript + Hono） | 利用者と RP に公開する要素。OIDC エンドポイント、パスキー API、サインイン・登録・アカウントページを提供する |
-| 管理用の Worker（TypeScript） | 別のホスト名に置く管理 API。エッジの mTLS と証明書のフィンガープリントの許可リストで管理者を確かめる |
+| 管理用の Worker（TypeScript） | 別のホスト名に置く管理 API。mTLS の検証の結果と証明書のフィンガープリントの許可リストで、Worker 自身が管理者を確かめる |
 | 共有コア（TypeScript） | ドメインの規則、入力の検証、SQL、ユースケースを 1 か所に持ち、2 つの Worker が使う |
 | D1 | IdP の全状態を置くデータベース。2 つの Worker が同じものをバインドする |
 | `idpctl`（Go） | 手元で動かす管理 CLI。管理 API を呼ぶだけの薄いクライアントで、ドメインの規則は評価しない |
@@ -39,12 +39,12 @@ IdP の Worker には管理用のエンドポイントや管理 UI を置きま�
 | パス | 内容 |
 | --- | --- |
 | [apps/worker/](apps/worker) | IdP の Worker。OIDC エンドポイント、`/webauthn/*` の API、サインイン・登録・アカウントの静的ページ |
-| [apps/admin-worker/](apps/admin-worker) | 管理用の Worker。mTLS の再確認と許可リストの後ろの管理 API と、その OpenAPI の仕様の生成 |
+| [apps/admin-worker/](apps/admin-worker) | 管理用の Worker。mTLS の検証の結果と許可リストを確かめるゲートの後ろの管理 API と、その OpenAPI の仕様の生成 |
 | [packages/core/](packages/core) | 共有コア。利用者向け（`user`）、管理系（`admin`）、共通（`shared`）のユースケースとドメインの規則 |
 | [packages/d1-adapter/](packages/d1-adapter) | 共有コアのデータベースのポートを D1 で実装するアダプタと、その適合テスト |
 | [contract/](contract) | 実装に依存しない契約。D1 のマイグレーション（`migrations`）、管理 API の仕様（`openapi`）、テストベクタ（`testdata`）、スキーマのテスト（`test`） |
 | [cmd/idpctl/](cmd/idpctl) | Go の管理 CLI。管理 API のクライアントは `contract/openapi/admin.json` から生成する |
-| [infra/](infra) | 管理者のクライアント証明書と、IdP のホスト名に絞ったゾーンのルール（管理用のホスト名の mTLS と WAF、issuer の HTTPS へのリダイレクト、レート制限）を持つ Terraform と、そのオフラインのテスト。ゾーンをサービスと共有するときは、ルールの定義をゾーンの持ち主に出力する |
+| [infra/](infra) | 管理者のクライアント証明書と、管理用のホスト名の mTLS の割り当てだけを持つ Terraform と、そのオフラインのテスト。ゾーンのルールセット（WAF、リダイレクト、レート制限）は持たず、HTTPS へのリダイレクト、TLS のバージョン、mTLS の強制、レート制限は Worker が行う（[ドメインの置き場所](docs/design/domain-placement.md)の決定 ③） |
 | [scripts/](scripts) | ブートストラップのスクリプト（state のバケット、D1、マイグレーション、署名鍵と管理者の鍵の生成、Terraform の実行） |
 | [deployments/](deployments) | デプロイごとの設定ファイル（`<デプロイの名前>.tfvars.json`）とその雛形 |
 | [docs/](docs) | 設計思想、設計ドキュメント、デプロイの手順 |

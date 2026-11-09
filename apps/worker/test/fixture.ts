@@ -56,6 +56,38 @@ export function createFakeRateLimiter(): FakeRateLimiter {
   return fake;
 }
 
+/** A stand-in for the static assets binding: the paths it was asked for, and one known page. */
+export type FakeAssets = Fetcher & {
+  /** The method and path of each request handed to the binding, in order. */
+  readonly requests: string[];
+};
+
+/** The only path the fake assets serve; anything else is the asset server's 404. */
+export const ASSET_PAGE = "/signin";
+
+/**
+ * Builds a fake static assets binding that serves {@link ASSET_PAGE} as HTML and answers 404 for anything else.
+ *
+ * @returns The fake binding.
+ */
+export function createFakeAssets(): FakeAssets {
+  const requests: string[] = [];
+  const fake = {
+    requests,
+    fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      const { pathname } = new URL(request.url);
+      requests.push(`${request.method} ${pathname}`);
+      if (pathname !== ASSET_PAGE) return new Response("asset not found", { status: 404 });
+      return new Response("<!doctype html><title>sign in</title>", { headers: { "content-type": "text/html; charset=utf-8" } });
+    },
+    connect: () => {
+      throw new Error("the assets binding has no sockets");
+    },
+  };
+  return fake as unknown as FakeAssets;
+}
+
 /**
  * Gives a hand-built request what Cloudflare's edge adds to every request: a TLS 1.3 `request.cf` and the
  * CF-Connecting-IP header. The Worker refuses a request without either.
@@ -73,6 +105,7 @@ export type Fixture = {
   readonly core: CoreFixture;
   readonly env: Env;
   readonly rateLimiter: FakeRateLimiter;
+  readonly assets: FakeAssets;
   readonly handler: ReturnType<typeof createHandler>;
 };
 
@@ -86,14 +119,16 @@ export function useFixture(): () => Fixture {
   beforeEach(async () => {
     const core = await createFixture();
     const rateLimiter = createFakeRateLimiter();
+    const assets = createFakeAssets();
     const env: Env = {
       DB: core.t.db,
       ISSUER,
       SIGNING_KEY_ED25519_CURRENT: await testSigningKey(),
       CF_VERSION_METADATA: { id: VERSION_ID, tag: "", timestamp: "" },
       RATE_LIMITER: rateLimiter,
+      ASSETS: assets,
     };
-    f = { core, env, rateLimiter, handler: createHandler({ clock: core.clock, random: core.random }) };
+    f = { core, env, rateLimiter, assets, handler: createHandler({ clock: core.clock, random: core.random }) };
   });
   afterEach(async () => {
     await f?.core.dispose();

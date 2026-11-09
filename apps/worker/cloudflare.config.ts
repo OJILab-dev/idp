@@ -17,8 +17,8 @@ const D1_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const NAMESPACE_ID = /^[1-9][0-9]{0,17}$/;
 
 /**
- * The Rate Limiting binding's period and limit. They match the provisional WAF rate limiting rule
- * (infra/main.tf) and are replaced together once a sign-in is measured (docs/design/open-questions.md).
+ * The Rate Limiting binding's period and limit, the only rate limit of the IdP (no WAF rule; docs/design/free-tier.md).
+ * Provisional: replaced once a sign-in is measured (docs/design/open-questions.md).
  */
 export const RATE_LIMIT = { period: 10, limit: 10 } as const;
 
@@ -58,8 +58,10 @@ export function workerConfig(env: DeployEnv): CloudflareWorkerConfig {
     assets: {
       htmlHandling: "auto-trailing-slash",
       notFoundHandling: "none",
-      // The pages stay pure assets, which are free and outside the daily request limit (free-tier.md).
-      runWorkerFirst: false,
+      // Every request runs the Worker first, the pages included: no zone rule redirects plain http or enforces
+      // TLS 1.2 on the issuer host, so the Worker must see every request to do both. The pages then count against
+      // the daily request limit (docs/design/free-tier.md; docs/design/domain-placement.md, 3).
+      runWorkerFirst: true,
     },
     observability: {
       enabled: true,
@@ -74,6 +76,8 @@ export function workerConfig(env: DeployEnv): CloudflareWorkerConfig {
       // The Worker refuses every request without it: the audit rows of the user's own passkey operations need it.
       CF_VERSION_METADATA: bindings.versionMetadata(),
       // The Worker refuses every request without it (docs/design/free-tier.md).
+      // The Worker serves the pages through it; it refuses every request without it.
+      ASSETS: bindings.assets(),
       RATE_LIMITER: bindings.rateLimit({ namespace, simple: { limit: RATE_LIMIT.limit, period: RATE_LIMIT.period } }),
     },
   };

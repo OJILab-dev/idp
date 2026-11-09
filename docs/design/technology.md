@@ -14,7 +14,7 @@
 | e2e テスト | Playwright（ブラックボックス） | HTTP とブラウザ操作で IdP を外から叩くので実装言語に依存せず、Rust に移行しても同じテストを流せる。仮想オーセンティケータでパスキーの操作を自動化できる |
 | 画面 | TypeScript + Vite（UI のフレームワークなし） | ページは 3 つだけで、CSP を `default-src 'self'` に保てる。Vite は `cf` が Cloudflare Vite plugin のために使うので、道具が増えない。要求と応答の型を共有コアと共有する（[認証フロー](authentication.md)の画面と言語を参照） |
 | 基盤の構成管理 | Terraform（Cloudflare provider）と、`cf` を使うシェルスクリプト | 宣言できる基盤は Terraform、手続きの操作（マイグレーション、デプロイ、Secret の登録、鍵の生成）はスクリプトに分ける（[デプロイと設定](deployment.md)参照） |
-| Worker の中のレート制限 | Workers の Rate Limiting バインディング（IdP の Worker だけ） | ゾーンの WAF のレート制限ルールは Free ではゾーンに 1 つで、ゾーンをサービスと共有すると IdP が使えないことがある。バインディングは、ゾーンのルールの持ち主やプランによらず、認証前の D1 の書き込みを守れる。近似で、Durable Objects のような厳密な数えはしないが、家族規模の IdP にそこまでは要らない（[無料枠](free-tier.md)、[ドメインの置き場所](domain-placement.md)の共存の設計の 4） |
+| Worker の中のレート制限 | Workers の Rate Limiting バインディング（IdP の Worker だけ） | IdP はゾーンのルールセットを持たない（[ドメインの置き場所](domain-placement.md)の決定 ③）ので、ゾーンの WAF のレート制限ルールは使わない。バインディングは、ゾーンのプランによらず IdP のホスト名にだけ効き、認証前の D1 の書き込みを守れる。近似で、Durable Objects のような厳密な数えはしないが、家族規模の IdP にそこまでは要らない（[無料枠](free-tier.md)、[ドメインの置き場所](domain-placement.md)の共存の設計の 4） |
 | ストレージに使わないもの | KV | 結果整合で使い捨て値に向かず、無料枠の書き込みが 1 日 1,000 件と少ない |
 
 **コードの構成**
@@ -53,12 +53,13 @@ WebAuthn の応答の検証には、ライブラリ（`@simplewebauthn/server` �
 
 e2e テストは `e2e/` に置き、Playwright（`@playwright/test` を `minimumReleaseAge` を満たす完全な版で固定）の Chromium で、ローカルで動かした実際の IdP の Worker を外から操作する。`pnpm run e2e` で実行し、CI では専用の `e2e` job で流す。`pnpm run check` には含めない（ブラウザのダウンロードが要るため）。
 
-- **ビルド**：Worker のモジュールと 3 つのページを、テストの前に Vite で `e2e/dist` にビルドする。`cf` は Cloudflare Vite plugin を通して Vite を使うが、plugin はまだ宣言していない（[未決事項](open-questions.md)参照）ので、e2e は同じ入力を Vite に直接渡す。`cf` と wrangler は使わない。
+- **ビルド**：IdP の Worker と管理用の Worker のモジュールと 3 つのページを、テストの前に Vite で `e2e/dist` にビルドする。`cf` は Cloudflare Vite plugin を通して Vite を使うが、plugin はまだ宣言していない（[未決事項](open-questions.md)参照）ので、e2e は同じ入力を Vite に直接渡す。`cf` と wrangler は使わない。
 - **実行環境**：ビルドしたものを、`cf` が同梱する workerd を Miniflare で動かす。静的アセットの扱い（`htmlHandling`、`notFoundHandling`、`runWorkerFirst`）とバインディングは `apps/worker/cloudflare.config.ts` の設定をそのまま使い、ローカルで差し替えるのは、モジュール、アセットのディレクトリ、署名鍵、D1 だけにする。署名鍵は実行のたびにメモリ上で生成し、D1 はマイグレーションを適用した空のローカルの D1 にする。Miniflare はユーザーの Worker の有無を既定で偽とするので、明示的に真にする。
 - **TLS とホスト名**：Worker は issuer が `https://<host>` でない要求を拒否する。この確認は弱めず、issuer を `https://idp.test` とし、実行のたびに openssl で生成する使い捨ての自己署名証明書（`idp.test` と RP 役の `rp.test`）で HTTPS を提供する。Chromium には、この 2 つのホスト名の 443 番ポートをローカルのポートへ向ける設定と、この証明書の公開鍵だけを信頼する設定を起動時に渡す。証明書のエラーを無視する設定は使わない。WebAuthn は証明書のエラーがあるページで動かず、本番と同じく安全なコンテキストで確かめるため。証明書と鍵は `e2e/dist` から出さず、コミットしない。
 - **パスキー**：CDP の仮想オーセンティケータ（CTAP2、内蔵の transport、resident key と UV あり）を使い、ブラウザの実際の WebAuthn API を通す。仮想オーセンティケータは条件付きメディエーションの要求をクリックなしで完了させるので、ボタンの経路を確かめるテストでは、ページの読み込みの間だけオーセンティケータを外し、同じ資格情報を持つものを付け直してからボタンを押す。2 本目の追加では、再認証の後に別の端末に当たる新しいオーセンティケータに切り替える（作成の要求が既存の資格情報を除外するため）。
 - **状態の用意**：ユーザー、登録リンク、confidential client と public client、付与は、共有コアの管理系のユースケースを、Worker と同じローカルの D1 に対して直接実行して作る。管理用の Worker と mTLS は通さない。パスキーは登録リンクからブラウザで登録する。
 - **RP の代役**：`rp.test` の小さな HTTPS サーバーがリダイレクトを受け、テストが RP として `iss` と `state` を確かめ、`/token` でコードを交換し、`/userinfo` を呼ぶ。Playwright の要求の差し替えは使わない。Chromium はリダイレクト先の要求を差し替えの対象にしないため。
+- **平文の HTTP と管理用の Worker のゲート**：ローカルのサーバーは TLS だけを話すので、ブラウザーからは平文の要求を送れない。平文の HTTP の扱い（ページの 308 のリダイレクト、`/token` と管理用のホスト名の拒否）は、Miniflare の入口に直接要求を渡して確かめる。静的アセットの設定はそのまま効くので、Worker がページより先に動くことも確かめられる。管理用の Worker は、どの証明書も許可リストにない設定で同じ workerd に置き、ゲートの拒否だけを確かめる。
 - **CSP**：すべてのテストで、ブラウザのコンソールに CSP の違反が出ないことを確かめる。検出そのものが働くことも、インラインのスクリプトを注入して確かめる。
 - **並列度**：テストのワーカーは 1 つにする。ワーカーごとに workerd を起動するので、負荷の高い手元の環境と CI でタイムアウトしないようにするため。
 
@@ -69,7 +70,7 @@ e2e テストは `e2e/` に置き、Playwright（`@playwright/test` を `minimum
 - 共有コアは、利用者向けのユースケース（OIDC、パスキーの登録とサインイン、アカウントページでの本人による操作）と、管理系のユースケース（`idpctl` の操作）を別のモジュールに分ける。両方が使う規則（パスキーの上限、監査ログの行の形、入力の検証など）は、どちらにも属さない共有のモジュールに置く。
 - `apps/worker` が import してよいのは、利用者向けと共有のモジュールだけにする。利用者向けのモジュールも管理系のモジュールを import しない。CI の依存の lint でこれを強制し、違反があればビルドを失敗させる。
 - CI は、IdP の Worker のビルド成果物に管理系のモジュールのコードが含まれていないことも確かめる。lint の設定漏れや間接的な import があっても、成果物の側で止めるため。
-- IdP の Worker は、管理操作を一切公開しない。管理操作は別のホスト名の管理用の Worker にだけ置き、エッジの mTLS で守る（[管理 CLI と管理用の Worker](idpctl.md)参照）。
+- IdP の Worker は、管理操作を一切公開しない。管理操作は別のホスト名の管理用の Worker にだけ置き、mTLS と、管理用の Worker のゲートの許可リストで守る（[管理 CLI と管理用の Worker](idpctl.md)参照）。
 
 **今 Rust を採らない理由**
 
