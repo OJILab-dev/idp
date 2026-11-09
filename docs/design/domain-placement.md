@@ -7,6 +7,7 @@
 運用者から次の要件が加わった。
 
 - IdP のドメインは、どのアカウントで管理されていてもよい。issuer のホスト名と管理用のホスト名を持つゾーンは、Workers と別の Cloudflare アカウントにあってもよく、Cloudflare 以外の DNS 事業者にあることもありうる。
+- アカウントをまたぐ方法を先に探す。それがなければ、最後の手段として、IdP をドメインを管理するアカウントに置き、IdP 専用アカウントの制約を外してよい（運用者の追加の入力）。
 - ここでの移植性は、[デプロイと設定](deployment.md)の「アカウントの移植性」と同じく、fork して自分のアカウントとドメインの情報を入れればデプロイできることを指す。稼働中の IdP をアカウントの間で移すことではない。
 
 検証の構成では、Workers を検証用のアカウントに置き、ドメインは別の Cloudflare アカウントにある。そのドメインのゾーンと DNS のレコードは、別の非公開リポジトリの Terraform で管理されている（`cloudflare_dns_record` でレコードを足す運用）。issuer と管理用のホスト名は、そのドメインのサブドメインにしたい。アカウントの名前とホスト名の実際の値は、[デプロイと設定](deployment.md)の直書きの禁止に従い、ここには書かない。
@@ -47,14 +48,30 @@
 - 影響：なし。
 - 残るリスク：issuer が運用者の主たるドメインの下にならない。要件の「どのアカウントのドメインでも」は満たさず、「IdP のアカウントにドメインを 1 つ用意すること」を fork の前提として明記することになる。
 
-**A2. Workers をドメインのアカウントに置く**
+**A2. Workers をドメインのアカウントに置く（運用者が認めた最後の手段）**
 
-- 仕組み：ドメインを持つアカウントに IdP の 2 つの Worker と D1 を置く。
-- fork する人に求めるもの：ドメインのアカウントへのデプロイの権限。
-- セキュリティ：機能の面では今と同じ。ただし、[デプロイと設定](deployment.md)の「IdP の Worker と D1 は、IdP 専用の Cloudflare アカウントに置く」を破る。D1 の API トークンはアカウント内のすべての D1 に効き、managed CA はアカウント単位で検証する（Cloudflare「Enable mTLS」の「CAs in use」）。同じアカウントのほかのサービスのトークンで IdP の D1 を書き換えられ、ほかのゾーンで発行した証明書でも管理用のホスト名の mTLS を通れる（許可リストは別に要る）。
-- 無料枠：Workers の 1 日のリクエスト上限と D1 の上限を、そのアカウントのほかの Worker と共有する。Free のレート制限ルール（ゾーンに 1 つ）と WAF のエントリポイントのルールセット（ゾーンとフェーズごとに 1 つ）を、ドメインのほかの用途と取り合う。今の Terraform はそのフェーズのルールを丸ごと持つので、ドメインの持ち主の Terraform と衝突する。Always Use HTTPS と TLS の最小バージョンもゾーン全体に効く。
-- 影響：コードはない。設計の「IdP 専用アカウント」の決定を変える必要がある。
-- 残るリスク：上の権限の広がり。検証のためだけなら受け入れられるが、本番の形としては勧めない。
+運用者は、アカウントをまたぐ方法がなければ、IdP をドメインを管理するアカウントに置き、IdP 専用アカウントの制約を外すことを最後の手段として認めた。そのため A2 は退けた案ではなく、採りうる代替案として、何を失うかを正確に書く。
+
+- 仕組み：ドメインを持つアカウントに、IdP の 2 つの Worker と D1 を置き、issuer と管理用のホスト名をそのゾーンのカスタムドメインにする。
+- fork する人に求めるもの：ドメインが Cloudflare にあり、そのアカウントに Worker、D1、Terraform の対象の設定をデプロイする権限があること。Cloudflare 以外の DNS 事業者のドメインは、ゾーンごと Cloudflare に移さない限り使えない。
+- 失うもの 1（ゾーン全体に効く設定）：今の `infra/` は、次をゾーンの単位で持つ。同じゾーンのほかのホスト名（検証の構成では、ドメインを管理するリポジトリが持つ既存のレコード）にも効く。
+  - Always Use HTTPS（`cloudflare_zone_setting`）：ゾーンのすべてのホスト名で平文の HTTP をリダイレクトする（[C8]）。平文の HTTP を要るホスト名があれば壊れる。
+  - TLS の最小バージョン 1.2（`cloudflare_zone_setting`）：ゾーンのすべてのホスト名に効く。ホスト名ごとの設定は Advanced Certificate Manager（有料）が要る（[C7]）。
+  - WAF のカスタムルールのエントリポイントのルールセット：Free ではカスタムルールは 5 つ、ルールセットは 1 つ（[C9]）。今の Terraform はゾーンのそのフェーズのルールセットを丸ごと持つので、ドメインの持ち主がそのフェーズにルールを置いていれば、片方の apply がもう片方のルールを消す。
+  - レート制限ルール：Free ではゾーンに 1 つで、条件にホスト名を使えずパスだけ（[C6]）。IdP のパス（`/authorize`、`/token`、`/webauthn/*`、`/v1/*` など）への 10 秒あたりの上限が、同じパスを持つほかのホスト名にも効く。ゾーンでただ 1 つのルールを IdP が使うので、ドメインの持ち主はほかの用途にレート制限ルールを使えなくなる。
+- 失うもの 2（アカウントの共有）：[デプロイと設定](deployment.md)の「IdP 専用アカウント」の理由がそのまま失われる。
+  - D1 の API トークンの権限はデータベースに絞れず、アカウントのすべての D1 に効く。同じアカウントのほかのサービスのトークンで IdP の D1 を読み書きでき、IdP の break-glass のトークンもほかのサービスの D1 に効く。
+  - managed CA はアカウント単位で検証する（Cloudflare「Enable mTLS」の「CAs in use」）。ほかのゾーンで発行したクライアント証明書でも、管理用のホスト名の mTLS と WAF を通る。管理者になるには許可リストも要るので、管理 API には入れないが、1 日のリクエスト上限を使える。
+  - Workers の 1 日のリクエスト上限（10 万件）と D1 の 1 日の上限はアカウント全体で数える。ほかの Worker の利用や、ほかの Worker への攻撃で、IdP も止まる。逆に、IdP への攻撃でほかのサービスも止まる。
+  - アカウントのメンバーと API トークンを持つ人は、IdP の基盤の権限（デプロイ、Worker Secret、D1）を持ちうる。[操作とリスク](operations-and-risks.md)の「全ユーザー × 全 RP」の影響を持つ人が増える。
+- 抑え方（設計で限れること）：
+  - ゾーンの設定を持たない：Always Use HTTPS と TLS の最小バージョンを `cloudflare_zone_setting` で持つのをやめる。HTTPS への誘導は、IdP のホスト名に限ったシングルリダイレクトのルールで行う（[C10]。Free で使えるルールの数はこの調査では確かめていない）。TLS の最小バージョンは、ゾーンの今の値をドメインの持ち主と合意して 1.2 にするか、それができなければ Worker が `request.cf.tlsVersion` で 1.2 未満を拒否する（RFC 8996 の例外として記録する。C を参照）。
+  - ルールを IdP のホスト名に絞る：WAF のカスタムルールは、今の管理用のホスト名のルールと同じく `lower(http.host)` で IdP のホスト名に絞れる。レート制限ルールは Free ではホスト名で絞れないので、絞るには Pro 以上が要る（[C6]）。Free のままなら、ゾーンでただ 1 つのレート制限ルールを IdP に使うことを、ドメインの持ち主と合意する。
+  - ルールセットを丸ごと持たない：エントリポイントのルールセットはゾーンとフェーズごとに 1 つで、2 つのリポジトリの Terraform が同じ `cloudflare_ruleset` を持つと互いに上書きする。持ち主を 1 つに決める必要がある。案は 2 つ。(a) ドメインを管理するリポジトリがルールセットを持ち、IdP のルール（式とパス）はそのリポジトリへの PR で足す。IdP のリポジトリはルールの式だけを出力として渡す。(b) IdP のリポジトリがそのフェーズを持ち、ドメインの持ち主のルールも IdP のリポジトリに移す。(a) は、ゾーンの持ち主が変わらず、ドメインを管理するリポジトリが今は DNS のレコードしか持っていないので足しやすい。ただし、IdP のルールの変更が IdP のリポジトリのレビューだけでは決まらなくなる。
+  - トークンを分ける：IdP のデプロイと Terraform の API トークンは、そのアカウントのほかのサービスのものと分け、ゾーンの権限は IdP のゾーンに絞る。D1 と Workers の権限はアカウント単位でしか絞れない。
+  - 移植性：fork する人のドメインが IdP 専用のアカウントにあれば、上の抑え方は何も変えずに今の設計と同じになる。抑え方は「ゾーンをほかの用途と共有するとき」の追加の手順として書き、どちらでも同じコードで動く形にする（ゾーンの設定とルールセットを持つかどうかを、デプロイの入力で選ぶ）。
+- 影響：Worker のコードはない。`infra/` は、ゾーンの設定とルールセットを持つかどうかを切り替えられるようにし、HTTPS のリダイレクトのルールを足す。ドメインを管理するリポジトリに、IdP のルールの PR が要る（(a) の場合）。[デプロイと設定](deployment.md)の「IdP 専用アカウント」の決定を、例外として書き換える。
+- 残るリスク：上の「失うもの 2」は抑え方で減らせず、受け入れることになる。
 
 ### B. Cloudflare for SaaS（カスタムホスト名）
 
@@ -118,7 +135,7 @@
 
 ### 比較
 
-| 観点 | A1 専用ドメイン | A2 ドメインのアカウント | B Cloudflare for SaaS | C `workers.dev` だけ | D 転送用の Worker |
+| 観点 | A1 専用ドメイン | A2 ドメインのアカウント（最後の手段） | B Cloudflare for SaaS | C `workers.dev` だけ | D 転送用の Worker |
 | --- | --- | --- | --- | --- | --- |
 | issuer を別のアカウントのドメインに置ける | いいえ | はい（同じアカウントにする） | はい | いいえ | はい |
 | Cloudflare 以外の DNS 事業者 | — | — | はい | — | いいえ |
@@ -131,7 +148,18 @@
 
 ## 推奨
 
-B を推奨し、A1 を同じ仕組みの特別な場合として扱う。
+アカウントをまたぐ案のうち、実際に使えるものは B だけで、これを第 1 の推奨とする。B が使えないか、IdP のアカウントにゾーンを持つことを受け入れないときは、運用者が認めた最後の手段の A2 を第 2 とする。D と C は勧めない。A1 は B の特別な場合（issuer も IdP のゾーンに置く）として扱う。
+
+| 順位 | 案 | セキュリティ | 移植性（fork して自分のアカウントとドメインを入れる） | 無料枠 |
+| --- | --- | --- | --- | --- |
+| 1 | B Cloudflare for SaaS | 今の性質をすべて保つ。IdP 専用アカウント、エッジの mTLS、Worker の前の WAF とレート制限、ホスト名ごとの TLS 1.2。ドメインの持ち主は CNAME を握るが、これは今も同じ | どの DNS 事業者のドメインでも、CNAME（と TXT）を 1 回作ればよい。代わりに、IdP のアカウントにゾーン（ドメインの購入）が要る | 1 ホスト名で、無料の 100 に収まる。`hard_cap` で課金を防げる。上限を共有しない |
+| 2 | A2 ドメインのアカウント | エッジの保護は保つが、IdP 専用アカウントの性質を失う（D1 のトークン、managed CA、基盤の権限を持つ人の範囲）。ゾーンを共有するなら、ゾーンの設定とルールセットの持ち主を決め直す | ドメインが Cloudflare にあれば、ドメインを買わずに済み、DNS の手作業もない。Cloudflare 以外の DNS 事業者では、ゾーンごと移す必要がある。ゾーンをほかの用途と共有するときは、ドメインを管理する側との合意と PR が要る | 1 日のリクエスト上限と D1 の上限を、アカウントのほかのサービスと共有する。Free のレート制限ルール（ゾーンに 1 つ）をほかの用途と取り合う |
+| 3 | D 転送用の Worker | IdP 専用アカウントは保つが、IdP の `workers.dev` が公開され、認証前のリクエストを Worker の前で止められない。管理者の認証を RFC 9421 で作り直し、RFC 8996 の例外を置く。リクエストの境界が 2 か所になる | ドメインが Cloudflare にあることが要る。2 つのアカウントに 2 つのデプロイのパイプラインと、アカウントをまたぐ秘密が要る | 1 回のリクエストが 2 つのアカウントの上限を使う。直接のリクエストで IdP の上限を使い切れる |
+
+- A2 を D より上にする理由：A2 で失うのはアカウントの分離で、運用者が受け入れると明言した。D で失うのは、Worker の前で止める保護と管理者のエッジの mTLS で、受け入れると言われていない。さらに D は、未確認の前提（アカウントをまたぐ `fetch`）と、新しいコードの量が最も多い。
+- C は issuer をドメインの下に置けないので、要件を満たさない。
+
+B の詳細：
 
 - 不変条件を「IdP のアカウントは自分のゾーンを 1 つ持ち、管理用のホスト名は必ずそのゾーンに置く。issuer のホスト名は、そのゾーンの中（A1）か、Cloudflare for SaaS のカスタムホスト名として任意のドメイン（B）に置く」とする。
 - 理由 1：要件（issuer のドメインがどのアカウントにあっても、Cloudflare 以外の DNS 事業者でもよい）を満たす唯一の選択肢で、ドメインの持ち主に求めるのは CNAME（と TXT）の作成だけ。
@@ -143,10 +171,10 @@ B を推奨し、A1 を同じ仕組みの特別な場合として扱う。
 
 ## 運用者が決めること
 
-1. IdP のアカウントに、自分のゾーン（ドメインの購入）を 1 つ持つことを受け入れるか。受け入れるなら B（と A1）。受け入れないなら、残るのは D（と C）で、認証前のリクエストを Worker の前で止められないこと、RFC 8996 の例外、管理者の認証の作り直しを受け入れることになる。
+1. IdP のアカウントに、自分のゾーン（ドメインの購入）を 1 つ持つことを受け入れるか。受け入れるなら B（と A1）。受け入れないなら、最後の手段の A2 にする。D は勧めない（上の順位を参照）。
 2. B を採るなら、検証の構成の issuer をドメインの持ち主のドメインに置くか（B）、IdP のゾーンに置くか（A1）。管理用のホスト名は、どちらでも IdP のゾーンに置く。
-3. ドメインの持ち主の CNAME を DNS だけにするか、proxied（O2O）にするか。推奨は DNS だけ。proxied にすると、ドメインの持ち主のゾーンの WAF と設定が先に効き、事前検証を使えない。
-4. A2（ドメインのアカウントに IdP を置く）を、検証用に限って許すか。許すなら、IdP 専用アカウントの決定の例外として記録する。
+3. B を採るなら、ドメインの持ち主の CNAME を DNS だけにするか、proxied（O2O）にするか。推奨は DNS だけ。proxied にすると、ドメインの持ち主のゾーンの WAF と設定が先に効き、事前検証を使えない。
+4. A2 を採るなら、次を決める。IdP 専用アカウントの決定を、どの範囲（検証だけか、本番もか）で外すか。ゾーンの設定（Always Use HTTPS、TLS の最小バージョン）を IdP のホスト名に限る形にするか、ゾーン全体に効かせることをドメインの持ち主と合意するか。WAF のカスタムルールとレート制限ルールのエントリポイントのルールセットを、どちらのリポジトリが持つか（上の (a) か (b)）。Free のただ 1 つのレート制限ルールを IdP に使うか。
 5. 決めた後に、決定を [デプロイと設定](deployment.md)、[管理 CLI と管理用の Worker](idpctl.md)、[無料枠](free-tier.md)、[ブートストラップ](../deployment/bootstrap.md) に移し、実測の項目を [未決事項](open-questions.md) に移す。
 
 ## 未確認の事項
@@ -162,6 +190,7 @@ B を推奨し、A1 を同じ仕組みの特別な場合として扱う。
 - Workers の Web Crypto で ECDSA P-384 の署名を検証できるか
 - `workers.dev` で平文の HTTP がどう扱われるか、Worker の単位で TLS の最小バージョンを設定できるか
 - ドメインの持ち主のゾーンのプランが O2O の条件になるか
+- シングルリダイレクトのルールで、Free のゾーンの特定のホスト名だけを HTTPS に誘導できるか、そのルールの数（A2 の抑え方）
 
 ## 出典
 
@@ -176,6 +205,9 @@ B を推奨し、A1 を同じ仕組みの特別な場合として扱う。
 | C5 | Cloudflare API Shield「mTLS」 https://developers.cloudflare.com/api-shield/security/mtls/ |
 | C6 | Cloudflare WAF「Rate limiting rules」 https://developers.cloudflare.com/waf/rate-limiting-rules/ |
 | C7 | Cloudflare SSL「Protocols」 https://developers.cloudflare.com/ssl/reference/protocols/ と「Minimum TLS version」 https://developers.cloudflare.com/ssl/edge-certificates/additional-options/minimum-tls/ |
+| C8 | Cloudflare SSL「Always Use HTTPS」 https://developers.cloudflare.com/ssl/edge-certificates/additional-options/always-use-https/ |
+| C9 | Cloudflare WAF「Custom rules」 https://developers.cloudflare.com/waf/custom-rules/ |
+| C10 | Cloudflare Rules「Single Redirects」 https://developers.cloudflare.com/rules/url-forwarding/single-redirects/ （この調査では本文を確かめていない） |
 | S1 | Cloudflare for SaaS「Plans」 https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/plans/ |
 | S2 | Cloudflare for SaaS「Workers as your fallback origin」 https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/start/advanced-settings/worker-as-origin/ |
 | S3 | Cloudflare for SaaS「Quotas and billing」 https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/quotas-and-billing/ |
