@@ -27,6 +27,19 @@ variable "zone" {
   }
 }
 
+variable "zone_singletons_owner" {
+  description = "Who owns the zone's entry point rulesets and mTLS hostname association: \"idp\" (this Terraform creates them; the zone serves only the IdP) or \"external\" (the zone is shared and managed elsewhere; this Terraform only outputs zone_singletons)."
+  type        = string
+  nullable    = false
+
+  # No default: guessing "idp" on a shared zone would make the first apply fight the zone owner's rulesets, and
+  # guessing "external" would silently leave the admin host without its edge rule (docs/design/domain-placement.md, 2).
+  validation {
+    condition     = contains(["idp", "external"], var.zone_singletons_owner)
+    error_message = "zone_singletons_owner must be \"idp\" or \"external\"."
+  }
+}
+
 variable "issuer_host" {
   description = "Hostname of the IdP Worker (the issuer is https://<issuer_host>). The Worker's custom domain owns its DNS record."
   type        = string
@@ -100,6 +113,18 @@ variable "d1_database_name" {
   validation {
     condition     = can(regex("^[a-z0-9][a-z0-9-]{0,62}$", var.d1_database_name))
     error_message = "d1_database_name must be lowercase letters, digits, and hyphens."
+  }
+}
+
+variable "rate_limit_namespace_id" {
+  description = "Namespace ID of the IdP Worker's Rate Limiting binding. Unique within the account, so it must not be one the service's Workers use. Terraform does not use it; the deploy passes it to the IdP Worker."
+  type        = string
+  nullable    = false
+
+  # Cloudflare takes a positive integer as a string (Workers "Rate Limiting", Configuration).
+  validation {
+    condition     = can(regex("^[1-9][0-9]{0,17}$", var.rate_limit_namespace_id))
+    error_message = "rate_limit_namespace_id must be a positive integer written as a string, without leading zeros."
   }
 }
 

@@ -16,6 +16,7 @@ import {
   type PasskeyDeps,
   type RandomSource,
 } from "@idp/core/user";
+import { isAcceptedTlsVersion } from "@idp/core/shared";
 import { InvalidConfigError, workerConfig, type Env, type WorkerConfig } from "./config.js";
 import { renderErrorPage } from "./error-page.js";
 import { COOKIES, clearCookie, isSameOrigin, log, readCookie, readForm, writeCookie } from "./http.js";
@@ -32,6 +33,36 @@ export type AppOptions = {
 
 function describe(error: unknown): string {
   return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+}
+
+/** Seconds a limited client is told to wait: the binding's counting period (RATE_LIMIT in cloudflare.config.ts). */
+const RATE_LIMIT_RETRY_AFTER_SECONDS = "10";
+
+/**
+ * Counts the request against the client IP's limit before any route runs (docs/design/free-tier.md). The count is
+ * per Cloudflare location and approximate, a guard against simple floods on the pre-authentication D1 writes, not
+ * an exact quota. The IP is only the counting key: it is never logged or stored (design principle 7).
+ *
+ * @param limiter The Rate Limiting binding.
+ * @param clientIp The CF-Connecting-IP header, which Cloudflare's edge sets on every request.
+ * @returns A refusal, or `undefined` when the request may proceed. Without an IP, or when the binding fails, the
+ *   request is refused rather than let through uncounted (fail-closed).
+ */
+async function rateLimit(limiter: RateLimit, clientIp: string | undefined): Promise<Response | undefined> {
+  if (clientIp === undefined || clientIp === "") {
+    log({ result: "refused", reason: "no_client_ip" });
+    return new Response("Bad request.", { status: 400 });
+  }
+  let outcome: RateLimitOutcome;
+  try {
+    outcome = await limiter.limit({ key: clientIp });
+  } catch (error) {
+    log({ result: "refused", reason: "rate_limiter_failed", error: describe(error) });
+    return new Response("The identity provider is temporarily unavailable.", { status: 503 });
+  }
+  if (outcome.success) return undefined;
+  log({ result: "refused", reason: "rate_limited" });
+  return new Response("Too many requests.", { status: 429, headers: { "retry-after": RATE_LIMIT_RETRY_AFTER_SECONDS } });
 }
 
 /**
@@ -91,6 +122,15 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
       log({ result: "refused", reason: url.protocol === "https:" ? "host" : "scheme" });
       return c.notFound();
     }
+    // The zone's minimum TLS version belongs to the zone's owner when the zone is shared with the service, so TLS
+    // below 1.2 is refused here like plain http (docs/design/deployment.md, "設定値"; RFC 8996 exception recorded in
+    // docs/design/domain-placement.md, 3).
+    if (!isAcceptedTlsVersion(c.req.raw.cf)) {
+      log({ result: "refused", reason: "tls" });
+      return c.notFound();
+    }
+    const limited = await rateLimit(config.rateLimiter, c.req.header("cf-connecting-ip"));
+    if (limited !== undefined) return limited;
     c.set("config", config);
     await next();
   });

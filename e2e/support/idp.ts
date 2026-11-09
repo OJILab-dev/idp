@@ -21,8 +21,22 @@ export type LocalIdp = {
   readonly certificate: TestCertificate;
   /** The IdP's D1, the one the Worker reads; the tests seed and inspect it directly. */
   readonly db: D1Database;
+  /**
+   * Calls the IdP Worker's IdpInternal.discovery() over a real Service Binding, as the admin Worker's IDP binding
+   * does: from another Worker in the same workerd, with no request.cf and no client IP.
+   */
+  readonly internalDiscovery: () => Promise<unknown>;
   readonly dispose: () => Promise<void>;
 };
+
+/** A Worker whose only job is to call the IdP Worker's internal entrypoint over its IDP binding. */
+const BINDING_PROBE = [
+  "export default {",
+  "  async fetch(_request, env) {",
+  "    return Response.json(await env.IDP.discovery());",
+  "  },",
+  "};",
+].join("\n");
 
 /**
  * Starts the IdP Worker over HTTPS on a free loopback port, with a fresh signing key and an empty, migrated D1.
@@ -34,7 +48,11 @@ export type LocalIdp = {
 export async function startIdp(certificate: TestCertificate): Promise<LocalIdp> {
   // The deployment's configuration, so the asset handling under test is the one that ships; only what a local run
   // must replace is replaced (the module, the asset directory, the signing key Secret, the D1 placeholder ID).
-  const deployed = workerConfig({ IDP_ISSUER: ISSUER, IDP_D1_DATABASE_ID: "00000000-0000-4000-8000-000000000000" });
+  const deployed = workerConfig({
+    IDP_ISSUER: ISSUER,
+    IDP_D1_DATABASE_ID: "00000000-0000-4000-8000-000000000000",
+    IDP_RATE_LIMIT_NAMESPACE_ID: "1",
+  });
   const signingKey = JSON.stringify(await generateEd25519Jwk());
   const mf = new Miniflare({
     host: "127.0.0.1",
@@ -56,16 +74,35 @@ export async function startIdp(certificate: TestCertificate): Promise<LocalIdp> 
           env: {
             ...deployed.env,
             DB: { type: "d1", name: "idp-e2e" },
+            // The shipped binding with a limit the suite cannot reach: every test signs in from the same loopback
+            // address within seconds, which the production limit would rightly refuse. The limit itself is covered
+            // by apps/worker/test/edge.test.ts.
+            RATE_LIMITER: { type: "rate-limit", namespace: "1", simple: { limit: 100_000, period: 60 } },
             // A Worker Secret in production; a key generated for this run, held only in memory and in workerd.
             SIGNING_KEY_ED25519_CURRENT: { type: "text", value: signingKey },
           },
         },
       },
+      {
+        config: {
+          name: "binding-probe",
+          compatibilityDate: deployed.compatibilityDate,
+          manifest: { mainModule: "probe.js", modules: { "probe.js": { type: "esm", contents: BINDING_PROBE } } },
+          // The same binding shape the admin Worker declares (docs/design/idpctl.md).
+          env: { IDP: { type: "worker", worker: deployed.name, exportName: "IdpInternal" } },
+        },
+      },
     ],
   });
   const url = await mf.ready;
+  async function internalDiscovery(): Promise<unknown> {
+    const probe = await mf.getWorker("binding-probe");
+    const response = await probe.fetch("http://probe.invalid/");
+    if (response.status !== 200) throw new Error(`the binding probe answered ${response.status}`);
+    return response.json();
+  }
   const db = (await mf.getD1Database("DB")) as unknown as D1Database;
   const statements = migrationNames().flatMap((name) => splitStatements(readMigration(name)));
   await db.batch(statements.map((s) => db.prepare(s)));
-  return { port: Number(url.port), certificate, db, dispose: () => mf.dispose() };
+  return { port: Number(url.port), certificate, db, internalDiscovery, dispose: () => mf.dispose() };
 }

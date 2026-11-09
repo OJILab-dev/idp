@@ -57,7 +57,8 @@ export async function buildIdp(): Promise<void> {
       ssr: join(workerDir, "src", "index.ts"),
       target: "es2024",
       minify: false,
-      rollupOptions: { output: { entryFileNames: "index.js", format: "es" } },
+      // cloudflare:workers (the IdpInternal entrypoint's base class) is provided by workerd at run time.
+      rollupOptions: { external: [/^cloudflare:/], output: { entryFileNames: "index.js", format: "es" } },
     },
   });
 }

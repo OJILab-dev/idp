@@ -1,6 +1,15 @@
-# What Terraform owns is fixed by docs/design/deployment.md "Terraform とスクリプトの分担":
-# the WAF custom rule (mTLS), the rate limiting rule, the mTLS hostname association, and the client
-# certificates issued from CSRs, plus the zone settings Always Use HTTPS and the minimum TLS version.
+# What Terraform owns is fixed by docs/design/deployment.md "Terraform とスクリプトの分担": the client certificates
+# issued from CSRs, and the IdP's zone rules (the admin mTLS custom rule, the rate limiting rule, the issuer's
+# HTTPS redirect) with the mTLS hostname association.
+#
+# The zone may be shared with the service the IdP serves (docs/design/domain-placement.md, A2), so:
+# - Every rule is scoped to the IdP's hostnames wherever Cloudflare allows it.
+# - No zone-wide setting (Always Use HTTPS, minimum TLS version) is set here: those belong to the zone's owner and
+#   would change the service's other hostnames. The Workers refuse plain HTTP and TLS below 1.2 themselves.
+# - The entry point rulesets and the mTLS hostname association exist once per zone (Cloudflare "Rulesets", entry
+#   point ruleset), so exactly one repository may own them. zone_singletons_owner picks it: "idp" creates them
+#   here; "external" only outputs their definitions (output zone_singletons) for the zone's owner to apply.
+#
 # Not here, on purpose:
 # - D1: created by scripts/bootstrap-d1.sh so that the plan token needs no D1 permission at all.
 # - Worker custom domains and their DNS records: cloudflare.config.ts owns them and `cf deploy` attaches them.
@@ -15,11 +24,13 @@ locals {
   # Provisional: a sign-in reaches the Worker about 4 to 5 times from the browser (/authorize,
   # /webauthn/auth/options, /webauthn/auth/verify, /authorize/resume), so 10 lets a person retry once within a
   # period. Replace it with the measured value (docs/design/open-questions.md, the request count of one sign-in).
+  # The IdP Worker's Rate Limiting binding uses the same period and limit (apps/worker/cloudflare.config.ts).
   rate_limit_requests_per_period = 10
 
   # The Free plan allows only the path (and Verified Bot) in a rate limiting expression, never the host, so the
-  # rule covers every hostname of the zone. The admin API (/v1/*) is added here because the admin hostname cannot
-  # be named; the IdP Worker has no /v1/* path. Static asset pages are left out: assets are free and unlimited.
+  # rule covers every hostname of the zone, the service's included (docs/design/domain-placement.md, 4). The
+  # admin API (/v1/*) is added here because the admin hostname cannot be named; the IdP Worker has no /v1/*
+  # path. Static asset pages are left out: assets are free and unlimited.
   rate_limited_exact_paths = [
     "/authorize",
     "/authorize/resume",
@@ -50,23 +61,76 @@ locals {
     jsonencode("${var.admin_host}:443"),
   )
 
+  # A Single Redirect in the wildcard form, the form the Free plan supports (wildcards yes, regular expressions no;
+  # Cloudflare "URL forwarding", Availability). http.request.full_uri carries the query string, so the wildcard
+  # captures it and the query is not preserved a second time. Only the issuer host matches: the service's other
+  # hostnames keep whatever the zone's owner decides, and the admin host needs no redirect because a plain request
+  # carries no client certificate and the mTLS rule blocks it. Whether the API accepts this form on a Free zone
+  # is checked at the first apply (docs/design/open-questions.md).
+  issuer_http_pattern  = "http://${var.issuer_host}/*"
+  issuer_https_target  = "https://${var.issuer_host}/$${1}"
+  issuer_redirect_from = format("(http.request.full_uri wildcard %s)", jsonencode(local.issuer_http_pattern))
+  issuer_redirect_to = format(
+    "wildcard_replace(http.request.full_uri, %s, %s)",
+    jsonencode(local.issuer_http_pattern),
+    jsonencode(local.issuer_https_target),
+  )
+
   # Short enough that a forgotten certificate stops working within a year; long enough that renewal is a yearly chore.
   admin_certificate_validity_days = 365
-}
 
-# Plain http:// requests are redirected at the edge and never reach a Worker. The issuer, RP ID, and WebAuthn
-# origin are all https (docs/design/deployment.md), and the Workers also refuse other schemes themselves.
-resource "cloudflare_zone_setting" "always_use_https" {
-  zone_id    = data.cloudflare_zone.this.zone_id
-  setting_id = "always_use_https"
-  value      = "on"
-}
+  # The single source of the IdP's zone singletons. The resources below apply these exact values when the IdP
+  # owns the zone, and output.zone_singletons hands the same values to an external owner, so the definition is
+  # reviewed in this repository either way (docs/design/domain-placement.md, 2).
+  zone_singletons = {
+    mtls_hostnames = [var.admin_host]
+    rulesets = {
+      http_request_firewall_custom = [
+        {
+          ref         = "idp_admin_mtls"
+          description = "IdP admin hostname: block requests without a verified, unrevoked client certificate"
+          expression  = local.admin_mtls_block_expression
+          action      = "block"
+          enabled     = true
+        },
+      ]
+      http_ratelimit = [
+        {
+          ref         = "idp_worker_endpoints"
+          description = "IdP and admin Worker endpoints (path only on the Free plan)"
+          expression  = local.rate_limit_expression
+          action      = "block"
+          enabled     = true
+          ratelimit = {
+            characteristics     = ["cf.colo.id", "ip.src"]
+            period              = local.rate_limit_period_seconds
+            requests_per_period = local.rate_limit_requests_per_period
+            mitigation_timeout  = local.rate_limit_period_seconds
+          }
+        },
+      ]
+      http_request_dynamic_redirect = [
+        {
+          ref         = "idp_issuer_https"
+          description = "IdP issuer hostname: redirect plain HTTP to HTTPS"
+          expression  = local.issuer_redirect_from
+          action      = "redirect"
+          enabled     = true
+          action_parameters = {
+            from_value = {
+              status_code           = 301
+              preserve_query_string = false
+              target_url = {
+                expression = local.issuer_redirect_to
+              }
+            }
+          }
+        },
+      ]
+    }
+  }
 
-# RFC 8996 §§4-5: TLS 1.0 and 1.1 MUST NOT be used.
-resource "cloudflare_zone_setting" "min_tls_version" {
-  zone_id    = data.cloudflare_zone.this.zone_id
-  setting_id = "min_tls_version"
-  value      = "1.2"
+  owns_zone_singletons = var.zone_singletons_owner == "idp"
 }
 
 data "cloudflare_zone" "this" {
@@ -78,15 +142,9 @@ data "cloudflare_zone" "this" {
   }
 }
 
-# Enables mTLS on the admin hostname with the Cloudflare managed CA (no mtls_certificate_id means the managed CA).
-# This resource holds the complete list of hostnames associated with the managed CA in the zone.
-resource "cloudflare_certificate_authorities_hostname_associations" "admin" {
-  zone_id   = data.cloudflare_zone.this.zone_id
-  hostnames = [var.admin_host]
-}
-
 # Issued from the admin's own CSR, so the private key never reaches Cloudflare or Terraform state
-# (docs/design/idpctl.md). The certificate and the CSR are not secrets.
+# (docs/design/idpctl.md). The certificate and the CSR are not secrets. Each certificate is its own resource, not a
+# zone singleton, so the IdP keeps them whoever owns the zone's rules.
 resource "cloudflare_client_certificate" "admin" {
   for_each = var.admin_client_certificates
 
@@ -95,48 +153,48 @@ resource "cloudflare_client_certificate" "admin" {
   validity_days = local.admin_certificate_validity_days
 }
 
-# The zone entry point ruleset of the custom rules phase. There is one per zone and phase, so this resource owns
-# every custom rule of the zone.
+# Enables mTLS on the admin hostname with the Cloudflare managed CA (no mtls_certificate_id means the managed CA).
+# This resource holds the complete list of hostnames associated with the managed CA in the zone.
+resource "cloudflare_certificate_authorities_hostname_associations" "admin" {
+  count = local.owns_zone_singletons ? 1 : 0
+
+  zone_id   = data.cloudflare_zone.this.zone_id
+  hostnames = local.zone_singletons.mtls_hostnames
+}
+
+# The zone entry point ruleset of the custom rules phase; it owns every custom rule of the zone.
 resource "cloudflare_ruleset" "custom_rules" {
+  count = local.owns_zone_singletons ? 1 : 0
+
   zone_id     = data.cloudflare_zone.this.zone_id
   name        = "idp custom rules"
   description = "Blocks admin requests without a valid, unrevoked client certificate before they reach the Worker"
   kind        = "zone"
   phase       = "http_request_firewall_custom"
-
-  rules = [
-    {
-      ref         = "idp_admin_mtls"
-      description = "Admin hostname: block requests without a verified, unrevoked client certificate"
-      expression  = local.admin_mtls_block_expression
-      action      = "block"
-      enabled     = true
-    },
-  ]
+  rules       = local.zone_singletons.rulesets.http_request_firewall_custom
 }
 
 # The zone entry point ruleset of the rate limiting phase. The Free plan allows one rule, and this is it.
 # Requests blocked here never reach a Worker, so they do not use the account's daily request limit.
 resource "cloudflare_ruleset" "rate_limit" {
+  count = local.owns_zone_singletons ? 1 : 0
+
   zone_id     = data.cloudflare_zone.this.zone_id
   name        = "idp rate limiting"
   description = "Stops simple floods on the Worker endpoints before they use up the daily request limit"
   kind        = "zone"
   phase       = "http_ratelimit"
+  rules       = local.zone_singletons.rulesets.http_ratelimit
+}
 
-  rules = [
-    {
-      ref         = "idp_worker_endpoints"
-      description = "IdP and admin Worker endpoints"
-      expression  = local.rate_limit_expression
-      action      = "block"
-      enabled     = true
-      ratelimit = {
-        characteristics     = ["cf.colo.id", "ip.src"]
-        period              = local.rate_limit_period_seconds
-        requests_per_period = local.rate_limit_requests_per_period
-        mitigation_timeout  = local.rate_limit_period_seconds
-      }
-    },
-  ]
+# The zone entry point ruleset of the Single Redirects phase, in place of the zone-wide Always Use HTTPS.
+resource "cloudflare_ruleset" "redirect" {
+  count = local.owns_zone_singletons ? 1 : 0
+
+  zone_id     = data.cloudflare_zone.this.zone_id
+  name        = "idp redirects"
+  description = "Redirects plain HTTP on the issuer hostname to HTTPS before it reaches the Worker"
+  kind        = "zone"
+  phase       = "http_request_dynamic_redirect"
+  rules       = local.zone_singletons.rulesets.http_request_dynamic_redirect
 }

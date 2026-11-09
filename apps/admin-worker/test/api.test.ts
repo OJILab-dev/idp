@@ -284,7 +284,7 @@ describe("clients", () => {
   describe("RS256 enablement from the IdP Worker's discovery", () => {
     it("refuses RS256 when discovery does not list it", async () => {
       await expectProblem(await createClient(f(), { id_token_alg: "RS256" }), "algorithm-disabled", 409);
-      expect(f().idpCalls).toEqual(["https://idp.example.com/.well-known/openid-configuration"]);
+      expect(f().idpCalls).toEqual(["discovery"]);
     });
 
     it("accepts RS256 when discovery lists it", async () => {
@@ -295,12 +295,12 @@ describe("clients", () => {
     });
 
     it.each([
-      ["a failing IdP Worker", () => new Response("down", { status: 503 })],
-      ["a body that is not JSON", () => new Response("<html>", { status: 200 })],
-      ["a different issuer", () => Response.json({ issuer: "https://evil.example.com", id_token_signing_alg_values_supported: ["RS256"] })],
-      ["a list that is not an array", () => Response.json({ issuer: "https://idp.example.com", id_token_signing_alg_values_supported: "RS256" })],
+      ["a document that is not an object", () => "<html>"],
+      ["no document", () => null],
+      ["a different issuer", () => ({ issuer: "https://evil.example.com", id_token_signing_alg_values_supported: ["RS256"] })],
+      ["a list that is not an array", () => ({ issuer: "https://idp.example.com", id_token_signing_alg_values_supported: "RS256" })],
       [
-        "a thrown fetch",
+        "a thrown RPC call (a misconfigured IdP Worker)",
         () => {
           throw new Error("unreachable");
         },

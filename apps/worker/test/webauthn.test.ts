@@ -18,6 +18,7 @@ import {
   authorizeQuery,
   call,
   cookieValue,
+  fromEdge,
   locationParams,
   setCookies,
   useFixture,
@@ -247,7 +248,7 @@ describe("request checks shared by every /webauthn route", () => {
       headers: { ...SAME_ORIGIN, "content-type": "application/json" },
       body: "{",
     });
-    await expectRefusal(await f.handler.fetch(broken, f.env, {} as ExecutionContext), 400, "invalid_request");
+    await expectRefusal(await f.handler.fetch(fromEdge(broken), f.env, {} as ExecutionContext), 400, "invalid_request");
     const big = await page(f, "POST", "/webauthn/register/options", { json: { token: ENROLL_TOKEN, pad: "x".repeat(70_000) } });
     await expectRefusal(big, 400, "invalid_request");
   });

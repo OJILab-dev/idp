@@ -7,8 +7,29 @@ import { ADMIN_HOST, OTHER_FP, ROOT_FP, auditRows, call, expectProblem, idempote
 const f = useFixture();
 
 function tls(overrides: Record<string, unknown>): Record<string, unknown> {
-  return { tlsClientAuth: { certVerified: "SUCCESS", certRevoked: "0", certFingerprintSHA256: ROOT_FP, ...overrides } };
+  return { tlsVersion: "TLSv1.3", tlsClientAuth: { certVerified: "SUCCESS", certRevoked: "0", certFingerprintSHA256: ROOT_FP, ...overrides } };
 }
+
+describe("the TLS version check (fail-closed)", () => {
+  // The zone's minimum TLS version belongs to the zone's owner (docs/design/domain-placement.md, 3), so the Worker
+  // refuses TLS below 1.2 itself, even with a valid, allowlisted certificate.
+  it.each([
+    ["TLS 1.0", { tlsVersion: "TLSv1" }],
+    ["TLS 1.1", { tlsVersion: "TLSv1.1" }],
+    ["an unknown version", { tlsVersion: "TLSv1.4" }],
+    ["no tlsVersion", { tlsVersion: undefined }],
+  ])("refuses %s with forbidden before touching the database or the IdP Worker", async (_label, override) => {
+    const res = await call(f(), "POST", "/v1/users", { cf: { ...verifiedCert(), ...override }, body: { name: "Alice" }, headers: idempotent() });
+    await expectProblem(res, "forbidden", 403);
+    expect(await auditRows(f())).toEqual([]);
+    expect(f().idpCalls).toEqual([]);
+  });
+
+  it("accepts TLS 1.2", async () => {
+    const res = await call(f(), "GET", "/v1/users", { cf: { ...verifiedCert(), tlsVersion: "TLSv1.2" } });
+    expect(res.status).toBe(200);
+  });
+});
 
 describe("the host check", () => {
   it.each([
@@ -33,8 +54,8 @@ describe("the host check", () => {
 describe("the mTLS re-check (fail-closed)", () => {
   const rejected: readonly (readonly [string, Record<string, unknown> | null])[] = [
     ["no request.cf", null],
-    ["no tlsClientAuth", {}],
-    ["tlsClientAuth that is not an object", { tlsClientAuth: "SUCCESS" }],
+    ["no tlsClientAuth", { tlsVersion: "TLSv1.3" }],
+    ["tlsClientAuth that is not an object", { tlsVersion: "TLSv1.3", tlsClientAuth: "SUCCESS" }],
     ["no certificate (NONE)", tls({ certVerified: "NONE" })],
     ["a failed verification", tls({ certVerified: "FAILED:self signed certificate" })],
     ["certVerified as a boolean", tls({ certVerified: true })],

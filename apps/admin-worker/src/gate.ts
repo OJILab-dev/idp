@@ -6,7 +6,7 @@ import type { AdminIdentity } from "@idp/core/admin";
 import type { AdminConfig } from "./config.js";
 
 /** Why a request was refused; written to the Worker log only, never to the response. */
-export type GateRefusal = "host" | "no-client-auth" | "not-verified" | "revoked" | "bad-fingerprint" | "not-allowlisted";
+export type GateRefusal = "host" | "tls" | "no-client-auth" | "not-verified" | "revoked" | "bad-fingerprint" | "not-allowlisted";
 
 /** The outcome of the gate. */
 export type GateResult =

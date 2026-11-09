@@ -27,10 +27,52 @@ export function testSigningKey(): Promise<string> {
   return ed25519Jwk;
 }
 
+/** The client IP every test request carries unless a test replaces it; Cloudflare's edge sets the header. */
+export const CLIENT_IP = "192.0.2.1";
+
+/** A stand-in for the Rate Limiting binding that records each key and answers as the test sets. */
+export type FakeRateLimiter = RateLimit & {
+  /** The keys counted, in order. */
+  readonly keys: string[];
+  /** What the next calls answer: allow, deny (over the limit), or throw (the binding failed). */
+  outcome: "allow" | "deny" | "throw";
+};
+
+/**
+ * Builds a fake Rate Limiting binding that allows every request until a test changes its outcome.
+ *
+ * @returns The fake binding.
+ */
+export function createFakeRateLimiter(): FakeRateLimiter {
+  const fake: FakeRateLimiter = {
+    keys: [],
+    outcome: "allow",
+    limit: async ({ key }) => {
+      fake.keys.push(key);
+      if (fake.outcome === "throw") throw new Error("rate limiter unavailable");
+      return { success: fake.outcome === "allow" };
+    },
+  };
+  return fake;
+}
+
+/**
+ * Gives a hand-built request what Cloudflare's edge adds to every request: a TLS 1.3 `request.cf` and the
+ * CF-Connecting-IP header. The Worker refuses a request without either.
+ *
+ * @returns The same request.
+ */
+export function fromEdge(request: Request): Request {
+  if (!request.headers.has("cf-connecting-ip")) request.headers.set("cf-connecting-ip", CLIENT_IP);
+  Object.defineProperty(request, "cf", { value: { tlsVersion: "TLSv1.3" } });
+  return request;
+}
+
 /** The state of one test. */
 export type Fixture = {
   readonly core: CoreFixture;
   readonly env: Env;
+  readonly rateLimiter: FakeRateLimiter;
   readonly handler: ReturnType<typeof createHandler>;
 };
 
@@ -43,13 +85,15 @@ export function useFixture(): () => Fixture {
   let f: Fixture | undefined;
   beforeEach(async () => {
     const core = await createFixture();
+    const rateLimiter = createFakeRateLimiter();
     const env: Env = {
       DB: core.t.db,
       ISSUER,
       SIGNING_KEY_ED25519_CURRENT: await testSigningKey(),
       CF_VERSION_METADATA: { id: VERSION_ID, tag: "", timestamp: "" },
+      RATE_LIMITER: rateLimiter,
     };
-    f = { core, env, handler: createHandler({ clock: core.clock, random: core.random }) };
+    f = { core, env, rateLimiter, handler: createHandler({ clock: core.clock, random: core.random }) };
   });
   afterEach(async () => {
     await f?.core.dispose();
@@ -101,6 +145,10 @@ export type CallOptions = {
   readonly env?: Env;
   /** The URL origin; defaults to the issuer. */
   readonly origin?: string;
+  /** request.cf; `null` sends a request without it. Defaults to a TLS 1.3 connection. */
+  readonly cf?: Record<string, unknown> | null;
+  /** The CF-Connecting-IP header; `null` omits it. Defaults to {@link CLIENT_IP}. */
+  readonly clientIp?: string | null;
 };
 
 /**
@@ -122,7 +170,11 @@ export async function call(f: Fixture, method: string, path: string, options: Ca
     body = JSON.stringify(options.json);
     if (!headers.has("content-type")) headers.set("content-type", "application/json");
   }
+  const clientIp = options.clientIp === undefined ? CLIENT_IP : options.clientIp;
+  if (clientIp !== null && !headers.has("cf-connecting-ip")) headers.set("cf-connecting-ip", clientIp);
   const request = new Request(`${options.origin ?? ISSUER}${path}`, { method, headers, redirect: "manual", ...(body === undefined ? {} : { body }) });
+  const cf = options.cf === undefined ? { tlsVersion: "TLSv1.3" } : options.cf;
+  if (cf !== null) Object.defineProperty(request, "cf", { value: cf });
   const response = await f.handler.fetch(request, options.env ?? f.env, {
     waitUntil: () => undefined,
     passThroughOnException: () => undefined,
