@@ -93,6 +93,24 @@ test_config_string_fails_closed() {
   rm -f "${config}"
 }
 
+assert_succeeds() {
+  local name="${1}"
+  shift
+  if ("$@") >/dev/null 2>&1; then
+    printf 'ok   %s\n' "${name}"
+  else
+    printf 'FAIL %s: expected success\n' "${name}" >&2
+    failures=$((failures + 1))
+  fi
+}
+
+test_is_waf_block_tells_the_edge_from_the_worker() {
+  assert_succeeds "a 403 HTML page is the WAF block" is_waf_block 403 "text/html; charset=UTF-8"
+  assert_fails "the admin Worker's own 403 problem reached the Worker" is_waf_block 403 "application/problem+json"
+  assert_fails "a 200 is not a block" is_waf_block 200 "text/html"
+  assert_fails "an unreachable host is not a block" is_waf_block 000 ""
+}
+
 test_kid_matches_rfc8037
 test_private_jwk_from_pkcs8
 test_public_jwk_has_no_private_member
@@ -100,6 +118,7 @@ test_rejects_malformed_pkcs8
 test_base64url_has_no_padding_or_unsafe_characters
 test_deployment_config_path_rejects_unsafe_names
 test_config_string_fails_closed
+test_is_waf_block_tells_the_edge_from_the_worker
 
 if [[ "${failures}" -ne 0 ]]; then
   printf '%s test(s) failed\n' "${failures}" >&2

@@ -54,7 +54,9 @@
 - 最初の構築の順番は[ブートストラップ](../deployment/bootstrap.md)にまとめる。
 - Worker のデプロイ、D1 のデータベースの作成とマイグレーション、break-glass の D1 の操作は、すべて Cloudflare の `cf` CLI で行う。wrangler はどこにも使わない。`cf` は Worker のデプロイ（`cf deploy`。Cloudflare「Deploy your first Worker」）と D1 のマイグレーション（`cf d1 migrations apply`。Cloudflare「Wrangler to cf reference」）を挙げている。
 - `cf` は自分でバンドラーを動かさず、フレームワークのコマンドか、`package.json` で宣言した Cloudflare のビルドツールを実行する。ビルドツールは Cloudflare Vite plugin 2.0 beta（`@cloudflare/vite-plugin@beta`）で、Wrangler に依存しない。Vite plugin を宣言していないときだけ Wrangler でビルドする（Cloudflare「Develop, build, and deploy」の「How `cf` runs your project」）。また、`wrangler.jsonc`、`wrangler.json`、`wrangler.toml` のあるプロジェクトでは `cf deploy` を実行してはいけない（Cloudflare「Deploy your first Worker」の「Start from an existing project」）。
-- そのため、2 つの Worker はどちらも `@cloudflare/vite-plugin@beta` を宣言し、wrangler を依存に宣言せず、`wrangler.*` の設定ファイルを置かない。`cf migrate` の Wrangler bundler も使わない。
+- そのため、2 つの Worker はどちらも `@cloudflare/vite-plugin@beta` を宣言し、wrangler を依存に宣言せず、`wrangler.*` の設定ファイルを置かない。`cf migrate` の Wrangler bundler も使わない。`cf` 1.0.0-beta.21 は、Worker のディレクトリの `package.json` に plugin が宣言され、そのディレクトリの `node_modules` に入っているときだけ plugin でビルドする（`cf` のパッケージの実装で確かめた）。そのため、plugin はルートではなく、それぞれの Worker の `package.json` に置く。
+- `cf` は `cloudflare.config.ts` を Node.js の標準のモジュールローダーで読み、TypeScript の `.js` の指定子を `.ts` のファイルに読み替えない。そのため、`cloudflare.config.ts` から辿る import は、相対の import を持たないファイルを指すパッケージの exports（`@idp/core/shared/issuer`、`@idp/admin-worker/settings`）だけにする。テストが、同じローダーで読み込めることを確かめる。
+- 管理用の Worker の名前は `idp-admin` で、IdP の Worker の名前と同じくコードの定数として `scripts/lib.sh` と `cloudflare.config.ts` で同じ値を使う。管理用の Worker は Secret を持たない。
 - `cf` にドキュメント化されたコマンドがない操作は、Cloudflare API かダッシュボードで行い、wrangler で補わない。`cf` で足りるかどうかを実装の前に確かめる項目は[未決事項](open-questions.md)にまとめる。
 - `cf` はベータで、コマンドが安定版の前に変わりうる（Cloudflare「Cloudflare CLI」）。
 - CI では `cf` が `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID` を読む（Cloudflare「Use cf in CI」の「Provide credentials」）。
@@ -105,7 +107,8 @@
 - 2 つの Worker は別々に切り替わるので、マイグレーションは expand / contract にする。新しいマイグレーションは、古いコードと新しいコードの両方で動く形にし、古い形を消すのは、両方の Worker が新しいコードになった後の別のマイグレーションで行う。
 - ロールバック：Worker は前のバージョンに戻す。Cloudflare のドキュメントは、ロールバックをダッシュボードと Wrangler の `wrangler rollback` でしか説明していない（Cloudflare「Rollbacks」）。`cf` か Cloudflare API でできるかは実装の前に確かめる（[未決事項](open-questions.md)参照）。ロールバックはバインディング先の D1 を変えない（同じページの「Bindings」）。D1 は Time Travel で戻す。
 - 依存の取得は、Takumi Guard の下で、バージョンを固定した pnpm のセットアップの Action と `pnpm install --frozen-lockfile` で行う。Takumi Guard が pnpm に対応していることは利用者が確認済みで、セットアップの Action の実装で改めて確かめる。
-- `examples/github-actions/deploy.yml` は、今は npm の雛形のままで、pnpm、`cf`、Terraform の上の流れに作り直すのは実装の作業にする。
+- 今の実装（`.github/workflows/deploy.yml` と `scripts/deploy.sh`）は、マイグレーションと 2 つの Worker のデプロイまでを、運用者が `workflow_dispatch` でデプロイの名前を入力して起動する形で持つ。main へのマージでの自動の起動と、CI での `terraform apply` は、まだ持たない。足すときは、上の順番（apply、マイグレーション、IdP の Worker、管理用の Worker）を保ち、デプロイの名前はリポジトリの変数 `IDP_DEPLOYMENT` から取る。
+- デプロイの最後に、外から確かめる（issuer の discovery と JWKS、証明書のない管理用のホスト名が WAF で止まること、`workers.dev` とプレビューの URL が無効であること。[実行手順](../deployment/runbook.md)参照）。どれかが通らなければ workflow は失敗する。
 
 **PR の `terraform plan` の認証情報（例外）**
 

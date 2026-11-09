@@ -2,7 +2,9 @@
 // values are not written here: the issuer and the D1 ID come from the deploy script's environment, which takes them
 // from the deployment settings file (the issuer) and from a lookup by the database name (the D1 ID).
 import { bindings, defineConfig, type WorkerConfig as CloudflareWorkerConfig } from "cf/config";
-import { parseIssuer } from "@idp/core/shared";
+// Not "@idp/core/shared": cf loads this file with Node's own loader, which does not map the `.js` specifiers inside
+// that index to `.ts` files. The issuer module has no imports of its own.
+import { parseIssuer } from "@idp/core/shared/issuer";
 
 /** The deploy script's environment; every value is untrusted until checked. */
 export type DeployEnv = {

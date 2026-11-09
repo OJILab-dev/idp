@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { workerConfig } from "../cloudflare.config.js";
 
@@ -23,6 +24,13 @@ describe("cloudflare.config.ts", () => {
   it("never holds a secret: the signing keys are Worker Secrets set outside this file", () => {
     const worker = workerConfig({ IDP_ISSUER: "https://idp.example.com", IDP_D1_DATABASE_ID: D1_ID });
     expect(JSON.stringify(worker)).not.toMatch(/SIGNING_KEY/);
+  });
+
+  it("loads under Node's own module loader, which cf uses and which does not map .js specifiers to .ts", () => {
+    const configUrl = new URL("../cloudflare.config.ts", import.meta.url).href;
+    const script = `const m = await import(${JSON.stringify(configUrl)}); if (m.workerConfig(process.env).name !== "idp") process.exit(1);`;
+    const env = { ...process.env, IDP_ISSUER: "https://idp.example.com", IDP_D1_DATABASE_ID: D1_ID };
+    expect(() => execFileSync(process.execPath, ["--input-type=module", "-e", script], { env, stdio: "pipe" })).not.toThrow();
   });
 
   it.each([

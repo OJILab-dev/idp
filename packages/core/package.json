@@ -4,6 +4,7 @@
   "type": "module",
   "exports": {
     "./shared": "./src/shared/index.ts",
+    "./shared/issuer": "./src/shared/issuer.ts",
     "./user": "./src/user/index.ts",
     "./admin": "./src/admin/index.ts"
   },

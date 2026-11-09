@@ -1,0 +1,120 @@
+name: Deploy
+
+# Deploys the IdP Worker and the admin Worker of one deployment with scripts/deploy.sh: build, D1 migrations, the
+# IdP Worker, the admin Worker, then the post-deploy checks (docs/deployment/runbook.md, stage 5).
+#
+# The 1Password GitHub Actions destination is bound to this file's path, the main branch, and the deployment's
+# GitHub Environment (docs/deployment/secret.md). Renaming this file breaks that binding.
+
+on:
+  workflow_dispatch:
+    inputs:
+      deployment:
+        description: Deployment name (deployments/<name>.tfvars.json)
+        required: true
+        type: string
+      before_signing_key:
+        description: First deploy only (bootstrap stage 5) - expect the IdP Worker to refuse every request until the signing key is registered
+        required: false
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: deploy-${{ inputs.deployment }}
+  cancel-in-progress: false
+
+jobs:
+  # Reads the GitHub Environment name from the deployment file, so the workflow names no Environment itself.
+  config:
+    runs-on: takumi-runner
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      environment: ${{ steps.read.outputs.environment }}
+    steps:
+      # The destination only releases credentials to main; failing here gives a clearer error than 1Password's.
+      - name: Require the main branch
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::deploy runs only from main, not ${GITHUB_REF}"
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # No Takumi Guard step: this job fetches no npm, PyPI, RubyGems, Go, or Packagist package.
+      - name: Install jq pinned in mise.toml
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3.6.3
+        with:
+          install_args: jq
+
+      - id: read
+        name: Read the deploy GitHub Environment
+        env:
+          DEPLOYMENT: ${{ inputs.deployment }}
+        run: |
+          source scripts/lib.sh
+          environment="$(config_string "$(deployment_config_path "${DEPLOYMENT}")" github_deploy_environment)"
+          echo "environment=${environment}" >> "${GITHUB_OUTPUT}"
+
+  deploy:
+    needs: config
+    runs-on: takumi-runner
+    timeout-minutes: 30
+    environment: ${{ needs.config.outputs.environment }}
+    permissions:
+      contents: read
+      # The 1Password OIDC exchange and the Takumi Guard bot authentication.
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Enable Takumi Guard for npm
+        uses: flatt-security/setup-takumi-guard-npm@6d4182745c1e474c35a023573c2612c085be45a4 # v1.2.0
+        with:
+          bot-id: BT01M0MFTWGD1BQ2CKEPG92G53Y3
+
+      - name: Install Node.js, pnpm, and jq pinned in mise.toml
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3.6.3
+        with:
+          install_args: node pnpm jq
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # After the dependencies, so the credentials exist only for the deploy itself (docs/deployment/secret.md).
+      # OP_ENVIRONMENT_ID is the deployment's Environment (onepassword_deploy_environment); a GitHub Environment
+      # variable of the same name takes precedence over the repository variable when several deployments exist.
+      - name: Load the deployment's Cloudflare credentials
+        uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
+        with:
+          export-env: true
+        env:
+          OP_WORKLOAD_ID: ${{ vars.OP_WORKLOAD_ID }}
+          OP_ENVIRONMENT_ID: ${{ vars.OP_ENVIRONMENT_ID }}
+          OP_INTEGRATION_KEY: ${{ secrets.OP_INTEGRATION_KEY }}
+
+      # The account ID is not a secret, but the repository and its logs are public (docs/design/deployment.md), and
+      # scripts/deploy.sh runs with xtrace. The add-mask command itself is never echoed to the log.
+      - name: Mask the account ID
+        run: echo "::add-mask::${CLOUDFLARE_ACCOUNT_ID}"
+
+      - name: Build, migrate, deploy, and check
+        env:
+          DEPLOYMENT: ${{ inputs.deployment }}
+          BEFORE_SIGNING_KEY: ${{ inputs.before_signing_key }}
+          CF_QUIET: "1"
+        run: |
+          args=(--ci)
+          if [[ "${BEFORE_SIGNING_KEY}" == "true" ]]; then
+            args+=(--before-signing-key)
+          fi
+          scripts/deploy.sh "${args[@]}" "${DEPLOYMENT}"
