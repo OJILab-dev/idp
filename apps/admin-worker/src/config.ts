@@ -2,6 +2,7 @@
 // validated before the first request is served, and a bad value refuses every request instead of being defaulted
 // (design principle 4: fail-closed).
 import { parseIssuer, type Issuer } from "@idp/core/shared";
+import { InvalidConfigError, parseAdminHost, parseAllowlist } from "./settings.js";
 
 /**
  * The IdP Worker's internal entrypoint (`IdpInternal`), reached over the `IDP` Service Binding by RPC. The public
@@ -47,53 +48,7 @@ export type AdminConfig = {
   readonly writerVersion: string;
 };
 
-/** Thrown when the configuration is missing or malformed; the message names the setting, never a secret. */
-export class InvalidConfigError extends Error {
-  override readonly name = "InvalidConfigError";
-}
-
-/** A certificate fingerprint as the allowlist stores it: SHA-256 as 64 lowercase hex digits. */
-export const FINGERPRINT = /^[0-9a-f]{64}$/;
-
-// Admin names go to audit_log.admin_name and Workers Logs; the client ID's charset keeps them unambiguous on a line.
-const ADMIN_NAME = /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/;
-
-function parseAllowlist(value: string | undefined): ReadonlyMap<string, string> {
-  if (value === undefined) throw new InvalidConfigError("ADMIN_ALLOWLIST is not set");
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value);
-  } catch {
-    throw new InvalidConfigError("ADMIN_ALLOWLIST is not JSON");
-  }
-  if (!Array.isArray(parsed) || parsed.length === 0) throw new InvalidConfigError("ADMIN_ALLOWLIST must be a non-empty array");
-  const allowlist = new Map<string, string>();
-  for (const [i, entry] of (parsed as readonly unknown[]).entries()) {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) throw new InvalidConfigError(`ADMIN_ALLOWLIST[${i}] is not an object`);
-    const { sha256, name, ...rest } = entry as Record<string, unknown>;
-    if (Object.keys(rest).length > 0) throw new InvalidConfigError(`ADMIN_ALLOWLIST[${i}] has unknown members`);
-    // The allowlist is reviewed as written, so it must already be canonical rather than normalised here.
-    if (typeof sha256 !== "string" || !FINGERPRINT.test(sha256)) throw new InvalidConfigError(`ADMIN_ALLOWLIST[${i}].sha256 is not lowercase hex SHA-256`);
-    if (typeof name !== "string" || !ADMIN_NAME.test(name)) throw new InvalidConfigError(`ADMIN_ALLOWLIST[${i}].name is not a valid admin name`);
-    if (allowlist.has(sha256)) throw new InvalidConfigError(`ADMIN_ALLOWLIST[${i}].sha256 is repeated`);
-    allowlist.set(sha256, name);
-  }
-  return allowlist;
-}
-
-function parseAdminHost(value: string | undefined, issuer: Issuer): string {
-  if (value === undefined || value === "") throw new InvalidConfigError("ADMIN_HOST is not set");
-  // The issuer's rules are the hostname's rules: canonical, no port, no IP address, no trailing dot.
-  let host: string;
-  try {
-    host = parseIssuer(`https://${value}`).rpId;
-  } catch {
-    throw new InvalidConfigError("ADMIN_HOST must be a canonical hostname");
-  }
-  // Serving the admin API on the issuer host would put it next to the public endpoints (design principle 1).
-  if (host === issuer.rpId) throw new InvalidConfigError("ADMIN_HOST must differ from the issuer host");
-  return host;
-}
+export { FINGERPRINT, InvalidConfigError } from "./settings.js";
 
 function isBinding(value: unknown, methods: readonly string[]): boolean {
   return typeof value === "object" && value !== null && methods.every((m) => typeof (value as Record<string, unknown>)[m] === "function");

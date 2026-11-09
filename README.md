@@ -10,7 +10,7 @@ Cloudflare Workers の無料枠と D1 だけで動く、パスキー専用の最
 
 残っている作業は次のとおりです。
 
-- 検証用の Cloudflare アカウントへの最初のデプロイ。運用者が [ブートストラップの実行手順](docs/deployment/runbook.md) に沿って行います。Worker のデプロイの workflow はまだありません（雛形は [examples/github-actions/deploy.yml](examples/github-actions/deploy.yml)）。
+- 検証用の Cloudflare アカウントへの最初のデプロイ。運用者が [ブートストラップの実行手順](docs/deployment/runbook.md) に沿って行います。2 つの Worker のデプロイは、手動で起動する workflow（[.github/workflows/deploy.yml](.github/workflows/deploy.yml)）が `scripts/deploy.sh` を動かして行います。ビルド、D1 のマイグレーション、IdP の Worker、管理用の Worker の順にデプロイし、最後に外から確認します。
 - e2e テスト（Playwright）。[セキュリティ要件チェックリスト](docs/design/security-checklist.md) の攻撃ケースを実装します。
 
 ## ゴール
@@ -45,10 +45,10 @@ IdP の Worker には管理用のエンドポイントや管理 UI を置きま�
 | [contract/](contract) | 実装に依存しない契約。D1 のマイグレーション（`migrations`）、管理 API の仕様（`openapi`）、テストベクタ（`testdata`）、スキーマのテスト（`test`） |
 | [cmd/idpctl/](cmd/idpctl) | Go の管理 CLI。管理 API のクライアントは `contract/openapi/admin.json` から生成する |
 | [infra/](infra) | 管理者のクライアント証明書と、IdP のホスト名に絞ったゾーンのルール（管理用のホスト名の mTLS と WAF、issuer の HTTPS へのリダイレクト、レート制限）を持つ Terraform と、そのオフラインのテスト。ゾーンをサービスと共有するときは、ルールの定義をゾーンの持ち主に出力する |
-| [scripts/](scripts) | ブートストラップのスクリプト（state のバケット、D1、マイグレーション、署名鍵と管理者の鍵の生成、Terraform の実行） |
+| [scripts/](scripts) | ブートストラップのスクリプト（state のバケット、D1、マイグレーション、署名鍵と管理者の鍵の生成、Terraform の実行）と、2 つの Worker のデプロイのスクリプト（`deploy.sh`） |
 | [deployments/](deployments) | デプロイごとの設定ファイル（`<デプロイの名前>.tfvars.json`）とその雛形 |
 | [docs/](docs) | 設計思想、設計ドキュメント、デプロイの手順 |
-| [examples/](examples) | GitHub Actions の deploy workflow の雛形 |
+| [.github/workflows/](.github/workflows) | PR の CI（`ci.yml`）と、手動で起動するデプロイ（`deploy.yml`） |
 
 ## 前提とツールチェーン
 
@@ -56,7 +56,10 @@ IdP の Worker には管理用のエンドポイントや管理 UI を置きま�
 - Node.js、pnpm、Go、oapi-codegen、Terraform、ShellCheck、actionlint、pinact は、mise が [mise.toml](mise.toml) に固定したバージョンを `mise install` で入れます。
 - JavaScript のパッケージマネージャーは pnpm だけを使います。依存は `pnpm install --frozen-lockfile` で入れます。
 - Cloudflare の操作には、ルートの `package.json` の devDependency の `cf` CLI（ベータ）を `pnpm exec cf …` で使います。wrangler は使いません。
+- 2 つの Worker のビルドは、`cf` がそれぞれの Worker の `package.json` で宣言した Cloudflare Vite plugin（`@cloudflare/vite-plugin` の 2.0 ベータ）で行います。設定はそれぞれの `cloudflare.config.ts` と `vite.config.ts` です。
 - `cf auth login` は運用者が自分で実行します。
+- フォークして自分のアカウントとドメインで動かすときは、アカウント ID を 1Password に、それ以外の値（ゾーン、ホスト名、D1 や 1Password のアイテムの名前など）を `deployments/<デプロイの名前>.tfvars.json` に書きます。コード、workflow、スクリプトには、アカウントやドメインに固有の値を書きません。
+- issuer と管理用のホスト名を持つゾーンは、2 つの Worker をデプロイする Cloudflare アカウントに置きます。Worker のカスタムドメイン、mTLS、WAF とゾーンの設定はゾーン単位で、別のアカウントにある親のドメインの下にサブドメインだけのゾーンを置く形は Enterprise プランでしか使えないため、Free と Pro ではデプロイするアカウントにフルセットアップのゾーンが要ります。
 
 ## コマンド
 

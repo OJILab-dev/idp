@@ -12,6 +12,8 @@
 # and its Secret binding.
 readonly IDP_WORKER_NAME="idp"
 readonly SIGNING_KEY_SECRET_NAME="SIGNING_KEY_ED25519_CURRENT"
+# Keep in sync with the admin Worker's cloudflare.config.ts.
+readonly ADMIN_WORKER_NAME="idp-admin"
 
 # Field labels of the Vault item named by onepassword_cloudflare_item. The operator creates this item by hand,
 # because it holds credentials (docs/deployment/bootstrap.md, 前提).
@@ -85,6 +87,14 @@ cf_cli() {
   CLOUDFLARE_ACCOUNT_ID="${IDP_ACCOUNT_ID:?IDP_ACCOUNT_ID is not set}" pnpm --dir "${IDP_REPO_ROOT}" exec cf "$@"
 }
 
+# Like cf_cli, but runs cf in a Worker's project directory (apps/<name>), where cf build and cf deploy look for
+# cloudflare.config.ts, vite.config.ts, and the Build Output.
+cf_cli_in() {
+  local project="${1}"
+  shift
+  CLOUDFLARE_ACCOUNT_ID="${IDP_ACCOUNT_ID:?IDP_ACCOUNT_ID is not set}" pnpm --dir "${IDP_REPO_ROOT}/${project}" exec cf "$@"
+}
+
 # Stops unless cf acts on the deployment's account. Called before any change.
 verify_cf_account() {
   local actual
@@ -106,6 +116,15 @@ d1_database_id() {
   cf_cli d1 list --name "${name}" | jq -er --arg name "${name}" '
     [(.result // .)[] | select(.name == $name)]
     | if length == 1 then .[0].uuid else error("expected exactly one D1 database named \($name)") end'
+}
+
+# Succeeds when a response to the admin host was blocked at the edge rather than by the admin Worker. Both answer
+# 403, but the Worker's refusals are all application/problem+json (docs/design/idpctl.md), and the WAF block page is
+# not. A request the Worker refused has already used the account's daily request limit, so it is a failure here.
+is_waf_block() {
+  local status="${1}"
+  local content_type="${2}"
+  [[ "${status}" == "403" ]] && [[ "${content_type}" != application/problem+json* ]]
 }
 
 # base64url without padding (RFC 4648 §5), reading bytes on stdin.
