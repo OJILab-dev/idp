@@ -32,7 +32,10 @@ test("the account page adds a second passkey, revokes it, and keeps the last one
     secondDevice = await authenticators.add();
     await route.continue();
   });
+  // The page reloads the list once the passkey is added; that response says which row is which.
+  const listed = page.waitForResponse((response) => new URL(response.url()).pathname === "/webauthn/credentials");
   await page.getByRole("button", { name: en.account_add }).click();
+  const list = (await (await listed).json()) as { readonly credentials: readonly { readonly credential_id: string }[] };
   await expect(rows).toHaveCount(2);
   await page.unroute("**/webauthn/add/options");
   const [second] = await authenticators.credentials(secondDevice ?? "");
@@ -43,9 +46,11 @@ test("the account page adds a second passkey, revokes it, and keeps the last one
     { id: secondId, created_via: "self" },
   ]);
 
-  // The list is in creation order; the second row is the new passkey. Revoking it re-authenticates with it, and the
-  // session, made with the first, survives.
-  await rows.nth(1).getByRole("button", { name: en.account_revoke }).click();
+  // The list is ordered by creation time, then ID, and both passkeys can share a second, so the row is found by ID.
+  // Revoking it re-authenticates with it, and the session, made with the first, survives.
+  const secondRow = list.credentials.findIndex((row) => row.credential_id === secondId);
+  expect(secondRow).toBeGreaterThanOrEqual(0);
+  await rows.nth(secondRow).getByRole("button", { name: en.account_revoke }).click();
   await expect(rows).toHaveCount(1);
   await expect(page.getByRole("alert")).toBeHidden();
   await expect(rows.getByRole("button", { name: en.account_revoke })).toBeDisabled();
