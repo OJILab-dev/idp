@@ -76,6 +76,10 @@
 - [ ] `POST /logout` は今のセッションの行を、`session_revoke` と `user_disable` はそのユーザーの全セッションの行を削除する。`passkey_revoke` と本人による失効は、失効させたパスキーから作ったセッションの行だけを外部キーの連鎖で削除し、別のパスキーから作ったセッションは残す
 - [ ] issuer、RP ID、origin は設定値から導き、リクエストの `Host` ヘッダーからは作らない
 - [ ] issuer が未設定または形式が不正なら、リクエストを処理せずエラーを返す
+- [ ] IdP の Worker は、issuer のホスト名以外へのリクエストと `https` でないリクエストを、処理せずに 404 で拒否する。エッジでは、issuer のホスト名に絞ったシングルリダイレクトのルールが平文の HTTP を HTTPS にリダイレクトし、ゾーン全体の Always Use HTTPS には頼らない
+- [ ] IdP の Worker と管理用の Worker は、`request.cf.tlsVersion` が `TLSv1.2` か `TLSv1.3` でないリクエスト（値がない、知らない値を含む）を、何も処理せずに拒否する。ゾーンの TLS の最小バージョンは IdP が持たないので、エッジで TLS 1.0 と 1.1 の接続が成立しうることを RFC 8996 の例外として記録している（[ドメインの置き場所](domain-placement.md)の共存の設計の 3）
+- [ ] IdP の Worker は、接続元の IP ごとの Rate Limiting バインディングの上限を超えたリクエストを 429 で拒否する。バインディングがない、呼び出しが失敗した、接続元の IP が取れない場合も、処理せずに拒否する（fail-closed）。IP をログにも D1 にも書かない
+- [ ] IdP が置くゾーンのルール（WAF のカスタムルール、リダイレクト）は、IdP のホスト名に絞った条件を持つ。ゾーン全体の設定を Terraform で変えない
 - [ ] セッションの Cookie で認証する状態を変える POST（`/webauthn/*`、`/authorize/resume`、`/logout`）は、`Sec-Fetch-Site` が `same-origin` か（なければ `Origin` が issuer と一致するか）を確認し、どちらのヘッダーもないリクエストは拒否する。`/authorize` はクロスサイトからの POST が正規の動作で、`/token` と `/userinfo` はサーバーからの呼び出しで Cookie を使わない（クライアント認証、PKCE、Bearer のアクセストークンで守る）ので、この確認の対象にしない
 - [ ] サインイン画面、登録画面、アカウントページは、CSP の `frame-ancestors 'none'` でクリックジャッキングを防ぐ
 - [ ] 登録リンクのトークンは URL のフラグメントに入れ、登録ページは `Referrer-Policy: no-referrer` にする
@@ -95,7 +99,7 @@
 
 - [ ] 管理用のホスト名の WAF のカスタムルールが、`(not cf.tls_client_auth.cert_verified or cf.tls_client_auth.cert_revoked)` に当たるリクエストを遮断する。証明書のないリクエスト、managed CA 以外の証明書、失効した証明書のそれぞれで、Worker に届かないことを確かめる
 - [ ] 管理用の Worker は、`request.cf.tlsClientAuth.certVerified` が `"SUCCESS"`、`certRevoked` が `"0"`、`certFingerprintSHA256` が許可リストにある、の 3 つがそろわないリクエストを拒否する。値がない、形が違う場合も拒否する（WAF を通らない経路を想定した fail-closed の再確認）
-- [ ] 同じアカウントで発行した有効な証明書でも、許可リストにないものは拒否する。許可リストから消した証明書は、Cloudflare で失効させる前でも、そのデプロイの後は拒否する
+- [ ] 同じアカウントで発行した有効な証明書（IdP をサービスのアカウントに置くときは、サービスのために発行したものを含む）でも、許可リストにないものは拒否する。許可リストから消した証明書は、Cloudflare で失効させる前でも、そのデプロイの後は拒否する
 - [ ] 管理 API に、許可リストと監査ログを変える操作がない。許可リストは管理用の Worker の設定で、CI のデプロイでだけ変わる
 - [ ] 管理用の Worker は `workers.dev` とプレビューの URL を無効にし、設定された管理用のホスト名以外へのリクエストを拒否する
 - [ ] 管理操作の監査ログの行は、許可リストで確定した管理者の名前と証明書のフィンガープリントを持つ。証明書の検証や許可リストで拒否したリクエストは、監査ログに行を書かない

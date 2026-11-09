@@ -90,8 +90,8 @@ flowchart LR
 | [セキュリティ要件チェックリスト](security-checklist.md) | e2e の攻撃ケースとして実装する要件の一覧（実際の CVE 事例付き） |
 | [管理 CLI と管理用の Worker（idpctl）](idpctl.md) | 別ホスト名の管理用の Worker と Go の `idpctl` による管理、mTLS と許可リストによる管理者の確定、REST の管理 API（エラー、Idempotency-Key、ページング）、IdP が発行する秘密の扱い、break-glass |
 | [実装に依存しない契約](cross-language-contract.md) | SQL・エンコーディング・ID・鍵の形式・テストベクタと、Go と TypeScript をつなぐ管理 API の仕様の取り決め |
-| [デプロイと設定](deployment.md) | アカウントの移植性、デプロイごとの入力の一覧と直書きの禁止、ホスト名を設定値で与える仕組み、変更時の影響、IdP 専用アカウント、Terraform とスクリプトの分担、デプロイのパイプライン、API トークン、鍵の生成スクリプト、ログ、署名鍵と D1 のバックアップ |
-| [ドメインの置き場所（提案）](domain-placement.md) | issuer と管理用のホスト名のドメインが Workers と別のアカウントや DNS 事業者にある場合の再設計の提案。選択肢、推奨、運用者が決めること（未決定） |
+| [デプロイと設定](deployment.md) | アカウントの移植性、デプロイごとの入力の一覧と直書きの禁止、ホスト名を設定値で与える仕組み、変更時の影響、Cloudflare アカウント、Terraform とスクリプトの分担、デプロイのパイプライン、API トークン、鍵の生成スクリプト、ログ、署名鍵と D1 のバックアップ |
+| [ドメインの置き場所](domain-placement.md) | IdP をホスト名のゾーンと同じアカウント（典型的には仕えるサービスのアカウント）に置く決定（A2）と理由、B か A1 を選ぶ条件、ゾーンをサービスと共有するときの共存の設計、残るリスク、検討した選択肢 |
 | [ブートストラップ](../deployment/bootstrap.md) | 空のアカウントから最初のユーザーと RP をつなぐまでの手順の設計 |
 | [無料枠の見積もりと制約](free-tier.md) | Workers と D1 の無料枠に対する見込みと、最初に確定すべき制約 |
 | [将来拡張](future-extensions.md) | ledger / entitlements、管理権限の分離、MCP など、IdP の外側に足す拡張 |
