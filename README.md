@@ -59,7 +59,7 @@ IdP の Worker には管理用のエンドポイントや管理 UI を置きま�
 - 2 つの Worker のビルドは、`cf` がそれぞれの Worker の `package.json` で宣言した Cloudflare Vite plugin（`@cloudflare/vite-plugin` の 2.0 ベータ）で行います。設定はそれぞれの `cloudflare.config.ts` と `vite.config.ts` です。
 - `cf auth login` は運用者が自分で実行します。
 - フォークして自分のアカウントとドメインで動かすときは、アカウント ID を 1Password に、それ以外の値（ゾーン、ホスト名、D1 や 1Password のアイテムの名前など）を `deployments/<デプロイの名前>.tfvars.json` に書きます。コード、workflow、スクリプトには、アカウントやドメインに固有の値を書きません。
-- issuer と管理用のホスト名を持つゾーンは、2 つの Worker をデプロイする Cloudflare アカウントに置きます。Worker のカスタムドメイン、mTLS、WAF とゾーンの設定はゾーン単位で、別のアカウントにある親のドメインの下にサブドメインだけのゾーンを置く形は Enterprise プランでしか使えないため、Free と Pro ではデプロイするアカウントにフルセットアップのゾーンが要ります。
+- 今の設計では、issuer と管理用のホスト名を持つゾーンは、2 つの Worker をデプロイする Cloudflare アカウントに置きます（ドメインを別のアカウントに置ける形への見直しを検討中です）。Worker のカスタムドメイン、mTLS、WAF とゾーンの設定はゾーン単位で、別のアカウントにある親のドメインの下にサブドメインだけのゾーンを置く形は Enterprise プランでしか使えないため、Free と Pro ではデプロイするアカウントにフルセットアップのゾーンが要ります。
 
 ## コマンド
 
