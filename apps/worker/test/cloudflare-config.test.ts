@@ -15,6 +15,8 @@ describe("cloudflare.config.ts", () => {
       ISSUER: { type: "text", value: "https://idp.example.com" },
       CF_VERSION_METADATA: { type: "version-metadata" },
     });
+    // The admin Worker's IDP binding targets the internal entrypoint, not the public fetch handler.
+    expect(worker.exports).toMatchObject({ IdpInternal: { type: "worker" } });
     // The pages stay pure assets: nothing is routed to the Worker before the asset lookup (free-tier.md).
     expect(worker.assets?.runWorkerFirst).toBe(false);
     // Workers Logs must not see the id_token_hint, state, or nonce of /authorize.

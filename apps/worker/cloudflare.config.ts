@@ -1,7 +1,7 @@
 // The IdP Worker's deployment configuration, read by `cf deploy` (docs/design/deployment.md). Deployment-specific
 // values are not written here: the issuer and the D1 ID come from the deploy script's environment, which takes them
 // from the deployment settings file (the issuer) and from a lookup by the database name (the D1 ID).
-import { bindings, defineConfig, type WorkerConfig as CloudflareWorkerConfig } from "cf/config";
+import { bindings, defineConfig, exports, type WorkerConfig as CloudflareWorkerConfig } from "cf/config";
 import { parseIssuer } from "@idp/core/shared";
 
 /** The deploy script's environment; every value is untrusted until checked. */
@@ -49,6 +49,9 @@ export function workerConfig(env: DeployEnv): CloudflareWorkerConfig {
     compatibilityDate: "2026-10-01",
     entrypoint: "./src/index.ts",
     domains: [{ hostname: issuer.rpId, production: true, previews: false }],
+    // The admin Worker's IDP Service Binding targets this named entrypoint (src/internal.ts), never the public
+    // fetch handler, whose TLS and rate-limit checks refuse a binding call.
+    exports: { IdpInternal: exports.worker() },
     // The custom domain is the only way in: the issuer, RP ID, and origin are all that host.
     workersDev: false,
     previewUrls: false,

@@ -14,17 +14,17 @@ export function verifiedCert(fingerprint: string = ROOT_FP): Record<string, unkn
   return { tlsVersion: "TLSv1.3", tlsClientAuth: { certVerified: "SUCCESS", certRevoked: "0", certFingerprintSHA256: fingerprint } };
 }
 
-/** The discovery document the fake IdP Worker serves; `algs` decides whether RS256 is enabled. */
-export function discovery(algs: readonly string[]): Response {
-  return Response.json({ issuer: ISSUER, id_token_signing_alg_values_supported: algs });
+/** The discovery document the fake IdP Worker returns; `algs` decides whether RS256 is enabled. */
+export function discovery(algs: readonly string[]): unknown {
+  return { issuer: ISSUER, id_token_signing_alg_values_supported: algs };
 }
 
 /** The state of one test. */
 export type Fixture = {
   readonly d1: TestD1;
-  /** What the fake IdP Worker answers to a discovery request. */
-  idpResponse: () => Response | Promise<Response>;
-  /** The URLs the fake IdP Worker received. */
+  /** What the fake IdP Worker's internal entrypoint returns from discovery(); it may throw. */
+  idpResponse: () => unknown;
+  /** The RPC methods the fake IdP Worker received, in order. */
   readonly idpCalls: string[];
   readonly env: () => Env;
 };
@@ -48,14 +48,11 @@ export function useFixture(): () => Fixture {
     const env: Env = {
       DB: d1.db,
       IDP: {
-        fetch: async (input: RequestInfo | URL) => {
-          idpCalls.push(input instanceof Request ? input.url : String(input));
+        discovery: async () => {
+          idpCalls.push("discovery");
           return state.idpResponse();
         },
-        connect: () => {
-          throw new Error("not used");
-        },
-      } as unknown as Fetcher,
+      },
       ISSUER,
       ADMIN_HOST,
       ADMIN_ALLOWLIST: JSON.stringify([

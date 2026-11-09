@@ -65,7 +65,7 @@ RS256 は、デプロイ時に有効にする任意の機能にする。RSA の�
 - **有効にする**：RSA の鍵をリポジトリの生成スクリプトで生成し、Worker Secret に登録してデプロイする（下の「署名鍵の生成とバックアップ」と同じ規則）。管理用の Worker は、RS256 が無効な間は、client への `RS256` の登録を拒否する。
 - **無効にする**：`RS256` を登録した client が 1 つもないときだけ許す。管理 API は `RS256` を登録している client を一覧できる（`clients_list`）。最後の client を `Ed25519` に変えてから、ID トークンの有効期限（5 分）が過ぎた後に RSA の Secret を外す。それまでに発行した RS256 の ID トークンを RP が検証できるようにするため。
 - `RS256` を登録した client があるのに RSA の鍵がない場合、その client へのトークンの発行は失敗させる（fail-closed）。`/authorize` は client と `redirect_uri` を検証した後、サインインの前に `server_error` を返す（RFC 6749 §4.1.2.1）。`/token` も、認可コードを消費する前に同じ確認を行い、トークンを発行せずにエラーを返す。別のアルゴリズムで署名して代わりに返すことはしない。
-- 管理用の Worker は署名鍵を持たない。RS256 が有効かどうかは、IdP の Worker の discovery の `id_token_signing_alg_values_supported` を Service Binding で読んで判断し、読めない場合や値の形が不正な場合は有効でないものとして扱う（fail-closed）。
+- 管理用の Worker は署名鍵を持たない。RS256 が有効かどうかは、IdP の Worker の discovery の `id_token_signing_alg_values_supported` を、内部のエントリポイント `IdpInternal` への Service Binding で読んで判断し、読めない場合や値の形が不正な場合は有効でないものとして扱う（fail-closed）。
 
 **署名鍵**
 

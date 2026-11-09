@@ -6,6 +6,8 @@ import type { Env } from "./config.js";
 import { withSecurityHeaders } from "./http.js";
 
 export type { Env } from "./config.js";
+// The admin Worker's Service Binding targets this named entrypoint, not the public fetch handler.
+export { IdpInternal } from "./internal.js";
 
 /** The Worker's fetch handler. */
 export type Handler = {

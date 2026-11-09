@@ -176,7 +176,7 @@
 - IdP の Worker の `cloudflare.config.ts` は、issuer を環境変数 `IDP_ISSUER`、D1 の ID を `IDP_D1_DATABASE_ID`、Rate Limiting の名前空間の ID を `IDP_RATE_LIMIT_NAMESPACE_ID` で受け取る。デプロイのスクリプトが、issuer と名前空間の ID はデプロイの設定ファイル（`issuer_host` と `rate_limit_namespace_id`）から、D1 の ID は名前から引いて渡す。名前空間の ID がないか正の整数でなければ、issuer と同じく設定の評価が失敗する。どちらかが欠けているか形式が不正なら、設定の評価が失敗してデプロイは始まらない（fail-closed）。カスタムドメインのホスト名は issuer から導き、別の値として持たない。
 - IdP の Worker も、管理用の Worker と同じく、Worker のバージョンのメタデータのバインディングを `CF_VERSION_METADATA` として持つ。本人によるパスキーの操作（登録リンクによる登録、追加、失効）で書く監査ログの `writer_version` は `idp@<バージョンの ID>` にする。バインディングがないか ID が空なら、署名鍵がないときと同じく、すべてのリクエストを拒否する。どの版のコードが書いたかを残せない監査ログの行を書かないため。
 - RS256 を有効にするのも無効にするのも、RSA の Secret をスクリプトで登録するか外してデプロイすることで行う。無効にするのは、`RS256` を登録した client がないことを `idpctl clients_list` で確かめ、最後の client を `Ed25519` に変えてから ID トークンの有効期限（5 分）が過ぎた後にする（[トークン設計](tokens.md)参照）。
-- 管理用の Worker は署名鍵をバインドしない。RS256 が有効かどうかは、IdP の Worker への Service Binding で discovery を読んで判断する。
+- 管理用の Worker は署名鍵をバインドしない。RS256 が有効かどうかは、IdP の Worker の内部のエントリポイント `IdpInternal` への Service Binding で discovery を読んで判断する（公開の `fetch` は使わない。[管理 CLI と管理用の Worker](idpctl.md)参照）。
 - 同じデプロイの Worker を作り直すときは、1Password のアイテムから登録し直す。
 - 別のアカウントに作り直すときは、鍵を引き継がず、生成スクリプトで新しい鍵を作る。issuer が変わるので、古い鍵で署名したトークンを新しいデプロイで受け入れる理由がないため。1Password のアイテムも、デプロイごとに別の名前にする（上の「デプロイごとの入力」）。
 
