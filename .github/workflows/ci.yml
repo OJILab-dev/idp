@@ -92,3 +92,38 @@ jobs:
 
       - name: shellcheck
         run: shellcheck scripts/*.sh scripts/test/*.sh
+
+      # Offline: only the RFC 8037 Appendix A test vectors, no op, cf, network, or key generation.
+      - name: scripts/lib.sh tests
+        run: scripts/test/lib.test.sh
+
+  e2e:
+    runs-on: takumi-runner
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Enable Takumi Guard for npm
+        uses: flatt-security/setup-takumi-guard-npm@6d4182745c1e474c35a023573c2612c085be45a4 # v1.2.0
+        with:
+          bot-id: BT01M0MFTWGD1BQ2CKEPG92G53Y3
+
+      - name: Install Node.js and pnpm pinned in mise.toml
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3.6.3
+        with:
+          install_args: node pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The browser build matching the locked @playwright/test, from Playwright's download host (not npm), and the
+      # system libraries it needs.
+      - name: Install Chromium for Playwright
+        run: pnpm exec playwright install --with-deps chromium
+
+      # The IdP Worker on workerd with its assets and a local D1, over TLS with a certificate generated in the run.
+      - name: Browser end-to-end tests
+        run: pnpm run e2e
