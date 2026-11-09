@@ -17,18 +17,20 @@ describe("cloudflare.config.ts", () => {
     });
     // The admin Worker's IDP binding targets the internal entrypoint, not the public fetch handler.
     expect(worker.exports).toMatchObject({ IdpInternal: { type: "worker" } });
-    // The pages stay pure assets: nothing is routed to the Worker before the asset lookup (free-tier.md).
-    expect(worker.assets?.runWorkerFirst).toBe(false);
+    // Every request, the pages included, runs the Worker first, so no page is served over plain http or TLS below
+    // 1.2 without a zone rule (docs/design/domain-placement.md, 3; the cost is in free-tier.md).
+    expect(worker.assets?.runWorkerFirst).toBe(true);
+    expect(worker.env).toMatchObject({ ASSETS: { type: "assets" } });
     // Workers Logs must not see the id_token_hint, state, or nonce of /authorize.
     expect(worker.observability?.redactQueryString).toBe(true);
   });
 
-  it("binds the Rate Limiting namespace from the deployment, with the WAF rule's period and limit", () => {
+  it("binds the Rate Limiting namespace from the deployment, with the provisional period and limit", () => {
     const worker = workerConfig(DEPLOY);
     expect(worker.env).toMatchObject({
       RATE_LIMITER: { type: "rate-limit", namespace: "1001", simple: { limit: 10, period: 10 } },
     });
-    // The same provisional values as infra/main.tf's rate limiting rule (Free plan: 10-second period).
+    // Provisional until a sign-in is measured (docs/design/open-questions.md); the binding takes 10 or 60 seconds.
     expect(RATE_LIMIT).toEqual({ period: 10, limit: 10 });
   });
 

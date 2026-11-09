@@ -1,4 +1,5 @@
-// Builds what the deployment would serve: the IdP Worker as one ES module and the three pages as static assets.
+// Builds what the deployment would serve: the IdP Worker and the admin Worker as one ES module each, and the three
+// pages as static assets.
 // Vite is the build tool cf runs through the Cloudflare Vite plugin (docs/design/technology.md); the plugin itself is
 // not declared yet, so the e2e build calls Vite directly with the same inputs instead of going through cf.
 import { rm } from "node:fs/promises";
@@ -7,6 +8,7 @@ import { build } from "vite";
 
 const repoRoot = join(import.meta.dirname, "..", "..");
 const workerDir = join(repoRoot, "apps", "worker");
+const adminWorkerDir = join(repoRoot, "apps", "admin-worker");
 const pagesDir = join(workerDir, "pages");
 
 /** Where the build, the certificates, and the test results go; e2e/dist, which git and ESLint ignore. */
@@ -15,6 +17,34 @@ export const OUTPUT_DIR = join(import.meta.dirname, "..", "dist");
 export const ASSETS_DIR = join(OUTPUT_DIR, "assets");
 /** The Worker bundle's directory; the module is `index.js`. */
 export const WORKER_DIR = join(OUTPUT_DIR, "worker");
+/** The admin Worker bundle's directory; the module is `index.js`. */
+export const ADMIN_WORKER_DIR = join(OUTPUT_DIR, "admin-worker");
+
+/**
+ * Bundles one Worker into a single ES module for workerd, with every dependency bundled.
+ *
+ * @param root The Worker's package directory; its entry is `src/index.ts`.
+ * @param outDir Where `index.js` is written.
+ */
+async function buildWorker(root: string, outDir: string): Promise<void> {
+  await build({
+    configFile: false,
+    logLevel: "warn",
+    root,
+    publicDir: false,
+    resolve: { conditions: ["workerd", "worker", "browser", "import", "default"] },
+    ssr: { noExternal: true, target: "webworker" },
+    build: {
+      outDir,
+      emptyOutDir: true,
+      ssr: join(root, "src", "index.ts"),
+      target: "es2024",
+      minify: false,
+      // cloudflare:workers (the IdpInternal entrypoint's base class) is provided by workerd at run time.
+      rollupOptions: { external: [/^cloudflare:/], output: { entryFileNames: "index.js", format: "es" } },
+    },
+  });
+}
 
 /**
  * Builds the Worker bundle and the static assets into {@link OUTPUT_DIR}, replacing an earlier build.
@@ -43,22 +73,7 @@ export async function buildIdp(): Promise<void> {
       },
     },
   });
-  // The Worker: one self-contained module for workerd, with every dependency bundled.
-  await build({
-    configFile: false,
-    logLevel: "warn",
-    root: workerDir,
-    publicDir: false,
-    resolve: { conditions: ["workerd", "worker", "browser", "import", "default"] },
-    ssr: { noExternal: true, target: "webworker" },
-    build: {
-      outDir: WORKER_DIR,
-      emptyOutDir: true,
-      ssr: join(workerDir, "src", "index.ts"),
-      target: "es2024",
-      minify: false,
-      // cloudflare:workers (the IdpInternal entrypoint's base class) is provided by workerd at run time.
-      rollupOptions: { external: [/^cloudflare:/], output: { entryFileNames: "index.js", format: "es" } },
-    },
-  });
+  await buildWorker(workerDir, WORKER_DIR);
+  // The admin Worker runs only for its own gate (scenario 10); the suite seeds through the core, not through it.
+  await buildWorker(adminWorkerDir, ADMIN_WORKER_DIR);
 }

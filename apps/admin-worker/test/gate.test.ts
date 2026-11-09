@@ -45,6 +45,14 @@ describe("the host check", () => {
     expect(f().idpCalls).toEqual([]);
   });
 
+  // The admin host redirects nothing: idpctl never follows a redirect, and a request that came over plain http has
+  // already exposed whatever it carried (docs/design/idpctl.md, "管理者の認証（mTLS）").
+  it.each(["GET", "HEAD"])("refuses a plain http %s without a redirect", async (method) => {
+    const res = await call(f(), method, "/v1/users", { origin: `http://${ADMIN_HOST}` });
+    expect(res.status).toBe(403);
+    expect(res.headers.get("location")).toBeNull();
+  });
+
   it("accepts the configured host", async () => {
     const res = await call(f(), "GET", "/v1/users");
     expect(res.status).toBe(200);

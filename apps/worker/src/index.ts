@@ -1,5 +1,5 @@
-// The IdP Worker: the OIDC endpoints and the /webauthn/* API. The three pages (sign-in,
-// enrollment, account) are static assets served before the Worker runs (docs/design/free-tier.md).
+// The IdP Worker: the OIDC endpoints and the /webauthn/* API. The three pages (sign-in, enrollment, account) are
+// static assets, served through the Worker, which runs first on every request (docs/design/free-tier.md).
 import { cryptoRandomSource, systemClock } from "@idp/core/user";
 import { createApp, type AppOptions } from "./app.js";
 import type { Env } from "./config.js";
@@ -23,7 +23,7 @@ export type Handler = {
 export function createHandler(options: AppOptions = { clock: systemClock, random: cryptoRandomSource }): Handler {
   const app = createApp(options);
   return {
-    fetch: async (request, env, ctx) => withSecurityHeaders(await app.fetch(request, env, ctx)),
+    fetch: async (request, env, ctx) => withSecurityHeaders(request, await app.fetch(request, env, ctx)),
   };
 }
 

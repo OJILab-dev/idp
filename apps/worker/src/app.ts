@@ -16,7 +16,7 @@ import {
   type PasskeyDeps,
   type RandomSource,
 } from "@idp/core/user";
-import { isAcceptedTlsVersion } from "@idp/core/shared";
+import { isAcceptedTlsVersion, type Issuer } from "@idp/core/shared";
 import { InvalidConfigError, workerConfig, type Env, type WorkerConfig } from "./config.js";
 import { renderErrorPage } from "./error-page.js";
 import { COOKIES, clearCookie, isSameOrigin, log, readCookie, readForm, writeCookie } from "./http.js";
@@ -63,6 +63,66 @@ async function rateLimit(limiter: RateLimit, clientIp: string | undefined): Prom
   if (outcome.success) return undefined;
   log({ result: "refused", reason: "rate_limited" });
   return new Response("Too many requests.", { status: 429, headers: { "retry-after": RATE_LIMIT_RETRY_AFTER_SECONDS } });
+}
+
+/**
+ * The refusal of the edge checks. Not `c.notFound()`: the app's not-found handler serves static assets, which a
+ * refused request must never reach.
+ */
+function refused(): Response {
+  return new Response("Not Found", { status: 404, headers: { "content-type": "text/plain; charset=UTF-8" } });
+}
+
+/**
+ * The routes counted by the rate limit: every path the Worker itself answers. Static pages are not counted: they
+ * write nothing, and one page load fetches several of them, which the provisional limit would refuse.
+ */
+const RATE_LIMITED_PATHS = [
+  "/.well-known/openid-configuration",
+  "/jwks",
+  "/authorize",
+  "/authorize/resume",
+  "/token",
+  "/userinfo",
+  "/logout",
+  "/webauthn/*",
+] as const;
+
+/**
+ * Whether the request carries a cookie named like the IdP's own (`__Host-…`), whatever its value.
+ *
+ * Other cookies do not block the redirect: in a zone shared with the service, the service's non-Secure cookies for
+ * the parent domain travel with every plain http request, and refusing them would turn every http visit into a 404.
+ * A browser never sends a `__Host-` cookie over http (it requires Secure), so such a name on plain http means a
+ * misbehaving client that may be replaying the IdP's session; it is refused like an Authorization header.
+ *
+ * @param request The plain http request.
+ * @returns Whether any cookie name starts with `__Host-`.
+ */
+function carriesHostPrefixedCookie(request: Request): boolean {
+  const header = request.headers.get("cookie");
+  if (header === null) return false;
+  return header.split(";").some((pair) => pair.trimStart().startsWith("__Host-"));
+}
+
+/**
+ * Decides what a plain http request to the issuer host gets, now that no zone rule redirects it
+ * (docs/design/domain-placement.md, 3).
+ *
+ * Only a safe method without credentials (no Authorization header, no `__Host-` cookie) is redirected, with 308 to the
+ * configured issuer (never a host or port taken from the request) and the same path and query. Anything else is
+ * refused without processing: a client secret, code, Bearer token, or session cookie sent over http is already exposed, and a redirect would invite the client to send it
+ * again (RFC 9110 §15.4.9 keeps the method and body on a 308).
+ *
+ * @param request The plain http request.
+ * @param url Its parsed URL.
+ * @param issuer The configured issuer.
+ * @returns The redirect, or `undefined` when the request must be refused.
+ */
+function plainHttpRedirect(request: Request, url: URL, issuer: Issuer): Response | undefined {
+  if (request.method !== "GET" && request.method !== "HEAD") return undefined;
+  if (request.headers.has("authorization") || carriesHostPrefixedCookie(request)) return undefined;
+  return new Response(null, { status: 308, headers: { location: `${issuer.origin}${url.pathname}${url.search}` } });
 }
 
 /**
@@ -115,25 +175,38 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
       return c.text("The identity provider is misconfigured.", 500);
     }
     // The custom domain is the only route, but a request on any other host (a re-enabled workers.dev) is refused
-    // rather than answered with endpoints derived from the configured issuer. Plain http is refused the same way:
-    // a client secret, code, or Bearer token sent over it is already exposed, and answering would invite a retry.
+    // rather than answered with endpoints derived from the configured issuer. The host is checked before the scheme,
+    // so a redirect is only ever issued for the issuer host.
     const url = new URL(c.req.url);
-    if (url.protocol !== "https:" || url.hostname !== config.issuer.rpId) {
-      log({ result: "refused", reason: url.protocol === "https:" ? "host" : "scheme" });
-      return c.notFound();
+    if (url.hostname !== config.issuer.rpId) {
+      log({ result: "refused", reason: "host" });
+      return refused();
     }
-    // The zone's minimum TLS version belongs to the zone's owner when the zone is shared with the service, so TLS
-    // below 1.2 is refused here like plain http (docs/design/deployment.md, "設定値"; RFC 8996 exception recorded in
+    // The Worker runs first on every request, the pages included, and no zone rule redirects plain http, so this is
+    // the only place that does (docs/design/domain-placement.md, 3).
+    if (url.protocol !== "https:") {
+      const redirect = url.protocol === "http:" ? plainHttpRedirect(c.req.raw, url, config.issuer) : undefined;
+      log({ result: redirect === undefined ? "refused" : "redirected", reason: "scheme" });
+      return redirect ?? refused();
+    }
+    // The zone's minimum TLS version belongs to the zone's owner, so TLS below 1.2 is refused here like plain http,
+    // for the pages too (docs/design/deployment.md, "設定値"; RFC 8996 exception recorded in
     // docs/design/domain-placement.md, 3).
     if (!isAcceptedTlsVersion(c.req.raw.cf)) {
       log({ result: "refused", reason: "tls" });
-      return c.notFound();
+      return refused();
     }
-    const limited = await rateLimit(config.rateLimiter, c.req.header("cf-connecting-ip"));
-    if (limited !== undefined) return limited;
     c.set("config", config);
     await next();
   });
+
+  for (const path of RATE_LIMITED_PATHS) {
+    app.use(path, async (c, next) => {
+      const limited = await rateLimit(c.get("config").rateLimiter, c.req.header("cf-connecting-ip"));
+      if (limited !== undefined) return limited;
+      await next();
+    });
+  }
 
   app.get("/.well-known/openid-configuration", (c) => {
     const { issuer, keys } = c.get("config");
@@ -203,7 +276,12 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
 
   mountWebauthnRoutes(app, passkeyDeps, options.clock);
 
-  app.notFound((c) => c.text("Not Found", 404));
+  // Whatever no route answers is a static page, fetched only with a safe method; the asset server answers 404 for a
+  // path it does not have (notFoundHandling "none").
+  app.notFound((c) => {
+    if (c.req.method !== "GET" && c.req.method !== "HEAD") return c.text("Not Found", 404);
+    return c.get("config").assets.fetch(c.req.raw);
+  });
   app.onError((error, c) => {
     log({ result: "error", error: describe(error) });
     return c.text("Internal Server Error", 500);

@@ -12,7 +12,7 @@ const (
 	ExitOK = 0
 	// ExitFailure means no problem was returned but the operation did not
 	// complete: a transport error, a response that is not the admin API's
-	// (such as the edge WAF's block page), or a local I/O error.
+	// (such as a Cloudflare error page), or a local I/O error.
 	ExitFailure = 1
 	// ExitUsage means the arguments, flags, or local configuration were
 	// wrong, and nothing was sent.

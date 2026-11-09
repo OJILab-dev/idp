@@ -19,9 +19,8 @@
 | --- | --- | --- |
 | Cloudflare のアカウント ID | 1Password（CI は Environment の `CLOUDFLARE_ACCOUNT_ID`、手元は Vault のアイテム）。リポジトリには置かない | Terraform、`cf` のスクリプト、CI、R2 の backend の endpoint |
 | ゾーン（ドメイン） | デプロイの設定ファイル | Terraform（ゾーン ID はここから引く） |
-| ゾーンの単一資源の持ち主（`idp` か `external`） | デプロイの設定ファイル | Terraform（WAF のカスタムルール、レート制限ルール、シングルリダイレクトのエントリポイントのルールセットと、mTLS のホスト名の割り当てを、自分で作るか、定義の出力だけにするか。[ドメインの置き場所](domain-placement.md)の共存の設計の 2） |
 | issuer のホスト名 | デプロイの設定ファイル | IdP の Worker の `cloudflare.config.ts`（カスタムドメイン）、IdP の Worker と管理用の Worker の環境変数 |
-| 管理用のホスト名 | デプロイの設定ファイル | 管理用の Worker の `cloudflare.config.ts`（カスタムドメイン）、Terraform（mTLS、WAF）、管理用の Worker の環境変数 |
+| 管理用のホスト名 | デプロイの設定ファイル | 管理用の Worker の `cloudflare.config.ts`（カスタムドメイン）、Terraform（mTLS のホスト名の割り当て）、管理用の Worker の環境変数 |
 | D1 のデータベースの名前 | デプロイの設定ファイル | `cf` のスクリプト（ID は名前から引く） |
 | IdP の Worker の Rate Limiting の名前空間の ID | デプロイの設定ファイル | IdP の Worker の `cloudflare.config.ts`（Rate Limiting のバインディング）。アカウントの中で一意なので、同じアカウントのほかの Worker が使っていない値を選ぶ |
 | Terraform の state を置く R2 のバケットの名前 | デプロイの設定ファイル | `cf` のスクリプト（作成）、`terraform init` の backend の設定 |
@@ -47,8 +46,8 @@
 - RP ID、WebAuthn の origin、discovery に載せる各エンドポイントの URL、アクセストークンの `aud` は、すべて issuer から導く。別々の設定値として持たない（値の食い違いを構造的に起こさないため）。
 - 管理用の Worker も同じ issuer を設定として持ち、登録リンク（`/enroll#<token>`）の組み立てに使う。管理用のホスト名は、issuer とは別の設定値として持つ。
 - リクエストの `Host` ヘッダーから issuer や origin を作らない。`Host` は送信側が自由に書き換えられるため。
-- IdP の Worker は、issuer のホスト名以外へのリクエストと、`https` でないリクエストを、処理せずに 404 で拒否する。平文の HTTP で送られたクライアントシークレット、認可コード、アクセストークンは、届いた時点ですでに経路上に漏れているので、応答して再送を促さない。
-- そのうえで、issuer のホスト名に絞ったシングルリダイレクトのルールで、平文の HTTP のリクエストをエッジで HTTPS にリダイレクトさせて、Worker に届かないようにする。ゾーン全体に効く「Always Use HTTPS」は使わない。ゾーンをサービスと共有するとき、サービスのほかのホスト名の動きを変えないため（[ドメインの置き場所](domain-placement.md)の共存の設計の 3）。ルールの定義は Terraform が持つ。Worker の拒否は、このルールがないときにも平文のリクエストを処理しないための、fail-closed の再確認である。
+- IdP の Worker は、静的なページを含むすべてのリクエストで先に動き（`run_worker_first` を真にする）、issuer のホスト名以外へのリクエストを、スキームによらず処理せずに 404 で拒否する。
+- issuer のホスト名への平文の HTTP のリクエストは、`GET` か `HEAD` で `Authorization` と、名前が `__Host-` で始まる Cookie を持たないものだけを、設定した issuer の同じパスとクエリへ 308 でリダイレクトする。ほかの平文のリクエストは、処理せずに 404 で拒否する。平文の HTTP で送られたクライアントシークレット、認可コード、アクセストークンは、届いた時点ですでに経路上に漏れているので、応答して再送を促さない。ゾーン全体に効く「Always Use HTTPS」もシングルリダイレクトのルールも使わない。IdP はゾーンのルールセットと設定を持たないため（[ドメインの置き場所](domain-placement.md)の決定 ③ と共存の設計の 3）。管理用の Worker は平文のリクエストをリダイレクトせず、`forbidden` で拒否する。
 - IdP の Worker と管理用の Worker は、`request.cf.tlsVersion` が `TLSv1.2` か `TLSv1.3` でないリクエストを、処理せずに拒否する（IdP の Worker は 404、管理用の Worker は `forbidden`）。値がない、知らない値も拒否する。ゾーンの TLS の最小バージョンはゾーン全体の設定で、IdP は持たないため（RFC 8996 の例外。[ドメインの置き場所](domain-placement.md)の共存の設計の 3）。
 - issuer が未設定、または形式が不正（`https` でない、パスが付いている、ホストが IP アドレスなど）なら、リクエストを処理せずエラーを返す（fail-closed）。
 
@@ -66,7 +65,7 @@
 
 基盤はできるだけコードで持つ（IaC）。宣言できるものは Terraform に、手続きでしか表せないものは `cf` を使うシェルスクリプトに置き、手作業の手順を残さない。例外は、ダッシュボードでしかできない操作と認証情報を作る操作だけで、[ブートストラップ](../deployment/bootstrap.md)の前提に列挙する。望む状態を宣言し、実際の状態をそれに合わせ続ける形にするため（[宣言とリコンシリエーション](../philosophy/system-design/declarative-and-reconciliation.md)）。
 
-- Terraform（Cloudflare provider）が持つもの：DNS（Worker のカスタムドメインが作るレコードを除く）、WAF のカスタムルール（mTLS）、レート制限ルール、issuer のホスト名の HTTPS へのリダイレクトのルール、管理用のホスト名への mTLS の割り当て、CSR から発行するクライアント証明書、fail closed の設定。このうち、ゾーンに 1 つしかないもの（ルールの 3 つのエントリポイントのルールセットと mTLS の割り当て）は、ゾーンの単一資源の持ち主が `idp` のときだけ作り、`external` のときは定義を出力する（下記）。
+- Terraform（Cloudflare provider）が持つもの：DNS（Worker のカスタムドメインが作るレコードを除く）、管理用のホスト名への mTLS の割り当て、CSR から発行するクライアント証明書、fail closed の設定。ゾーンのルールセット（WAF のカスタムルール、レート制限ルール、シングルリダイレクト）は持たない（[ドメインの置き場所](domain-placement.md)の決定 ③）。
 - Worker のカスタムドメインは、それぞれの Worker の `cloudflare.config.ts`（`worker.domains`）が持ち、`cf deploy` が Worker と一緒に付ける（Cloudflare「Cloudflare config」）。`workers.dev` とプレビューの URL の無効化（`workersDev`、`previewUrls`）も同じファイルで宣言する。Terraform と `cf` の両方がカスタムドメインを持つと、片方の変更をもう片方が戻しうる。また、Terraform に持たせると、最初の apply がまだない Worker にドメインを付けることになる。カスタムドメインは、Cloudflare が DNS のレコードと証明書を作るので、Terraform はそのホスト名の DNS のレコードを持たない。ホスト名の値はデプロイの設定ファイルから渡し、`cloudflare.config.ts` に書かない。
 - `cf` のシェルスクリプトが持つもの：D1 のデータベースの作成、D1 のマイグレーション、Worker のデプロイ、Worker Secret の登録、D1 が production バックエンドにあることの確認、鍵の生成、Terraform の state を置く R2 のバケットの作成。
 - D1 のデータベースを Terraform に置かないのは、plan の認証情報に D1 の権限を一切持たせないため（下の PR の `terraform plan` の認証情報を参照）。provider の `cloudflare_d1_database` は `D1 Read` か `D1 Write` の権限を要し（Terraform Cloudflare provider「cloudflare_d1_database」の Accepted Permissions）、`terraform plan` は既定で既存のリソースの現状を読む（HashiCorp「terraform plan」の Introduction）。Terraform に D1 のデータベースがあると、plan のトークンに D1 の権限が要る。D1 のデータベースは作った後に変えるものがほとんどなく、宣言で持つ利点も小さい。
@@ -76,16 +75,12 @@
 - state はデプロイごとに分け、アカウントをまたいで共有しない。backend のブロックには変数を使えないので、バケットの名前と endpoint（アカウント ID から組み立てる）は、`terraform init` の `-backend-config` で、デプロイの入力から渡す。backend のブロックに値を書かない。
 - Terraform のコードは、上の「デプロイごとの入力」を変数として受け取り、アカウント ID、ゾーン ID、ホスト名を `.tf` のファイルに書かない。ゾーン ID は data source でゾーンの名前から引く。
 - provider がどのリソースに対応しているか（mTLS のホスト名の割り当て、fail closed の設定など）は、実装の前に確かめる（[未決事項](open-questions.md)参照）。対応していないものは、`cf` か Cloudflare API のスクリプトにし、wrangler では補わない。
-- 実装（`infra/`、provider 5.28.1）で確かめた結果：mTLS のホスト名の割り当て（`cloudflare_certificate_authorities_hostname_associations`。CA を指定しなければ managed CA）、CSR からのクライアント証明書（`cloudflare_client_certificate`）、WAF のカスタムルールとレート制限ルール（`cloudflare_ruleset`）は provider で持てる。fail closed の設定は、provider の Workers のルート（`cloudflare_workers_route`）に属性がなく、2 つの Worker はルートではなくカスタムドメインを使うので、Terraform には置かない。カスタムドメインで設定できるかは[未決事項](open-questions.md)の項目のまま残す。
-- ゾーン全体に効く設定（Always Use HTTPS と TLS の最小バージョン。`cloudflare_zone_setting`）は持たない。ゾーンの持ち主が決めるもので、IdP のデプロイがサービスのほかのホスト名の動きを変えないため。代わりに、issuer のホスト名に絞ったシングルリダイレクトのルールと、Worker の TLS のバージョンの確認を置く（上の設定値）。ゾーンの TLS の最小バージョンが 1.2 以上であることは、ブートストラップの前提でゾーンの持ち主に確かめる（[ドメインの置き場所](domain-placement.md)の共存の設計の 3）。
-- WAF のカスタムルールは、管理用のホスト名を `lower(http.host)` で比べ、既定のポートを付けた形（`<管理用のホスト名>:443`）も対象にする。`http.host` は送られた `Host` ヘッダーそのままなので、大文字やポートを付けた形でルールを抜けると、Worker 側の確認で拒否されても 1 日のリクエスト上限を使うため。管理用のホスト名は、設定ファイルで小文字のホスト名だけを受け付ける。
+- 実装（`infra/`、provider 5.28.1）で確かめた結果：mTLS のホスト名の割り当て（`cloudflare_certificate_authorities_hostname_associations`。CA を指定しなければ managed CA）、CSR からのクライアント証明書（`cloudflare_client_certificate`）は provider で持てる。ゾーンのルールセット（`cloudflare_ruleset`）も持てるが、エントリポイントのルールセットのルールの一覧を丸ごと持つ資源で、一部のルールだけを持つことはできないので、使わない。fail closed の設定は、provider の Workers のルート（`cloudflare_workers_route`）に属性がなく、2 つの Worker はルートではなくカスタムドメインを使うので、Terraform には置かない。カスタムドメインで設定できるかは[未決事項](open-questions.md)の項目のまま残す。
+- ゾーン全体に効く設定（Always Use HTTPS と TLS の最小バージョン。`cloudflare_zone_setting`）は持たない。ゾーンの持ち主が決めるもので、IdP のデプロイがサービスのほかのホスト名の動きを変えないため。代わりに、Worker の中のリダイレクトと TLS のバージョンの確認を置く（上の設定値）。ゾーンの TLS の最小バージョンが 1.2 以上であることは、ブートストラップの前提でゾーンの持ち主に確かめる（[ドメインの置き場所](domain-placement.md)の共存の設計の 3）。
+- 管理用のホスト名は、設定ファイルで小文字のホスト名だけを受け付ける。管理用の Worker は、要求の URL のホスト名（常に小文字に正規化される）と完全に一致することで確かめるため。
 - 今の構成では、Terraform が持つ DNS のレコードはない。IdP の Worker と管理用の Worker のホスト名のレコードは、どちらもカスタムドメインが作るため。カスタムドメイン以外のレコードが要るようになったら、Terraform に足す。
-- WAF のカスタムルール、レート制限ルール、リダイレクトのルールは、ゾーンのフェーズごとの entry point のルールセットに置く。ゾーンとフェーズごとに 1 つしかなく、mTLS のホスト名の割り当てもゾーンの一覧を丸ごと持つので、どれもゾーンの持ち主がただ 1 つのリポジトリで持つ（[ドメインの置き場所](domain-placement.md)の共存の設計の 2）。
-  - IdP のルールの定義（式、動作、レート制限の値、mTLS のホスト名）は、Terraform の 1 か所に置き、常に出力する。
-  - ゾーンの単一資源の持ち主が `idp`（ゾーンを IdP だけで使う）なら、Terraform がそのゾーンのそれらのフェーズのルールセットと mTLS の割り当てを作り、すべてを持つ。ゾーンにほかのルールがあれば、apply は失敗するので、先に整理する。
-  - `external`（ゾーンをサービスと共有し、別のリポジトリが持つ）なら、Terraform はそれらを作らない。ゾーンの持ち主が、出力の定義を自分のルールセットと mTLS の割り当てに足して適用する。定義を変えたら、ゾーンの持ち主のリポジトリへの PR と、ブートストラップの段階 6 の確認をもう一度行う。
-  - 管理者のクライアント証明書は、どちらでも IdP の Terraform が持つ。
-- レート制限ルールのしきい値（10 秒あたりの件数）は、実測の前の仮の値として 10 にする。正規のサインイン 1 回でブラウザーから Worker に届くリクエストは 4〜5 件の見込みで、10 秒の間に 1 回やり直せる数にした。IdP の Worker の Rate Limiting のバインディングも、同じ期間と件数にする。実測したら両方を置き換える（[無料枠](free-tier.md)と[未決事項](open-questions.md)参照）。
+- mTLS のホスト名の割り当ては、ゾーンの managed CA に割り当てたホスト名の一覧を丸ごと持ち、ゾーンに 1 つしかない。IdP の Terraform が、デプロイによらずこれを持つ。持ち主を切り替える入力は持たない。ゾーンにほかのホスト名の割り当てがあれば最初の apply が外してしまうので、ブートストラップの前提で、ないことを確かめる（[ドメインの置き場所](domain-placement.md)の共存の設計の 2）。
+- IdP の Worker の Rate Limiting のバインディングのしきい値（10 秒あたりの件数）は、実測の前の仮の値として 10 にする。静的なページは数えないので、正規のサインイン 1 回でバインディングに数えられるリクエストは 4〜5 件の見込みで、10 秒の間に 1 回やり直せる数にした。実測したら置き換える（[無料枠](free-tier.md)と[未決事項](open-questions.md)参照）。
 - 管理者のクライアント証明書の有効期限は 365 日にする。忘れられた証明書が 1 年で使えなくなり、更新が年に 1 回で済むため。
 - IdP の Worker の名前と、Ed25519 の current の署名鍵の Worker Secret の名前は、デプロイごとの入力ではなくコードの定数で、スクリプト（`scripts/lib.sh`）と IdP の Worker の設定で同じ値を使う。
 
@@ -119,7 +114,7 @@
 [1Password Environments と GitHub Actions](../deployment/secret.md) は、PR の検証の job に OIDC の権限も 1Password の認証情報も渡さないとしている。`terraform plan` は state と Cloudflare の現状を読むので、認証情報なしでは動かない。
 
 - 例外として、plan の job にだけ、読み取り専用の Environment（plan 用の読み取り専用の API トークンと、state のバケットの読み取り専用の R2 の認証情報）を渡す。デプロイ用の Environment とは分ける。
-- plan 用のトークンは、Terraform が持つもの（DNS、WAF、SSL と証明書、mTLS の割り当て、fail closed の設定など）の読み取りだけにし、D1 の権限は読み取りも含めて一切持たせない。Cloudflare API の D1 のクエリ（「Query D1 Database」と「Raw D1 Database Query」）は `D1 Read` の権限でも受け付けると書かれていて（それぞれの Accepted Permissions）、`D1 Read` があればユーザーのデータを読める可能性があるため（どこまでできるかは[未決事項](open-questions.md)で確かめる）。
+- plan 用のトークンは、Terraform が持つもの（DNS、SSL と証明書、mTLS の割り当て、fail closed の設定など）の読み取りだけにし、D1 の権限は読み取りも含めて一切持たせない。Cloudflare API の D1 のクエリ（「Query D1 Database」と「Raw D1 Database Query」）は `D1 Read` の権限でも受け付けると書かれていて（それぞれの Accepted Permissions）、`D1 Read` があればユーザーのデータを読める可能性があるため（どこまでできるかは[未決事項](open-questions.md)で確かめる）。
 - destination は、plan の workflow と、同じリポジトリのブランチからの `pull_request` のイベントに限り、GitHub Environment `production` は使わない。fork からの PR には渡さない。
 - 理由：plan を PR に載せることで、基盤の変更をマージの前にレビューでき、手動の承認を置かない流れでの唯一の関門（PR のレビュー）を意味のあるものにするため。
 - 残るリスク：読み取り専用なので、トークンが漏れても変更はできない。残るのは、そのトークンの範囲で読めるものの機密性。workflow の path を固定しても、そのトークンで何が動くかは限れない。同じリポジトリの PR は、plan の workflow も Terraform のコードも書き換えられ、Terraform は plan の時点でもコード（provider や data source）を動かすので、トークンを持ち出せる。そのため、範囲を読まれても困らないもの（基盤の設定）に絞り、D1 を外す。
@@ -129,7 +124,7 @@
 
 - 役割ごとに分ける。どれもデプロイ先のアカウントに限り、アカウントごとに別のトークンを作る。アカウントを IdP が仕えるサービスと共有するときも、サービスのトークンを IdP に使わず、IdP の役割ごとに IdP のためだけのトークンを作る。
 - ゾーンの権限は、すべて IdP のホスト名を持つゾーン 1 つに絞る（Cloudflare「Create API token」）。ホスト名には絞れない。D1 と Workers のスクリプトの権限はアカウント単位で、特定のデータベースや Worker に絞れない（Cloudflare「API token permissions」。[ドメインの置き場所](domain-placement.md)の共存の設計の 6）。
-  - Terraform 用：SSL と証明書（クライアント証明書）。ゾーンの単一資源の持ち主が `idp` なら、加えて WAF、シングルリダイレクト、mTLS の割り当て、fail closed の設定に要る Workers のルート。`external` なら WAF とリダイレクトの権限は持たせない。DNS の権限は、Terraform が持つ DNS のレコードができたときに足す。D1 の権限は持たせない。
+  - Terraform 用：SSL と証明書（クライアント証明書と mTLS の割り当て）。WAF とシングルリダイレクトの権限は持たせない（IdP はゾーンのルールセットを持たない）。fail closed の設定に要る Workers のルートの権限と DNS の権限は、Terraform がそれらを持つようになったときに足す。D1 の権限は持たせない。
   - デプロイ用：Workers の編集、Worker のカスタムドメインを付けるためのゾーンの Workers のルートの編集と DNS の編集、マイグレーションのための D1 の編集。必要な権限の正確な名前は、実装で `cf deploy` が成功する最小の組み合わせを確かめて記録する。ゾーンの DNS の編集はホスト名に絞れないので、ゾーンをサービスと共有すると、サービスのほかのレコードも変えられる（受け入れるリスク）。
   - plan 用（上の例外）：Terraform 用と同じ範囲の読み取りだけ。D1 の権限は読み取りも持たせない。
 - D1 のデータベースの作成は、最初の構築のときだけ、運用者の手元の `cf` のセッションで行う（[ブートストラップ](../deployment/bootstrap.md)の段階 1）。CI のトークンには D1 の作成の権限を持たせない。
@@ -149,7 +144,7 @@
 
 **Cloudflare アカウント**
 
-- IdP の 2 つの Worker と D1 は、IdP のホスト名（issuer と管理用のホスト名）を持つゾーンと同じ Cloudflare アカウントに置く。Worker のカスタムドメインは自分のアカウントのゾーンにしか作れず、ゾーンの機能（WAF、mTLS、レート制限）もゾーンに属するため（[ドメインの置き場所](domain-placement.md)）。
+- IdP の 2 つの Worker と D1 は、IdP のホスト名（issuer と管理用のホスト名）を持つゾーンと同じ Cloudflare アカウントに置く。Worker のカスタムドメインは自分のアカウントのゾーンにしか作れず、ゾーンの機能（mTLS とクライアント証明書）もゾーンに属するため（[ドメインの置き場所](domain-placement.md)）。
 - 典型的には、そのアカウントは IdP が専属で仕えるサービス 1 つのアカウントで、IdP はサービスごとに 1 つ置く。ゾーンにはサービスのほかのホスト名も載ってよく、その共存の設計は[ドメインの置き場所](domain-placement.md)にまとめた。IdP 専用のアカウントは求めない（2026-11-09 の決定で、この制約を外した）。
 - 1 つのアカウントに複数の IdP を置かない。D1 の API トークンの権限は特定のデータベースに絞れずアカウント内のすべての D1 に効き、クライアント証明書はアカウント単位の CA で検証される（Cloudflare「Enable mTLS」の「CAs in use」）ので、1 つの IdP の基盤の権限がほかの IdP の全利用者に及ぶため。
 - サービスとアカウントを共有すると、サービスの D1 と Workers の権限を持つ人とトークンは、IdP の D1 を読み書きでき、IdP の Worker を差し替えられる。管理用の Worker の mTLS は、サービスのために同じアカウントで発行した証明書も通す（管理者の境界は許可リスト）。1 日のリクエスト上限と D1 の上限もサービスと共有する。そのため、サービスの運用者が IdP の管理者と同じでないときは、IdP 専用のアカウントを持つ形（[ドメインの置き場所](domain-placement.md)の B か A1）を選ぶ。
@@ -158,7 +153,7 @@
 **管理用の Worker**
 
 - IdP の Worker とは別のホスト名に、同じゾーンで置く。IdP の Worker と同じ D1 をバインドする。
-- 管理用のホスト名に mTLS を有効にし、WAF のカスタムルールで、有効でない証明書と失効した証明書を遮断する。`workers.dev` とプレビューの URL は無効にする（[管理 CLI と管理用の Worker](idpctl.md)参照）。
+- 管理用のホスト名に mTLS を有効にする。有効でない証明書と失効した証明書の要求は、エッジでは止めず、管理用の Worker のゲートが拒否する（[ドメインの置き場所](domain-placement.md)の決定 ③）。`workers.dev` とプレビューの URL は無効にする（[管理 CLI と管理用の Worker](idpctl.md)参照）。
 - 管理者の証明書のフィンガープリントの許可リストは、デプロイの設定ファイル（上の「デプロイごとの入力」）に置き、管理用の Worker の設定として CI のデプロイでだけ変える。D1 には置かない。証明書はアカウント単位の CA で発行するので、許可リストはデプロイごとに別のものになる。
 - クライアント証明書の発行と失効には「SSL and Certificates Write」の権限が要る（Cloudflare API「Create Client Certificate」）。この権限は基盤の権限として扱い、日常の管理には使わない。
 
@@ -186,7 +181,7 @@
 - Workers Logs の無料枠は、今は 1 日 200,000 イベントで 3 日間残る（Cloudflare「Workers Logs」の「Pricing」）。2026 年 12 月 1 日からは Cloudflare Observability の料金に移り、Free は 1 日 0.5 GB の取り込みで 7 日間残る。1 日の上限に達すると、UTC 0 時のリセットまで新しいデータを取り込まない（Cloudflare「Pricing」（Observability）の「Plans」）。
 - 形式は、リクエストごとに構造化した 1 行とし、ルート、結果、エラーの種類、`client_id`、`sub`、管理者の名前（管理用の Worker）を持たせる。管理用の Worker が拒否したリクエストは、証明書のフィンガープリントと拒否の理由だけを書く。
 - 書かないもの：トークン、認可コード、Cookie、IdP が発行する秘密、登録トークン、チャレンジ、`Authorization` ヘッダー、要求の本文。
-- IdP は IP アドレスを書かない（設計原則 7）。悪用の調査には WAF の分析を使う。
+- IdP は IP アドレスを書かない（設計原則 7）。悪用の調査には、ゾーンの分析（Security Analytics などのトラフィックの分析）を使う。IdP はゾーンのルールを持たないが、ゾーンへの要求の分析はルールがなくても見られる。
 - **受け入れるリスク**：無料枠では、すべてのリクエストのログを残すことはできない。大量のリクエストでその日の取り込みを止められることもある。それでも、状態の変化は `audit_log` にすべて残る。これより厳密な記録が必要なら、有料のプランにするか、この IdP を使わない。
 
 **D1 のバックアップ**

@@ -1,12 +1,13 @@
 // Runs the built IdP Worker on workerd through Miniflare, the runtime cf bundles: the Worker with its static assets,
-// the deployment's own asset settings from apps/worker/cloudflare.config.ts, and a local D1 with the migrations.
+// the deployment's own asset settings from apps/worker/cloudflare.config.ts, and a local D1 with the migrations. The
+// admin Worker runs beside it so that its gate can be reached without a client certificate.
 import { readFile } from "node:fs/promises";
 import { Miniflare } from "miniflare";
 import type { D1Database } from "@cloudflare/workers-types";
 import { workerConfig } from "../../apps/worker/cloudflare.config.js";
 import { migrationNames, readMigration, splitStatements } from "../../contract/test/d1.js";
 import { generateEd25519Jwk } from "../../packages/core/test/keys.js";
-import { ASSETS_DIR, WORKER_DIR } from "./build.js";
+import { ADMIN_WORKER_DIR, ASSETS_DIR, WORKER_DIR } from "./build.js";
 import type { TestCertificate } from "./tls.js";
 
 /** The issuer host; Chromium resolves it to the local server, so the RP ID and origin are the production shape. */
@@ -26,8 +27,19 @@ export type LocalIdp = {
    * does: from another Worker in the same workerd, with no request.cf and no client IP.
    */
   readonly internalDiscovery: () => Promise<unknown>;
+  /**
+   * Sends one request to the IdP Worker through workerd's entry, as the edge hands it over: the static assets
+   * settings apply, and the URL's scheme reaches the Worker as given. The browser cannot send plain http here,
+   * since the local server speaks only TLS.
+   */
+  readonly dispatch: (url: string, init?: { readonly method?: string; readonly body?: string; readonly headers?: Record<string, string> }) => Promise<Response>;
+  /** Sends one request to the admin Worker, without a client certificate (no edge rule stands in front of it). */
+  readonly dispatchAdmin: (url: string) => Promise<Response>;
   readonly dispose: () => Promise<void>;
 };
+
+/** The admin Worker's host; only {@link LocalIdp.dispatchAdmin} reaches it. */
+export const ADMIN_HOST = "admin.idp.test";
 
 /** A Worker whose only job is to call the IdP Worker's internal entrypoint over its IDP binding. */
 const BINDING_PROBE = [
@@ -92,6 +104,26 @@ export async function startIdp(certificate: TestCertificate): Promise<LocalIdp> 
           env: { IDP: { type: "worker", worker: deployed.name, exportName: "IdpInternal" } },
         },
       },
+      {
+        config: {
+          name: "idp-admin",
+          compatibilityDate: deployed.compatibilityDate,
+          manifest: {
+            mainModule: "index.js",
+            modules: { "index.js": { type: "esm", contents: await readFile(`${ADMIN_WORKER_DIR}/index.js`, "utf8") } },
+          },
+          // A valid configuration, so that a refusal comes from the gate and not from a misconfiguration. The
+          // fingerprint belongs to no certificate: no request of the suite can pass the gate.
+          env: {
+            DB: { type: "d1", name: "idp-e2e" },
+            ISSUER: { type: "text", value: ISSUER },
+            ADMIN_HOST: { type: "text", value: ADMIN_HOST },
+            ADMIN_ALLOWLIST: { type: "text", value: JSON.stringify([{ sha256: "0".repeat(64), name: "nobody" }]) },
+            CF_VERSION_METADATA: { type: "version-metadata" },
+            IDP: { type: "worker", worker: deployed.name, exportName: "IdpInternal" },
+          },
+        },
+      },
     ],
   });
   const url = await mf.ready;
@@ -101,8 +133,18 @@ export async function startIdp(certificate: TestCertificate): Promise<LocalIdp> 
     if (response.status !== 200) throw new Error(`the binding probe answered ${response.status}`);
     return response.json();
   }
+  async function dispatch(target: string, init: { readonly method?: string; readonly body?: string; readonly headers?: Record<string, string> } = {}): Promise<Response> {
+    // A plain http request carries no TLS version at the edge; manual, so that a redirect is seen, not followed.
+    const response = await mf.dispatchFetch(target, { ...init, redirect: "manual", cf: { tlsVersion: target.startsWith("https:") ? "TLSv1.3" : "" } });
+    return response as unknown as Response;
+  }
+  async function dispatchAdmin(target: string): Promise<Response> {
+    const admin = await mf.getWorker("idp-admin");
+    const response = await admin.fetch(target, { redirect: "manual", cf: { tlsVersion: target.startsWith("https:") ? "TLSv1.3" : "" } });
+    return response as unknown as Response;
+  }
   const db = (await mf.getD1Database("DB")) as unknown as D1Database;
   const statements = migrationNames().flatMap((name) => splitStatements(readMigration(name)));
   await db.batch(statements.map((s) => db.prepare(s)));
-  return { port: Number(url.port), certificate, db, internalDiscovery, dispose: () => mf.dispose() };
+  return { port: Number(url.port), certificate, db, internalDiscovery, dispatch, dispatchAdmin, dispose: () => mf.dispose() };
 }

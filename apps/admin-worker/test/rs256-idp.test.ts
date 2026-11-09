@@ -39,6 +39,8 @@ describe("rs256Enabled over the IdP Worker's IdpInternal entrypoint", () => {
       SIGNING_KEY_ED25519_CURRENT: ed25519,
       CF_VERSION_METADATA: { id: "00000000-0000-4000-8000-0000000000bb", tag: "", timestamp: "" },
       RATE_LIMITER: { limit: async () => ({ success: true }) },
+      // Part of the IdP Worker's validated environment; the entrypoint never serves a page through it.
+      ASSETS: { fetch: async () => new Response(null, { status: 404 }), connect: () => { throw new Error("unused"); } } as unknown as Fetcher,
       ...extra,
     };
   }

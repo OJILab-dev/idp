@@ -56,6 +56,52 @@ export function createFakeRateLimiter(): FakeRateLimiter {
   return fake;
 }
 
+/** A stand-in for the static assets binding: the paths it was asked for, and one known page. */
+export type FakeAssets = Fetcher & {
+  /** The method and path of each request handed to the binding, in order. */
+  readonly requests: string[];
+};
+
+/** The HTML page the fake assets serve. */
+export const ASSET_PAGE = "/signin";
+
+/** The files the fake assets serve, in the shapes the Vite build produces; anything else is the asset server's 404. */
+export const ASSET_FILES: Readonly<Record<string, { readonly type: string; readonly body: string }>> = {
+  [ASSET_PAGE]: { type: "text/html; charset=utf-8", body: "<!doctype html><title>sign in</title>" },
+  "/assets/signin-CekN57dd.js": { type: "text/javascript", body: "export {};" },
+  "/assets/common-DLkd5xV9.js": { type: "text/javascript", body: "export {};" },
+  "/style.css": { type: "text/css", body: "body{}" },
+  // Neither hashed nor allowlisted, so it must not become cacheable.
+  "/assets/plain.js": { type: "text/javascript", body: "export {};" },
+  // HTML under a script-like path is still a page, never cached.
+  "/assets/page-AAAAAAAA.js": { type: "text/html", body: "<!doctype html>" },
+};
+
+/**
+ * Builds a fake static assets binding that serves {@link ASSET_FILES} and answers 404 for anything else. Like the
+ * real asset server, it sets a Cache-Control of its own, which the Worker must replace.
+ *
+ * @returns The fake binding.
+ */
+export function createFakeAssets(): FakeAssets {
+  const requests: string[] = [];
+  const fake = {
+    requests,
+    fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      const { pathname } = new URL(request.url);
+      requests.push(`${request.method} ${pathname}`);
+      const file = ASSET_FILES[pathname];
+      if (file === undefined) return new Response("asset not found", { status: 404, headers: { "cache-control": "public, max-age=60" } });
+      return new Response(file.body, { headers: { "content-type": file.type, "cache-control": "public, max-age=0, must-revalidate" } });
+    },
+    connect: () => {
+      throw new Error("the assets binding has no sockets");
+    },
+  };
+  return fake as unknown as FakeAssets;
+}
+
 /**
  * Gives a hand-built request what Cloudflare's edge adds to every request: a TLS 1.3 `request.cf` and the
  * CF-Connecting-IP header. The Worker refuses a request without either.
@@ -73,6 +119,7 @@ export type Fixture = {
   readonly core: CoreFixture;
   readonly env: Env;
   readonly rateLimiter: FakeRateLimiter;
+  readonly assets: FakeAssets;
   readonly handler: ReturnType<typeof createHandler>;
 };
 
@@ -86,14 +133,16 @@ export function useFixture(): () => Fixture {
   beforeEach(async () => {
     const core = await createFixture();
     const rateLimiter = createFakeRateLimiter();
+    const assets = createFakeAssets();
     const env: Env = {
       DB: core.t.db,
       ISSUER,
       SIGNING_KEY_ED25519_CURRENT: await testSigningKey(),
       CF_VERSION_METADATA: { id: VERSION_ID, tag: "", timestamp: "" },
       RATE_LIMITER: rateLimiter,
+      ASSETS: assets,
     };
-    f = { core, env, rateLimiter, handler: createHandler({ clock: core.clock, random: core.random }) };
+    f = { core, env, rateLimiter, assets, handler: createHandler({ clock: core.clock, random: core.random }) };
   });
   afterEach(async () => {
     await f?.core.dispose();
@@ -149,6 +198,8 @@ export type CallOptions = {
   readonly cf?: Record<string, unknown> | null;
   /** The CF-Connecting-IP header; `null` omits it. Defaults to {@link CLIENT_IP}. */
   readonly clientIp?: string | null;
+  /** The Cache-Control the response must carry; `no-store` unless the test asks for a cacheable asset. */
+  readonly cacheControl?: string;
 };
 
 /**
@@ -180,13 +231,17 @@ export async function call(f: Fixture, method: string, path: string, options: Ca
     passThroughOnException: () => undefined,
     props: {},
   } as unknown as ExecutionContext);
-  expectSecurityHeaders(response);
+  expectSecurityHeaders(response, options.cacheControl);
   return response;
 }
 
-/** Asserts the headers the Worker puts on every response, whatever produced it. */
-export function expectSecurityHeaders(response: Response): void {
-  expect(response.headers.get("cache-control")).toBe("no-store");
+/**
+ * Asserts the headers the Worker puts on every response, whatever produced it.
+ *
+ * @param cacheControl The expected Cache-Control; only the public sub-resources may differ from `no-store`.
+ */
+export function expectSecurityHeaders(response: Response, cacheControl = "no-store"): void {
+  expect(response.headers.get("cache-control")).toBe(cacheControl);
   expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
   expect(response.headers.get("x-content-type-options")).toBe("nosniff");
   expect(response.headers.get("x-frame-options")).toBe("DENY");

@@ -21,7 +21,7 @@ Cloudflare Workers の無料枠だけで動く、パスキー専用の最小構�
 
 **設計原則**
 
-1. 攻撃面を小さくする（Secure by Design）。IdP の Worker がインターネットに出すのは OIDC とパスキーのエンドポイントだけで、管理 UI は作らない。管理 API は別のホスト名の管理用の Worker にだけ置き、エッジの mTLS で、管理者の証明書を持たないリクエストを Worker に届く前に止める。IdP の Worker のコードには管理系のユースケースを含めない。
+1. 攻撃面を小さくする（Secure by Design）。IdP の Worker がインターネットに出すのは OIDC とパスキーのエンドポイントだけで、管理 UI は作らない。管理 API は別のホスト名の管理用の Worker にだけ置き、mTLS で、管理者の証明書を持たないリクエストを、管理用の Worker のゲートでどの処理よりも前に拒否する（エッジで Worker に届く前に止める形は、IdP がゾーンのルールセットを持たない決定で外した。[ドメインの置き場所](domain-placement.md)の決定 ③）。IdP の Worker のコードには管理系のユースケースを含めない。
 2. 既定値は常に安全側に倒す（Secure by Default）。例：リフレッシュトークンを発行しない、PKCE とユーザー検証（UV）を必須にする、クレームは要求されたスコープの分だけ渡す。
 3. OIDC と WebAuthn は標準規格に厳格に準拠する。独自拡張や仕様の緩い解釈はせず、仕様が選択を委ねている箇所は安全側を選ぶ（[標準準拠](standards-compliance.md)参照）。
 4. 迷ったら拒否する（fail-closed）。
@@ -48,10 +48,10 @@ flowchart LR
   end
 
   idpctl["idpctl（Go）<br/>管理 API の薄いクライアント<br/>管理者のクライアント証明書"]
-  waf["WAF のカスタムルール<br/>有効で失効していない証明書だけを通す"]
+  edge["エッジの mTLS<br/>証明書を求めて検証し、結果を Worker に渡す（遮断しない）"]
 
   subgraph admin["管理用の Worker（TypeScript、別ホスト名）"]
-    adminapi["管理 API<br/>証明書の再確認と許可リスト<br/>idpctl の全操作"]
+    adminapi["管理 API<br/>ゲート（証明書の検証の結果、失効、許可リスト）<br/>idpctl の全操作"]
   end
 
   core["共有コア（packages/core）<br/>規則・検証・SQL・ユースケース"]
@@ -63,8 +63,8 @@ flowchart LR
   browser -->|"authorize · logout"| oidc
   rp -->|"discovery · jwks · token · userinfo"| oidc
   oidc --> secret
-  idpctl -->|"HTTPS（mTLS）"| waf
-  waf --> adminapi
+  idpctl -->|"HTTPS（mTLS）"| edge
+  edge --> adminapi
   adminapi -->|"discovery（Service Binding）"| oidc
   worker -.->|"利用者向けと共有のモジュールだけ"| core
   admin -.->|"管理系と共有のモジュール"| core
@@ -72,7 +72,7 @@ flowchart LR
   admin --> d1
 ```
 
-ブラウザは静的アセットのページ（サインイン、登録、アカウント）からパスキー API を呼び、`/authorize` と `/logout` にもアクセスする。アカウントページは、サインイン中の本人が自分のパスキーを一覧し、追加し、失効させるためのページで、サインインは常に RP からの `/authorize` を経由する。RP アプリはブラウザを `/authorize` にリダイレクトし、自身は discovery、JWKS、`/token`、`/userinfo` とだけ通信する。署名鍵を使うのは OIDC エンドポイントだけで、トークンは通常 Ed25519 で署名する（RS256 は RSA の鍵を設定したときだけ有効になる任意の機能）。管理用の Worker は署名鍵を持たず、RS256 が有効かどうかを Service Binding で IdP の Worker の discovery から読む。`idpctl` は管理者のクライアント証明書で管理用のホスト名に接続し、WAF のカスタムルールを通ったリクエストだけが管理用の Worker に届く。管理用の Worker は証明書を自分でも確かめ直し、フィンガープリントの許可リストで管理者を確定してから操作する。破線は共有コアへの依存で、IdP の Worker は管理系のモジュールに依存しない。ledger や MCP などの拡張も、IdP の Worker の外に足す（[将来拡張](future-extensions.md)参照）。
+ブラウザは静的アセットのページ（サインイン、登録、アカウント）からパスキー API を呼び、`/authorize` と `/logout` にもアクセスする。アカウントページは、サインイン中の本人が自分のパスキーを一覧し、追加し、失効させるためのページで、サインインは常に RP からの `/authorize` を経由する。RP アプリはブラウザを `/authorize` にリダイレクトし、自身は discovery、JWKS、`/token`、`/userinfo` とだけ通信する。署名鍵を使うのは OIDC エンドポイントだけで、トークンは通常 Ed25519 で署名する（RS256 は RSA の鍵を設定したときだけ有効になる任意の機能）。管理用の Worker は署名鍵を持たず、RS256 が有効かどうかを Service Binding で IdP の Worker の discovery から読む。`idpctl` は管理者のクライアント証明書で管理用のホスト名に接続する。エッジは証明書を検証して結果を渡すだけで、証明書のないリクエストも管理用の Worker に届く。管理用の Worker は、ゲートで検証の結果と失効を確かめ、フィンガープリントの許可リストで管理者を確定してから操作する。IdP の Worker は、静的なページを含むすべてのリクエストで先に動き、平文の HTTP のリダイレクトと TLS のバージョンの確認を自分で行う（IdP はゾーンのルールセットを持たない。[ドメインの置き場所](domain-placement.md)の決定 ③）。破線は共有コアへの依存で、IdP の Worker は管理系のモジュールに依存しない。ledger や MCP などの拡張も、IdP の Worker の外に足す（[将来拡張](future-extensions.md)参照）。
 
 ## ドキュメント一覧
 

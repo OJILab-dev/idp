@@ -36,11 +36,23 @@ describe("the TLS version check (fail-closed)", () => {
 describe("the per-IP rate limit (fail-closed)", () => {
   const fixture = useFixture();
 
-  it("counts every request by the client IP, and only by it", async () => {
+  it("counts every request to a route by the client IP, and only by it", async () => {
     const f = fixture();
     await call(f, "GET", "/jwks");
     await call(f, "GET", "/authorize");
-    expect(f.rateLimiter.keys).toEqual([CLIENT_IP, CLIENT_IP]);
+    await call(f, "GET", "/.well-known/openid-configuration");
+    await call(f, "POST", "/token", { form: {} });
+    await call(f, "GET", "/userinfo");
+    await call(f, "POST", "/logout");
+    await call(f, "POST", "/authorize/resume");
+    await call(f, "POST", "/webauthn/auth/options", { json: {} });
+    expect(f.rateLimiter.keys).toEqual(Array.from({ length: 8 }, () => CLIENT_IP));
+  });
+
+  it("does not count a static page, which writes nothing", async () => {
+    const f = fixture();
+    await call(f, "GET", "/signin");
+    expect(f.rateLimiter.keys).toEqual([]);
   });
 
   it("refuses a request over the limit with 429 and Retry-After, before any route runs", async () => {

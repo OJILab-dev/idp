@@ -19,6 +19,8 @@ export type Env = {
   readonly CF_VERSION_METADATA?: WorkerVersionMetadata;
   /** The Rate Limiting binding, counted per client IP before any route runs (docs/design/free-tier.md). */
   readonly RATE_LIMITER?: RateLimit;
+  /** The static assets binding; the Worker runs first on every request and serves the pages through it. */
+  readonly ASSETS?: Fetcher;
 };
 
 /** The validated configuration. */
@@ -29,6 +31,7 @@ export type WorkerConfig = {
   /** `idp@<version id>`, written to the audit rows of passkey enrollment, add, and self-revocation. */
   readonly writerVersion: string;
   readonly rateLimiter: RateLimit;
+  readonly assets: Fetcher;
 };
 
 /** Thrown when the configuration is missing or malformed; the message names the setting, never a key. */
@@ -40,6 +43,10 @@ function isD1Binding(value: unknown): value is D1Database {
   return typeof value === "object" && value !== null && ["prepare", "batch"].every((m) => typeof (value as Record<string, unknown>)[m] === "function");
 }
 
+function isAssetsBinding(value: unknown): value is Fetcher {
+  return typeof value === "object" && value !== null && typeof (value as Record<string, unknown>)["fetch"] === "function";
+}
+
 function isRateLimitBinding(value: unknown): value is RateLimit {
   return typeof value === "object" && value !== null && typeof (value as Record<string, unknown>)["limit"] === "function";
 }
@@ -49,7 +56,8 @@ function isRateLimitBinding(value: unknown): value is RateLimit {
  *
  * @param env The Worker's environment.
  * @returns The configuration.
- * @throws {InvalidConfigError} The D1 binding is missing, the Rate Limiting binding is missing, the issuer is invalid,
+ * @throws {InvalidConfigError} The D1 binding is missing, the Rate Limiting binding is missing, the assets binding is missing,
+ *   the issuer is invalid,
  *   the signing keys are invalid, or the version metadata has no version ID.
  */
 export async function parseWorkerConfig(env: Env): Promise<WorkerConfig> {
@@ -57,6 +65,8 @@ export async function parseWorkerConfig(env: Env): Promise<WorkerConfig> {
   // Without the limiter the pre-authentication D1 writes would lose their only in-Worker guard, so its absence
   // refuses every request instead of skipping the count (docs/design/domain-placement.md, 4).
   if (!isRateLimitBinding(env.RATE_LIMITER)) throw new InvalidConfigError("RATE_LIMITER is not a Rate Limiting binding");
+  // Every request runs the Worker first (docs/design/free-tier.md), so without the binding no page can be served.
+  if (!isAssetsBinding(env.ASSETS)) throw new InvalidConfigError("ASSETS is not a static assets binding");
   const versionId = env.CF_VERSION_METADATA?.id;
   if (typeof versionId !== "string" || versionId === "") throw new InvalidConfigError("CF_VERSION_METADATA has no version id");
   let issuer: Issuer;
@@ -79,7 +89,7 @@ export async function parseWorkerConfig(env: Env): Promise<WorkerConfig> {
     if (!(error instanceof InvalidSigningKeyConfigError)) throw error;
     throw new InvalidConfigError(`signing keys: ${error.message}`);
   }
-  return { db: createD1Database(env.DB), issuer, keys, writerVersion: `idp@${versionId}`, rateLimiter: env.RATE_LIMITER };
+  return { db: createD1Database(env.DB), issuer, keys, writerVersion: `idp@${versionId}`, rateLimiter: env.RATE_LIMITER, assets: env.ASSETS };
 }
 
 const parsed = new WeakMap<Env, Promise<WorkerConfig>>();
