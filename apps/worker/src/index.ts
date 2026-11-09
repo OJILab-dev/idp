@@ -23,7 +23,7 @@ export type Handler = {
 export function createHandler(options: AppOptions = { clock: systemClock, random: cryptoRandomSource }): Handler {
   const app = createApp(options);
   return {
-    fetch: async (request, env, ctx) => withSecurityHeaders(await app.fetch(request, env, ctx)),
+    fetch: async (request, env, ctx) => withSecurityHeaders(request, await app.fetch(request, env, ctx)),
   };
 }
 

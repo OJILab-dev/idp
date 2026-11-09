@@ -62,11 +62,24 @@ export type FakeAssets = Fetcher & {
   readonly requests: string[];
 };
 
-/** The only path the fake assets serve; anything else is the asset server's 404. */
+/** The HTML page the fake assets serve. */
 export const ASSET_PAGE = "/signin";
 
+/** The files the fake assets serve, in the shapes the Vite build produces; anything else is the asset server's 404. */
+export const ASSET_FILES: Readonly<Record<string, { readonly type: string; readonly body: string }>> = {
+  [ASSET_PAGE]: { type: "text/html; charset=utf-8", body: "<!doctype html><title>sign in</title>" },
+  "/assets/signin-CekN57dd.js": { type: "text/javascript", body: "export {};" },
+  "/assets/common-DLkd5xV9.js": { type: "text/javascript", body: "export {};" },
+  "/style.css": { type: "text/css", body: "body{}" },
+  // Neither hashed nor allowlisted, so it must not become cacheable.
+  "/assets/plain.js": { type: "text/javascript", body: "export {};" },
+  // HTML under a script-like path is still a page, never cached.
+  "/assets/page-AAAAAAAA.js": { type: "text/html", body: "<!doctype html>" },
+};
+
 /**
- * Builds a fake static assets binding that serves {@link ASSET_PAGE} as HTML and answers 404 for anything else.
+ * Builds a fake static assets binding that serves {@link ASSET_FILES} and answers 404 for anything else. Like the
+ * real asset server, it sets a Cache-Control of its own, which the Worker must replace.
  *
  * @returns The fake binding.
  */
@@ -78,8 +91,9 @@ export function createFakeAssets(): FakeAssets {
       const request = new Request(input, init);
       const { pathname } = new URL(request.url);
       requests.push(`${request.method} ${pathname}`);
-      if (pathname !== ASSET_PAGE) return new Response("asset not found", { status: 404 });
-      return new Response("<!doctype html><title>sign in</title>", { headers: { "content-type": "text/html; charset=utf-8" } });
+      const file = ASSET_FILES[pathname];
+      if (file === undefined) return new Response("asset not found", { status: 404, headers: { "cache-control": "public, max-age=60" } });
+      return new Response(file.body, { headers: { "content-type": file.type, "cache-control": "public, max-age=0, must-revalidate" } });
     },
     connect: () => {
       throw new Error("the assets binding has no sockets");
@@ -184,6 +198,8 @@ export type CallOptions = {
   readonly cf?: Record<string, unknown> | null;
   /** The CF-Connecting-IP header; `null` omits it. Defaults to {@link CLIENT_IP}. */
   readonly clientIp?: string | null;
+  /** The Cache-Control the response must carry; `no-store` unless the test asks for a cacheable asset. */
+  readonly cacheControl?: string;
 };
 
 /**
@@ -215,13 +231,17 @@ export async function call(f: Fixture, method: string, path: string, options: Ca
     passThroughOnException: () => undefined,
     props: {},
   } as unknown as ExecutionContext);
-  expectSecurityHeaders(response);
+  expectSecurityHeaders(response, options.cacheControl);
   return response;
 }
 
-/** Asserts the headers the Worker puts on every response, whatever produced it. */
-export function expectSecurityHeaders(response: Response): void {
-  expect(response.headers.get("cache-control")).toBe("no-store");
+/**
+ * Asserts the headers the Worker puts on every response, whatever produced it.
+ *
+ * @param cacheControl The expected Cache-Control; only the public sub-resources may differ from `no-store`.
+ */
+export function expectSecurityHeaders(response: Response, cacheControl = "no-store"): void {
+  expect(response.headers.get("cache-control")).toBe(cacheControl);
   expect(response.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
   expect(response.headers.get("x-content-type-options")).toBe("nosniff");
   expect(response.headers.get("x-frame-options")).toBe("DENY");

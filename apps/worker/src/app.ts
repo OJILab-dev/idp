@@ -89,12 +89,29 @@ const RATE_LIMITED_PATHS = [
 ] as const;
 
 /**
+ * Whether the request carries a cookie named like the IdP's own (`__Host-…`), whatever its value.
+ *
+ * Other cookies do not block the redirect: in a zone shared with the service, the service's non-Secure cookies for
+ * the parent domain travel with every plain http request, and refusing them would turn every http visit into a 404.
+ * A browser never sends a `__Host-` cookie over http (it requires Secure), so such a name on plain http means a
+ * misbehaving client that may be replaying the IdP's session; it is refused like an Authorization header.
+ *
+ * @param request The plain http request.
+ * @returns Whether any cookie name starts with `__Host-`.
+ */
+function carriesHostPrefixedCookie(request: Request): boolean {
+  const header = request.headers.get("cookie");
+  if (header === null) return false;
+  return header.split(";").some((pair) => pair.trimStart().startsWith("__Host-"));
+}
+
+/**
  * Decides what a plain http request to the issuer host gets, now that no zone rule redirects it
  * (docs/design/domain-placement.md, 3).
  *
- * Only a safe method without credentials is redirected, with 308 to the configured issuer (never a host or port taken
- * from the request) and the same path and query. Anything else is refused without processing: a client secret,
- * code, Bearer token, or cookie sent over http is already exposed, and a redirect would invite the client to send it
+ * Only a safe method without credentials (no Authorization header, no `__Host-` cookie) is redirected, with 308 to the
+ * configured issuer (never a host or port taken from the request) and the same path and query. Anything else is
+ * refused without processing: a client secret, code, Bearer token, or session cookie sent over http is already exposed, and a redirect would invite the client to send it
  * again (RFC 9110 §15.4.9 keeps the method and body on a 308).
  *
  * @param request The plain http request.
@@ -104,7 +121,7 @@ const RATE_LIMITED_PATHS = [
  */
 function plainHttpRedirect(request: Request, url: URL, issuer: Issuer): Response | undefined {
   if (request.method !== "GET" && request.method !== "HEAD") return undefined;
-  if (request.headers.has("authorization") || request.headers.has("cookie")) return undefined;
+  if (request.headers.has("authorization") || carriesHostPrefixedCookie(request)) return undefined;
   return new Response(null, { status: 308, headers: { location: `${issuer.origin}${url.pathname}${url.search}` } });
 }
 

@@ -77,8 +77,9 @@
 - [ ] issuer、RP ID、origin は設定値から導き、リクエストの `Host` ヘッダーからは作らない
 - [ ] issuer が未設定または形式が不正なら、リクエストを処理せずエラーを返す
 - [ ] IdP の Worker は、静的なページを含むすべてのリクエストで先に動く（`run_worker_first` が真）。ゾーンのルール（シングルリダイレクト、Always Use HTTPS）には頼らない
+- [ ] IdP の Worker の応答は、名前にハッシュを持つ `/assets/` のスクリプトとスタイルシート、`/style.css` の成功した応答（HTML でも `Set-Cookie` 付きでもないもの）を除いて、すべて `Cache-Control: no-store` にする。HTML のページと API の応答はキャッシュさせない（[無料枠](free-tier.md)）
 - [ ] IdP の Worker は、issuer のホスト名以外へのリクエストを、スキームによらず処理せずに 404 で拒否する。リダイレクトの `Location` を要求のホスト名から作らない
-- [ ] IdP の Worker は、issuer のホスト名への平文の HTTP のリクエストのうち、`GET` か `HEAD` で `Authorization` と `Cookie` を持たないものだけを、設定した issuer の同じパスとクエリへ 308 でリダイレクトする。ほかの平文のリクエスト（`POST /token` を含む）は、処理せずに 404 で拒否する。平文の要求にはページも返さない
+- [ ] IdP の Worker は、issuer のホスト名への平文の HTTP のリクエストのうち、`GET` か `HEAD` で `Authorization` と、名前が `__Host-` で始まる Cookie を持たないものだけを（サービスの親のドメインの Cookie は拒否の理由にしない）、設定した issuer の同じパスとクエリへ 308 でリダイレクトする。ほかの平文のリクエスト（`POST /token` を含む）は、処理せずに 404 で拒否する。平文の要求にはページも返さない
 - [ ] IdP の Worker と管理用の Worker は、`request.cf.tlsVersion` が `TLSv1.2` か `TLSv1.3` でないリクエスト（値がない、知らない値を含む）を、何も処理せずに拒否する。IdP の Worker では静的なページにも効く。ゾーンの TLS の最小バージョンは IdP が持たないので、エッジで TLS 1.0 と 1.1 の接続そのものは成立しうることを、RFC 8996 の例外として記録している（[ドメインの置き場所](domain-placement.md)の共存の設計の 3）
 - [ ] 管理用の Worker の `IDP` の Service Binding は IdP の Worker の内部のエントリポイント `IdpInternal` に向け、公開の経路の TLS とレート制限の確認を、ヘッダーやパスで外す仕組みを持たない。RSA の鍵があるときは、管理用の Worker が RS256 を有効と判断できる
 - [ ] IdP の Worker は、自分で答えるパス（静的なページ以外）で、接続元の IP ごとの Rate Limiting バインディングの上限を超えたリクエストを 429 で拒否する。バインディングがない、呼び出しが失敗した、接続元の IP が取れない場合も、処理せずに拒否する（fail-closed）。IP をログにも D1 にも書かない

@@ -60,9 +60,24 @@ describe("plain http on the issuer host", () => {
     expect(f.assets.requests).toEqual([]);
   });
 
+  // In a shared zone the service's non-Secure parent-domain cookies ride along with every http request; they are not
+  // the IdP's credentials and must not turn the redirect into a 404.
+  it.each([
+    ["one", "theme=dark"],
+    ["several", "theme=dark; _ga=GA1.2.3; lang=ja"],
+    ["one whose value mentions __Host-", "note=__Host-session"],
+  ])("still redirects a GET carrying %s of the service's cookies", async (_name, cookie) => {
+    const f = fixture();
+    const res = await call(f, "GET", "/signin", { origin: PLAIN, cf: {}, headers: { cookie } });
+    expect(res.status).toBe(308);
+    expect(res.headers.get("location")).toBe(`${ISSUER}/signin`);
+  });
+
   it.each([
     ["an Authorization header", { authorization: "Bearer at" }],
-    ["a Cookie header", { cookie: "__Host-session=s" }],
+    ["the IdP's session cookie", { cookie: "__Host-session=s" }],
+    ["a __Host- cookie among the service's cookies", { cookie: "theme=dark;  __Host-authorize_request=r" }],
+    ["any __Host- cookie name, whatever its value", { cookie: "__Host-other=" }],
   ])("refuses a GET carrying %s with 404: the credential is already exposed", async (_name, headers) => {
     const f = fixture();
     const res = await call(f, "GET", "/userinfo", { origin: PLAIN, cf: {}, headers });
@@ -88,6 +103,41 @@ describe("the static pages behind the Worker", () => {
     expect(f.assets.requests).toEqual([`GET ${ASSET_PAGE}`]);
     // Assets are not D1 writes; counting them would refuse an ordinary page load (free-tier.md).
     expect(f.rateLimiter.keys).toEqual([]);
+  });
+
+  // The Worker runs before every asset, so a sub-resource re-fetched on every page view would spend the account-wide
+  // daily request limit; only public, content-addressed or allowlisted files may be cached.
+  it.each([
+    ["a hashed script", "/assets/signin-CekN57dd.js", "public, max-age=31536000, immutable"],
+    ["the shared hashed script", "/assets/common-DLkd5xV9.js", "public, max-age=31536000, immutable"],
+    ["the unhashed stylesheet", "/style.css", "public, max-age=3600"],
+  ])("lets %s be cached, with the other security headers kept", async (_name, path, cacheControl) => {
+    const f = fixture();
+    const res = await call(f, "GET", path, { cacheControl });
+    expect(res.status).toBe(200);
+  });
+
+  it.each([
+    ["an HTML page", ASSET_PAGE, 200],
+    ["a script without a content hash", "/assets/plain.js", 200],
+    ["HTML under a hashed script name", "/assets/page-AAAAAAAA.js", 200],
+    ["a missing hashed script", "/assets/gone-ZZZZZZZZ.js", 404],
+  ])("keeps %s no-store", async (_name, path, status) => {
+    const res = await call(fixture(), "GET", path);
+    expect(res.status).toBe(status);
+  });
+
+  it("keeps a cacheable path no-store over plain http, where the answer is a redirect", async () => {
+    const res = await call(fixture(), "GET", "/style.css", { origin: PLAIN, cf: {} });
+    expect(res.status).toBe(308);
+  });
+
+  it.each([
+    ["discovery", "GET", "/.well-known/openid-configuration"],
+    ["the JWKS", "GET", "/jwks"],
+    ["userinfo", "GET", "/userinfo"],
+  ])("keeps %s no-store", async (_name, method, path) => {
+    await call(fixture(), method, path);
   });
 
   it("answers a path that is neither a route nor an asset with the asset server's 404", async () => {

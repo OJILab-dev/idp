@@ -16,6 +16,29 @@ test("a page requested over plain http is redirected to the same path on the htt
   expect(await secure.text()).toMatch(/<html/i);
 });
 
+test("a plain http page visit carrying the service's parent-domain cookies is still redirected", async ({ idp }) => {
+  const plain = await idp.dispatch("http://idp.test/signin", { headers: { cookie: "theme=dark; _ga=GA1.2.3" } });
+  expect(plain.status).toBe(308);
+  expect(plain.headers.get("location")).toBe(`${ISSUER}/signin`);
+});
+
+test("the page is no-store while its hashed scripts and stylesheet may be cached", async ({ idp }) => {
+  const page = await idp.dispatch(`${ISSUER}/signin`);
+  expect(page.headers.get("cache-control")).toBe("no-store");
+  const html = await page.text();
+  const scripts = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+\.js)"/g)].map((match) => match[1]);
+  expect(scripts.length).toBeGreaterThan(0);
+  for (const script of scripts) {
+    const response = await idp.dispatch(`${ISSUER}${script}`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("public, max-age=31536000, immutable");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+  }
+  const style = await idp.dispatch(`${ISSUER}/style.css`);
+  expect(style.headers.get("cache-control")).toBe("public, max-age=3600");
+  expect(style.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+});
+
 test("/token over plain http is refused without processing and without a redirect", async ({ idp }) => {
   const response = await idp.dispatch("http://idp.test/token", {
     method: "POST",

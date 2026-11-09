@@ -14,19 +14,54 @@ const SECURITY_HEADERS: Readonly<Record<string, string>> = {
   "referrer-policy": "no-referrer",
   "strict-transport-security": "max-age=31536000; includeSubDomains",
   "cross-origin-opener-policy": "same-origin",
-  // Codes, tokens, and error pages are per request; discovery and the JWKS change with a key rotation deploy.
-  "cache-control": "no-store",
 };
 
+// Codes, tokens, error pages, and the HTML pages are per request; discovery and the JWKS change with a key rotation
+// deploy. Everything is no-store unless it is one of the public sub-resources below.
+const NO_STORE = "no-store";
+
+// Vite's bundles under /assets/ carry a content hash in their name, so a name never serves two contents.
+const HASHED_ASSET = /^\/assets\/[A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8,}\.(?:js|css)$/;
+const HASHED_ASSET_CACHE = "public, max-age=31536000, immutable";
+// The one unhashed sub-resource; an hour keeps a deploy's change visible soon while sparing a request per page view.
+const UNHASHED_ASSETS: ReadonlySet<string> = new Set(["/style.css"]);
+const UNHASHED_ASSET_CACHE = "public, max-age=3600";
+
 /**
- * Returns the response with the security headers set and every CORS header removed, whatever route produced it.
+ * Chooses the Cache-Control of a response.
  *
+ * Every page view re-fetching every script and stylesheet would spend the account-wide daily request limit (the
+ * Worker runs before the assets; free-tier.md), so the public sub-resources may be cached. Only a successful GET or
+ * HEAD of an allowlisted path, answered without HTML and without a cookie, qualifies; no route serves those paths,
+ * and they hold no per-user or secret data. Everything else, the HTML pages included, stays no-store.
+ *
+ * @param request The request the response answers.
+ * @param response The response.
+ * @returns The Cache-Control value.
+ */
+export function cacheControlFor(request: Request, response: Response): string {
+  if (request.method !== "GET" && request.method !== "HEAD") return NO_STORE;
+  if (response.status !== 200 && response.status !== 304) return NO_STORE;
+  if (response.headers.has("set-cookie")) return NO_STORE;
+  if ((response.headers.get("content-type") ?? "").toLowerCase().startsWith("text/html")) return NO_STORE;
+  const { pathname } = new URL(request.url);
+  if (HASHED_ASSET.test(pathname)) return HASHED_ASSET_CACHE;
+  if (UNHASHED_ASSETS.has(pathname)) return UNHASHED_ASSET_CACHE;
+  return NO_STORE;
+}
+
+/**
+ * Returns the response with the security headers and the Cache-Control set and every CORS header removed, whatever
+ * route produced it.
+ *
+ * @param request The request the response answers; it decides whether the response may be cached.
  * @param response The response from the router.
  * @returns A response with mutable headers.
  */
-export function withSecurityHeaders(response: Response): Response {
+export function withSecurityHeaders(request: Request, response: Response): Response {
   const out = new Response(response.body, response);
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) out.headers.set(name, value);
+  out.headers.set("cache-control", cacheControlFor(request, response));
   // No endpoint takes part in CORS (standards-compliance.md, "例外：CORS に対応しない").
   for (const name of [...out.headers.keys()]) if (name.startsWith("access-control-")) out.headers.delete(name);
   return out;
