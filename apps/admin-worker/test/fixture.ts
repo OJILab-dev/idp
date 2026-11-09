@@ -11,7 +11,7 @@ export const OTHER_FP = "cd".repeat(32);
 
 /** A client certificate that passed the edge mTLS, as Cloudflare reports it to a Worker. */
 export function verifiedCert(fingerprint: string = ROOT_FP): Record<string, unknown> {
-  return { tlsClientAuth: { certVerified: "SUCCESS", certRevoked: "0", certFingerprintSHA256: fingerprint } };
+  return { tlsVersion: "TLSv1.3", tlsClientAuth: { certVerified: "SUCCESS", certRevoked: "0", certFingerprintSHA256: fingerprint } };
 }
 
 /** The discovery document the fake IdP Worker serves; `algs` decides whether RS256 is enabled. */

@@ -1,7 +1,7 @@
 // The request body limit holds whether or not the client declares a Content-Length: a chunked body is read as a
 // stream and abandoned as soon as it passes the limit, so it is refused like an oversized declared one.
 import { describe, expect, it } from "vitest";
-import { ISSUER, expectSecurityHeaders, useFixture, type Fixture } from "./fixture.js";
+import { ISSUER, expectSecurityHeaders, fromEdge, useFixture, type Fixture } from "./fixture.js";
 
 const LIMIT = 64 * 1024;
 
@@ -32,7 +32,7 @@ async function post(f: Fixture, path: string, contentType: string, body: BodyIni
     duplex: "half",
   } as RequestInit);
   if (body instanceof ReadableStream && headers["content-length"] === undefined) expect(request.headers.get("content-length")).toBeNull();
-  const response = await f.handler.fetch(request, f.env, {} as ExecutionContext);
+  const response = await f.handler.fetch(fromEdge(request), f.env, {} as ExecutionContext);
   expectSecurityHeaders(response);
   return response;
 }

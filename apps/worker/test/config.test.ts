@@ -15,6 +15,9 @@ describe("fail-closed configuration", () => {
     ["an RSA previous key without a current one", (env) => ({ ...env, SIGNING_KEY_RSA_PREVIOUS: env.SIGNING_KEY_ED25519_CURRENT ?? "" })],
     ["the same key in two slots", (env) => ({ ...env, SIGNING_KEY_ED25519_PREVIOUS: env.SIGNING_KEY_ED25519_CURRENT ?? "" })],
     ["no D1 binding", (env) => ({ ...env, DB: undefined as unknown as D1Database })],
+    // The limiter is the only in-Worker guard on the pre-authentication D1 writes; it is never skipped.
+    ["no Rate Limiting binding", ({ RATE_LIMITER: _, ...env }) => env],
+    ["a Rate Limiting binding without limit()", (env) => ({ ...env, RATE_LIMITER: {} as unknown as RateLimit })],
     // The version goes into every audit row the Worker writes; without it no row could say which code wrote it.
     ["no version metadata", ({ CF_VERSION_METADATA: _, ...env }) => env],
     ["an empty version id", (env) => ({ ...env, CF_VERSION_METADATA: { id: "", tag: "", timestamp: "" } })],

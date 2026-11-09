@@ -34,7 +34,11 @@ export type LocalIdp = {
 export async function startIdp(certificate: TestCertificate): Promise<LocalIdp> {
   // The deployment's configuration, so the asset handling under test is the one that ships; only what a local run
   // must replace is replaced (the module, the asset directory, the signing key Secret, the D1 placeholder ID).
-  const deployed = workerConfig({ IDP_ISSUER: ISSUER, IDP_D1_DATABASE_ID: "00000000-0000-4000-8000-000000000000" });
+  const deployed = workerConfig({
+    IDP_ISSUER: ISSUER,
+    IDP_D1_DATABASE_ID: "00000000-0000-4000-8000-000000000000",
+    IDP_RATE_LIMIT_NAMESPACE_ID: "1",
+  });
   const signingKey = JSON.stringify(await generateEd25519Jwk());
   const mf = new Miniflare({
     host: "127.0.0.1",
@@ -56,6 +60,10 @@ export async function startIdp(certificate: TestCertificate): Promise<LocalIdp> 
           env: {
             ...deployed.env,
             DB: { type: "d1", name: "idp-e2e" },
+            // The shipped binding with a limit the suite cannot reach: every test signs in from the same loopback
+            // address within seconds, which the production limit would rightly refuse. The limit itself is covered
+            // by apps/worker/test/edge.test.ts.
+            RATE_LIMITER: { type: "rate-limit", namespace: "1", simple: { limit: 100_000, period: 60 } },
             // A Worker Secret in production; a key generated for this run, held only in memory and in workerd.
             SIGNING_KEY_ED25519_CURRENT: { type: "text", value: signingKey },
           },

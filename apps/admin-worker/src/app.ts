@@ -13,6 +13,7 @@ import {
   type AdminIdentity,
   type AdminOperation,
 } from "@idp/core/admin";
+import { isAcceptedTlsVersion } from "@idp/core/shared";
 import { createD1Database } from "@idp/d1-adapter";
 import { adminConfig, InvalidConfigError, type AdminConfig, type Env } from "./config.js";
 import { isAdminHost, resolveAdmin } from "./gate.js";
@@ -213,6 +214,12 @@ export function createApp(): Hono<AppEnv> {
     }
     if (!isAdminHost(new URL(c.req.url), config)) {
       log({ result: "refused", reason: "host" });
+      return forbidden();
+    }
+    // The zone's minimum TLS version is not the IdP's to set when the zone is shared, so TLS below 1.2 is refused
+    // here, before the certificate is even looked at (docs/design/idpctl.md, "管理者の認証（mTLS）").
+    if (!isAcceptedTlsVersion(c.req.raw.cf)) {
+      log({ result: "refused", reason: "tls" });
       return forbidden();
     }
     const gate = resolveAdmin(c.req.raw.cf, config);
