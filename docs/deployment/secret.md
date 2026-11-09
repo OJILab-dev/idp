@@ -40,7 +40,7 @@ GitHub Environment: production
 
 ### IdPのデプロイごとの名前
 
-IdPは、最初に検証用のアカウントへデプロイし、本番はIdP専用の別のCloudflare accountへ同じ構成で作り直します。
+IdPは、最初に検証用のアカウントへデプロイし、本番はIdPのホスト名を持つzoneのCloudflare account（典型的にはIdPが仕えるサービスのaccount。[ドメインの置き場所](../design/domain-placement.md)）へ同じ構成で作り直します。そのaccountをサービスと共有しても、IdPのcredentialはサービスのものと共有しません。
 そのため、IdPのEnvironment、Vault item、GitHub Environmentの名前は上の例のように固定せず、[デプロイと設定](../design/deployment.md)の「デプロイごとの入力」としてdeployment設定ファイルに書きます。workflowとscriptはその値を読み、名前を直接書きません。
 
 - Environmentはdeploymentごと（Cloudflare accountごと）に分け、別のaccountとcredentialを共有しません。

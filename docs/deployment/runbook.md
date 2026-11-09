@@ -8,7 +8,7 @@
 
 ブートストラップの「前提」に挙げた手作業を先に済ませる。スクリプトはこれらを作らない。
 
-1. ゾーンを対象のアカウントに追加し、ネームサーバーを切り替える。
+1. ゾーンがまだなければ、対象のアカウントに追加し、ネームサーバーを切り替える。サービスのゾーンを使うときは、ブートストラップの前提のとおり、ゾーンの持ち主と合意する（ゾーンの単一資源の持ち主、レート制限ルール、ゾーンの TLS の最小バージョン）。
 2. R2 を有効にする。
 3. API トークンを役割ごと（Terraform 用、デプロイ用、plan 用）に作り、state のバケット用の R2 の S3 互換の認証情報を作る。
 4. 1Password の Vault（設定ファイルの `onepassword_vault`）に、設定ファイルの `onepassword_cloudflare_item` の名前でアイテムを作り、次のラベルのフィールドを置く。ラベルはスクリプトが決めた名前で、デプロイごとに変えない。
@@ -32,15 +32,17 @@
 | 2 | `scripts/d1-migrate.sh` を実行する | マイグレーションが適用されること。本物の D1 でトリガーが更新と削除を拒否することは、[未決事項](../design/open-questions.md)の項目として確かめる |
 | 3 | `scripts/generate-signing-key.sh` を実行する | 出力が公開鍵の JWK（`kid` を含む）だけであること。1Password のアイテムに `jwk`、`kid`、`public_jwk` があること |
 | 4a | 管理者ごとに `scripts/generate-admin-key.sh` を実行する。スクリプトは秘密鍵を 1Password に入れ、CSR を設定ファイルの `admin_client_certificates` に書く。設定ファイルの変更を PR でレビューしてマージする | 出力が CSR と公開鍵だけであること。秘密鍵が 1Password のアイテムにだけあること |
-| 4b | `scripts/terraform.sh` で `init`、`plan`、`apply` の順に実行する。`apply` は Terraform が承認を求めるので、plan の内容を読んでから承認する | plan が、管理用のホスト名の mTLS の割り当て、WAF のカスタムルール、レート制限ルール、管理者ごとのクライアント証明書、ゾーンの設定（Always Use HTTPS を有効、TLS の最小バージョンを 1.2）だけを作ること。D1 と DNS のレコードを含まないこと |
+| 4b | `scripts/terraform.sh` で `init`、`plan`、`apply` の順に実行する。`apply` は Terraform が承認を求めるので、plan の内容を読んでから承認する | plan が、管理者ごとのクライアント証明書と、`zone_singletons_owner` が `idp` のときだけ、管理用のホスト名の mTLS の割り当て、WAF のカスタムルール、レート制限ルール、issuer のホスト名のリダイレクトのルールを作ること。ゾーンの設定、D1、DNS のレコードを含まないこと |
+| 4b' | `zone_singletons_owner` が `external` のときだけ：`scripts/terraform.sh` の `output` で `zone_singletons` を表示し、ゾーンの持ち主のリポジトリに、その定義（mTLS のホスト名、3 つのルール）を足す PR を出して適用してもらう | ゾーンの持ち主の plan が、IdP のルールを足すだけで、ほかのルールを変えないこと |
 | 4c | `scripts/terraform.sh` の `output` で、管理者ごとの証明書とフィンガープリントを表示する。フィンガープリントと管理者の名前を設定ファイルの `admin_allowlist` に足し、PR でレビューしてマージする。証明書は `idpctl` の管理者が手元に置く | フィンガープリントが小文字の 16 進 64 文字であること |
 | 5 | 2 つの Worker の最初のデプロイを CI で行う（デプロイの workflow は別の作業） | ブートストラップの段階 5 の確認 |
 | 5b | `scripts/upload-signing-key.sh` を実行する | 出力が `kid` だけで、段階 3 の `kid` と一致すること。JWKS にその `kid` が載ること |
 
 - 段階 3、4a、5b のスクリプトは秘密を扱うので xtrace を付けずに動く。実行中の表示や出力に秘密が出たら、その鍵は漏れたものとして作り直す（[ブートストラップ](bootstrap.md)の失敗したとき）。
 - 段階 3 と 4a のスクリプトは、同じ名前の 1Password のアイテムがあれば止まる。作り直すときだけ `--replace` を付け、古いアイテムをアーカイブさせる（削除はしない）。
-- 段階 4b の `apply` は、ゾーンに WAF のカスタムルールやレート制限ルールの entry point のルールセットがすでにあると失敗する。Terraform はゾーンのそれぞれのフェーズのルールセットを丸ごと持つので、既存のルールを Terraform の設定に移すか、消してから適用する。どちらにするかは運用者が決める。
-- Always Use HTTPS と TLS の最小バージョンはゾーン全体の設定なので、同じゾーンのほかのホスト名にも効く。検証用のアカウントのゾーンに、平文の HTTP や TLS 1.1 以下を必要とするホスト名がないことを、apply の前に確かめる。
+- `zone_singletons_owner` が `idp` のとき、段階 4b の `apply` は、ゾーンに WAF のカスタムルール、レート制限ルール、シングルリダイレクトの entry point のルールセットがすでにあると失敗する。Terraform はゾーンのそれぞれのフェーズのルールセットを丸ごと持つので、ほかのルールがあるゾーンは `external` にして、ゾーンの持ち主に定義を渡す（[ドメインの置き場所](../design/domain-placement.md)の共存の設計の 2）。ほかのルールを IdP の Terraform に移さない。
+- Terraform はゾーン全体の設定（Always Use HTTPS と TLS の最小バージョン）を変えない。ゾーンの TLS の最小バージョンが 1.2 以上であることは、ゾーンの持ち主に確かめる。
+- IdP のルールの定義を変える PR をマージしたら、`external` のときは段階 4b' をもう一度行い、ブートストラップの段階 6 の確認を繰り返す。
 - 2 回目以降の Terraform の apply は CI で行う（[ブートストラップ](bootstrap.md)の実行する場所と認証情報）。
 
 ## 未確認のこと

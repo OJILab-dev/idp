@@ -44,7 +44,7 @@ IdP の Worker には管理用のエンドポイントや管理 UI を置きま�
 | [packages/d1-adapter/](packages/d1-adapter) | 共有コアのデータベースのポートを D1 で実装するアダプタと、その適合テスト |
 | [contract/](contract) | 実装に依存しない契約。D1 のマイグレーション（`migrations`）、管理 API の仕様（`openapi`）、テストベクタ（`testdata`）、スキーマのテスト（`test`） |
 | [cmd/idpctl/](cmd/idpctl) | Go の管理 CLI。管理 API のクライアントは `contract/openapi/admin.json` から生成する |
-| [infra/](infra) | 管理用のホスト名の mTLS、WAF、レート制限、ゾーンの設定を持つ Terraform と、そのオフラインのテスト |
+| [infra/](infra) | 管理者のクライアント証明書と、IdP のホスト名に絞ったゾーンのルール（管理用のホスト名の mTLS と WAF、issuer の HTTPS へのリダイレクト、レート制限）を持つ Terraform と、そのオフラインのテスト。ゾーンをサービスと共有するときは、ルールの定義をゾーンの持ち主に出力する |
 | [scripts/](scripts) | ブートストラップのスクリプト（state のバケット、D1、マイグレーション、署名鍵と管理者の鍵の生成、Terraform の実行） |
 | [deployments/](deployments) | デプロイごとの設定ファイル（`<デプロイの名前>.tfvars.json`）とその雛形 |
 | [docs/](docs) | 設計思想、設計ドキュメント、デプロイの手順 |
