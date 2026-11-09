@@ -60,6 +60,7 @@
 - そのため、2 つの Worker はどちらも `@cloudflare/vite-plugin@beta` を宣言し、wrangler を依存に宣言せず、`wrangler.*` の設定ファイルを置かない。`cf migrate` の Wrangler bundler も使わない。`cf` 1.0.0-beta.21 は、Worker のディレクトリの `package.json` に plugin が宣言され、そのディレクトリの `node_modules` に入っているときだけ plugin でビルドする（`cf` のパッケージの実装で確かめた）。そのため、plugin はルートではなく、それぞれの Worker の `package.json` に置く。
 - `cf` は `cloudflare.config.ts` を Node.js の標準のモジュールローダーで読み、TypeScript の `.js` の指定子を `.ts` のファイルに読み替えない。そのため、`cloudflare.config.ts` から辿る import は、相対の import を持たないファイルを指すパッケージの exports（`@idp/core/shared/issuer`、`@idp/admin-worker/settings`）だけにする。テストが、同じローダーで読み込めることを確かめる。
 - 管理用の Worker の名前は `idp-admin` で、IdP の Worker の名前と同じくコードの定数として `scripts/lib.sh` と `cloudflare.config.ts` で同じ値を使う。管理用の Worker は Secret を持たない。
+- 管理用の Worker の `cloudflare.config.ts` は、カスタムドメインを管理用のホスト名だけにし、`workersDev` と `previewUrls` を無効にし、`DB`、IdP の Worker の `IdpInternal` への `IDP`、`CF_VERSION_METADATA` をバインドし、`ISSUER`、`ADMIN_HOST`、`ADMIN_ALLOWLIST` をデプロイの設定ファイルから受け取る（環境変数 `IDP_ISSUER`、`IDP_ADMIN_HOST`、`IDP_ADMIN_ALLOWLIST`、`IDP_D1_DATABASE_ID`）。値は管理用の Worker が起動時に使うのと同じ検証を通し、Worker が拒否する値ではデプロイが始まらない。
 - `cf` にドキュメント化されたコマンドがない操作は、Cloudflare API かダッシュボードで行い、wrangler で補わない。`cf` で足りるかどうかを実装の前に確かめる項目は[未決事項](open-questions.md)にまとめる。
 - `cf` はベータで、コマンドが安定版の前に変わりうる（Cloudflare「Cloudflare CLI」）。
 - CI では `cf` が `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID` を読む（Cloudflare「Use cf in CI」の「Provide credentials」）。
@@ -115,7 +116,9 @@
 - ロールバック：Worker は前のバージョンに戻す。Cloudflare のドキュメントは、ロールバックをダッシュボードと Wrangler の `wrangler rollback` でしか説明していない（Cloudflare「Rollbacks」）。`cf` か Cloudflare API でできるかは実装の前に確かめる（[未決事項](open-questions.md)参照）。ロールバックはバインディング先の D1 を変えない（同じページの「Bindings」）。D1 は Time Travel で戻す。
 - 依存の取得は、Takumi Guard の下で、バージョンを固定した pnpm のセットアップの Action と `pnpm install --frozen-lockfile` で行う。Takumi Guard が pnpm に対応していることは利用者が確認済みで、セットアップの Action の実装で改めて確かめる。
 - 今の実装（`.github/workflows/deploy.yml` と `scripts/deploy.sh`）は、マイグレーションと 2 つの Worker のデプロイまでを、運用者が `workflow_dispatch` でデプロイの名前を入力して起動する形で持つ。main へのマージでの自動の起動と、CI での `terraform apply` は、まだ持たない。足すときは、上の順番（apply、マイグレーション、IdP の Worker、管理用の Worker）を保ち、デプロイの名前はリポジトリの変数 `IDP_DEPLOYMENT` から取る。
-- デプロイの最後に、外から確かめる（issuer の discovery と JWKS、証明書のない管理用のホスト名が WAF で止まること、`workers.dev` とプレビューの URL が無効であること。[実行手順](../deployment/runbook.md)参照）。どれかが通らなければ workflow は失敗する。
+- IdP の Worker を先にデプロイするのは、管理用の Worker の `IDP` の Service Binding が、IdP の Worker の名前付きのエントリポイント `IdpInternal` を指すため。バインディングを作るときに、そのエントリポイントがデプロイ済みの IdP の Worker になければならない。
+- デプロイの最後に、外から確かめる。issuer の discovery と JWKS が https で応答すること、issuer への平文の HTTP の要求がエッジで同じ URL の https へ 301 でリダイレクトされること、証明書のない管理用のホスト名への要求がエッジで止まること（管理用の Worker の `application/problem+json` の 403 ではないこと）、2 つの Worker の `workers.dev` とプレビューの URL が無効であること（[実行手順](../deployment/runbook.md)参照）。どれかが通らなければ workflow は失敗する。
+- 2 つ目と 3 つ目の確認は、ゾーンの単一資源（リダイレクト、mTLS のホスト名の割り当て、WAF のカスタムルール。[ドメインの置き場所](domain-placement.md)の共存の設計の 2）の確認で、`zone_singletons_owner` が `external` のときはゾーンの持ち主が適用したものを確かめる。IdP の Terraform の plan では、`external` のルールが適用されているかを検出できないので、デプロイのたびにここで確かめる。欠けていれば、両方の確認を終えてから、欠けたルールと、ルールを適用するのがゾーンの持ち主であること（`idp` なら IdP の Terraform の apply）を示して失敗する。黙って通さない。このとき 2 つの Worker はすでにデプロイされているが、どちらも自分の確認で不正な要求を拒否する（fail-closed）ので、失うのは Worker に届く前に止める性質だけである。
 
 **PR の `terraform plan` の認証情報（例外）**
 

@@ -41,7 +41,7 @@ describe("cloudflare.config.ts", () => {
   it("loads under Node's own module loader, which cf uses and which does not map .js specifiers to .ts", () => {
     const configUrl = new URL("../cloudflare.config.ts", import.meta.url).href;
     const script = `const m = await import(${JSON.stringify(configUrl)}); if (m.workerConfig(process.env).name !== "idp") process.exit(1);`;
-    const env = { ...process.env, IDP_ISSUER: "https://idp.example.com", IDP_D1_DATABASE_ID: D1_ID };
+    const env = { ...process.env, ...DEPLOY };
     expect(() => execFileSync(process.execPath, ["--input-type=module", "-e", script], { env, stdio: "pipe" })).not.toThrow();
   });
 

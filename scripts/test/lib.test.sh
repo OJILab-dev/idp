@@ -111,6 +111,31 @@ test_is_waf_block_tells_the_edge_from_the_worker() {
   assert_fails "an unreachable host is not a block" is_waf_block 000 ""
 }
 
+test_is_https_redirect_requires_the_rule_shape() {
+  local expected="https://id.example.com/.well-known/openid-configuration?smoke=1"
+  assert_succeeds "a 301 to the same URL over https is the rule" is_https_redirect 301 "${expected}" "${expected}"
+  assert_fails "the IdP Worker's 404 for http means the rule is missing" is_https_redirect 404 "" "${expected}"
+  assert_fails "a 302 is not the rule's permanent redirect" is_https_redirect 302 "${expected}" "${expected}"
+  assert_fails "a redirect that drops the query is not the rule" is_https_redirect 301 \
+    "https://id.example.com/.well-known/openid-configuration" "${expected}"
+  assert_fails "a redirect to another host is not the rule" is_https_redirect 301 \
+    "https://www.example.com/.well-known/openid-configuration?smoke=1" "${expected}"
+}
+
+test_zone_singletons_owner_is_idp_or_external() {
+  local config
+  config="$(mktemp)"
+  printf '%s' '{"zone_singletons_owner":"external"}' >"${config}"
+  assert_equal "reads external" "external" "$(config_zone_singletons_owner "${config}")"
+  printf '%s' '{"zone_singletons_owner":"idp"}' >"${config}"
+  assert_equal "reads idp" "idp" "$(config_zone_singletons_owner "${config}")"
+  printf '%s' '{"zone_singletons_owner":"service"}' >"${config}"
+  assert_fails "rejects an unknown owner" config_zone_singletons_owner "${config}"
+  printf '%s' '{}' >"${config}"
+  assert_fails "rejects a missing owner" config_zone_singletons_owner "${config}"
+  rm -f "${config}"
+}
+
 test_kid_matches_rfc8037
 test_private_jwk_from_pkcs8
 test_public_jwk_has_no_private_member
@@ -119,6 +144,8 @@ test_base64url_has_no_padding_or_unsafe_characters
 test_deployment_config_path_rejects_unsafe_names
 test_config_string_fails_closed
 test_is_waf_block_tells_the_edge_from_the_worker
+test_is_https_redirect_requires_the_rule_shape
+test_zone_singletons_owner_is_idp_or_external
 
 if [[ "${failures}" -ne 0 ]]; then
   printf '%s test(s) failed\n' "${failures}" >&2

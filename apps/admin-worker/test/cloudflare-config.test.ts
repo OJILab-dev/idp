@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { workerConfig, type DeployEnv } from "../cloudflare.config.js";
+import { workerConfig as idpWorkerConfig } from "../../worker/cloudflare.config.js";
 
 const D1_ID = "0f6b6c3e-5d0a-4a7e-9a35-6f1f4f6c2b11";
 const ALLOWLIST = JSON.stringify([{ sha256: "ab".repeat(32), name: "root" }]);
@@ -24,12 +25,26 @@ describe("admin cloudflare.config.ts", () => {
   it("binds the shared D1, the IdP Worker, the version metadata, and the deployment's settings", () => {
     expect(workerConfig(VALID).env).toEqual({
       DB: { type: "d1", id: D1_ID },
-      IDP: { type: "worker", worker: "idp" },
+      // The named entrypoint, never the IdP Worker's public fetch handler, which refuses a binding call.
+      IDP: { type: "worker", worker: "idp", exportName: "IdpInternal" },
       ISSUER: { type: "text", value: "https://idp.example.com" },
       ADMIN_HOST: { type: "text", value: "admin.example.com" },
       ADMIN_ALLOWLIST: { type: "text", value: ALLOWLIST },
       CF_VERSION_METADATA: { type: "version-metadata" },
     });
+  });
+
+  it("binds an entrypoint the IdP Worker's own configuration exports", () => {
+    const idp = idpWorkerConfig({ IDP_ISSUER: VALID.IDP_ISSUER, IDP_D1_DATABASE_ID: D1_ID, IDP_RATE_LIMIT_NAMESPACE_ID: "1001" });
+    const binding = workerConfig(VALID).env?.["IDP"];
+    expect(binding).toMatchObject({ type: "worker", worker: idp.name });
+    expect(Object.keys(idp.exports ?? {})).toContain((binding as { exportName?: string }).exportName);
+  });
+
+  it("holds no Secret and no secret-looking value: the admin Worker binds no signing key", () => {
+    const worker = workerConfig(VALID);
+    expect(Object.values(worker.env ?? {}).map((b) => (b as { type: string }).type)).not.toContain("secret");
+    expect(JSON.stringify(worker)).not.toMatch(/SIGNING_KEY/);
   });
 
   it("serves no static assets and keeps request metadata out of Workers Logs", () => {

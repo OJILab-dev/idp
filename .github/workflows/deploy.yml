@@ -1,7 +1,9 @@
 name: Deploy
 
 # Deploys the IdP Worker and the admin Worker of one deployment with scripts/deploy.sh: build, D1 migrations, the
-# IdP Worker, the admin Worker, then the post-deploy checks (docs/deployment/runbook.md, stage 5).
+# IdP Worker, the admin Worker, then the post-deploy checks (docs/deployment/runbook.md, stage 5). Every Worker input
+# (the hosts, the allowlist, rate_limit_namespace_id, zone_singletons_owner) comes from the deployment file, read by
+# the script, so this workflow names no deployment value itself.
 #
 # The 1Password GitHub Actions destination is bound to this file's path, the main branch, and the deployment's
 # GitHub Environment (docs/deployment/secret.md). Renaming this file breaks that binding.

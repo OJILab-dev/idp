@@ -20,6 +20,11 @@ const D1_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 // The IdP Worker's name, a code constant shared with scripts/lib.sh and apps/worker/cloudflare.config.ts.
 const IDP_WORKER_NAME = "idp";
 
+// The IdP Worker's named entrypoint (apps/worker/src/internal.ts, declared in its exports). The default export is
+// the public fetch handler, whose TLS and rate-limit checks refuse a binding call: it carries no request.cf and no
+// client IP (docs/design/idpctl.md).
+const IDP_INTERNAL_ENTRYPOINT = "IdpInternal";
+
 /**
  * Builds the admin Worker's configuration from the deploy environment.
  *
@@ -57,8 +62,9 @@ export function workerConfig(env: DeployEnv): CloudflareWorkerConfig {
     },
     env: {
       DB: bindings.d1({ id: d1Id }),
-      // Outbound only: the admin Worker reads the IdP Worker's discovery; nothing binds to the admin Worker.
-      IDP: bindings.worker({ worker: IDP_WORKER_NAME }),
+      // Outbound only: the admin Worker reads the IdP Worker's discovery over RPC; nothing binds to the admin Worker.
+      // The IdP Worker must be deployed first, so this entrypoint exists when the binding is created.
+      IDP: bindings.worker({ worker: IDP_WORKER_NAME, exportName: IDP_INTERNAL_ENTRYPOINT }),
       ISSUER: bindings.text(issuer.url),
       ADMIN_HOST: bindings.text(adminHost),
       // Passed as reviewed, not re-serialised: the Worker parses the same text that the parser above accepted.

@@ -17,8 +17,12 @@ usage() {
     "" \
     "Reads deployments/<deployment>.tfvars.json, looks up the D1 database by name, builds both Workers with cf build," \
     "applies contract/migrations, deploys the IdP Worker and then the admin Worker with cf deploy --prebuilt, and" \
-    "runs the post-deploy checks: discovery and JWKS over https on the issuer host, the admin host refusing a" \
-    "request without a client certificate at the WAF, and workers.dev and preview URLs disabled on both Workers." \
+    "runs the post-deploy checks: discovery and JWKS over https on the issuer host, plain http on the issuer host" \
+    "redirected to https at the edge, the admin host refusing a request without a client certificate at the edge," \
+    "and workers.dev and preview URLs disabled on both Workers." \
+    "" \
+    "The two edge checks test the zone singletons (the redirect, mTLS, and WAF rules). When zone_singletons_owner is" \
+    "external, the zone's owner applies them; a missing rule fails the run with that hand-off named." \
     "" \
     "      --ci                  Take the account from CLOUDFLARE_ACCOUNT_ID and the token from CLOUDFLARE_API_TOKEN," \
     "                            both loaded from the deployment's 1Password Environment. Without it, the account" \
@@ -28,17 +32,21 @@ usage() {
     "  -h, --help                Show this help."
 }
 
-# Prints "<status> <content type>" of a GET without following redirects, writing the body to a file. Retries while
-# the host is not reachable yet (status 000) or the edge reports an origin error (52x): a new custom domain needs
-# its DNS record and certificate before it answers.
+# Prints "<status> <detail>" of a GET without following redirects, writing the body to a file. The detail is the
+# curl write-out variable named by the third argument (content_type or redirect_url). Only the URL's own scheme is
+# allowed, so an http probe cannot be upgraded and an https probe cannot be downgraded. Retries while the host is
+# not reachable yet (status 000) or the edge reports an origin error (52x): a new custom domain needs its DNS
+# record and certificate before it answers.
 http_probe() {
   local url="${1}"
   local body="${2}"
+  local detail="${3:-content_type}"
+  local scheme="${url%%://*}"
   local attempt
   local result=""
   for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
-    result="$(curl --silent --proto '=https' --tlsv1.2 --max-time 20 --output "${body}" \
-      --write-out '%{http_code} %{content_type}' "${url}" || true)"
+    result="$(curl --silent --proto "=${scheme}" --tlsv1.2 --max-time 20 --output "${body}" \
+      --write-out "%{http_code} %{${detail}}" "${url}" || true)"
     case "${result}" in
       000* | 52[0-9]*) note "attempt ${attempt}: ${url} answered ${result%% *}; retrying" ;;
       *) break ;;
@@ -71,14 +79,47 @@ check_issuer() {
   note "discovery and JWKS answer on ${issuer}; kids: $(jq -c '[.keys[].kid]' "${workdir}/jwks.json")"
 }
 
+# Edge check of the issuer redirect rule (a zone singleton). Returns non-zero instead of failing, so every missing
+# zone rule is reported in one run.
+check_issuer_redirect() {
+  local issuer_host="${1}"
+  local workdir="${2}"
+  # A query proves the rule keeps it: the wildcard captures the full URI, query included (infra/main.tf).
+  local path="/.well-known/openid-configuration?smoke=1"
+  local result
+  result="$(http_probe "http://${issuer_host}${path}" "${workdir}/redirect.body" redirect_url)"
+  if is_https_redirect "${result%% *}" "${result#* }" "https://${issuer_host}${path}"; then
+    note "the edge redirects http on ${issuer_host} to https"
+    return 0
+  fi
+  note "MISSING ZONE RULE: http on ${issuer_host} answered ${result}, not a 301 to https; the issuer redirect rule (http_request_dynamic_redirect) is not applied"
+  return 1
+}
+
+# Edge check of the admin host's mTLS association and WAF rule (zone singletons). Returns non-zero like the above.
 check_admin_host() {
   local admin_host="${1}"
   local workdir="${2}"
   local result
   result="$(http_probe "https://${admin_host}/" "${workdir}/admin.body")"
-  is_waf_block "${result%% *}" "${result#* }" ||
-    fail "a request to ${admin_host} without a client certificate was not blocked at the WAF: ${result}"
-  note "the WAF blocks ${admin_host} without a client certificate"
+  if is_waf_block "${result%% *}" "${result#* }"; then
+    note "the edge blocks ${admin_host} without a client certificate"
+    return 0
+  fi
+  note "MISSING ZONE RULE: ${admin_host} without a client certificate answered ${result}, not the edge's 403; the mTLS hostname association or the WAF rule (http_request_firewall_custom) is not applied"
+  return 1
+}
+
+# Stops the run after the edge checks found a missing zone rule, naming who applies the rules. The Workers are
+# already deployed and refuse such requests themselves (fail-closed); what is lost until the rules exist is the
+# stop before the Worker, which protects the account's daily request limit (docs/design/domain-placement.md, 2).
+fail_missing_zone_rules() {
+  local owner="${1}"
+  local deployment="${2}"
+  if [[ "${owner}" == "external" ]]; then
+    fail "zone_singletons_owner is external and the zone's owner has not applied the IdP's zone rules above; hand them the zone_singletons output of scripts/terraform.sh ${deployment} output (runbook stage 4b'), then run the deploy again"
+  fi
+  fail "zone_singletons_owner is idp and the IdP's zone rules above are missing; run scripts/terraform.sh ${deployment} plan and apply (runbook stage 4b), then run the deploy again"
 }
 
 check_no_workers_dev() {
@@ -119,11 +160,17 @@ main() {
   local issuer_host
   local admin_host
   local d1_name
+  local namespace
+  local owner
   local allowlist
   config="$(deployment_config_path "${deployment}")"
   issuer_host="$(config_string "${config}" issuer_host)"
   admin_host="$(config_string "${config}" admin_host)"
   d1_name="$(config_string "${config}" d1_database_name)"
+  # The IdP Worker's cloudflare.config.ts checks its form; it has no default (domain-placement.md, 4).
+  namespace="$(config_string "${config}" rate_limit_namespace_id)"
+  # Read before anything changes, so a deployment without it stops here rather than after the deploy.
+  owner="$(config_zone_singletons_owner "${config}")"
   # Passed as compact JSON; the admin Worker's cloudflare.config.ts refuses an empty or malformed list.
   allowlist="$(jq -ce '.admin_allowlist | select(type == "array")' "${config}")" ||
     fail "deployment file lacks the array \"admin_allowlist\": ${config}"
@@ -153,6 +200,7 @@ main() {
   export IDP_ADMIN_HOST="${admin_host}"
   export IDP_ADMIN_ALLOWLIST="${allowlist}"
   export IDP_D1_DATABASE_ID="${d1_id}"
+  export IDP_RATE_LIMIT_NAMESPACE_ID="${namespace}"
 
   # Build both before changing anything, so a bad input or a build failure stops the run with nothing deployed.
   cf_cli_in apps/worker build
@@ -163,7 +211,8 @@ main() {
 
   local message
   message="deploy $(git -C "${IDP_REPO_ROOT}" rev-parse HEAD)"
-  # The IdP Worker first: the admin Worker's IDP Service Binding names it.
+  # The IdP Worker first: the admin Worker's IDP Service Binding targets its IdpInternal entrypoint, which must
+  # exist in the deployed version before a binding to it is created.
   cf_cli_in apps/worker deploy --prebuilt --message "${message}"
   cf_cli_in apps/admin-worker deploy --prebuilt --message "${message}"
 
@@ -172,10 +221,14 @@ main() {
   # shellcheck disable=SC2064 # Expand now: workdir is local and gone when the trap runs.
   trap "rm -rf '${workdir}'" EXIT
   check_issuer "${IDP_ISSUER}" "${before_signing_key}" "${workdir}"
-  check_admin_host "${admin_host}" "${workdir}"
   check_no_workers_dev "${IDP_WORKER_NAME}"
   check_no_workers_dev "${ADMIN_WORKER_NAME}"
-  note "deployed ${IDP_WORKER_NAME} and ${ADMIN_WORKER_NAME} for ${deployment}"
+  # Both edge checks run before failing, so one run lists every missing zone rule.
+  local missing=0
+  check_issuer_redirect "${issuer_host}" "${workdir}" || missing=$((missing + 1))
+  check_admin_host "${admin_host}" "${workdir}" || missing=$((missing + 1))
+  [[ "${missing}" -eq 0 ]] || fail_missing_zone_rules "${owner}" "${deployment}"
+  note "deployed ${IDP_WORKER_NAME} and ${ADMIN_WORKER_NAME} for ${deployment}; zone rules present (owner: ${owner})"
 }
 
 main "$@"

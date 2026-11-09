@@ -127,6 +127,27 @@ is_waf_block() {
   [[ "${status}" == "403" ]] && [[ "${content_type}" != application/problem+json* ]]
 }
 
+# Succeeds when a plain-http response is the issuer redirect rule's: a 301 to exactly the https form of the same URL
+# (infra/main.tf, the Single Redirect). Without the rule the request reaches the IdP Worker, which refuses http with a
+# 404; that is fail-closed but uses the daily request limit, and RPs typing the issuer by hand get no redirect.
+is_https_redirect() {
+  local status="${1}"
+  local location="${2}"
+  local expected="${3}"
+  [[ "${status}" == "301" ]] && [[ "${location}" == "${expected}" ]]
+}
+
+# Prints zone_singletons_owner after checking it is one of the two values infra/variables.tf accepts. No default:
+# a deployment that forgot it stops (docs/design/domain-placement.md, 2).
+config_zone_singletons_owner() {
+  local path="${1}"
+  local owner
+  owner="$(config_string "${path}" zone_singletons_owner)"
+  [[ "${owner}" == "idp" || "${owner}" == "external" ]] ||
+    fail "zone_singletons_owner must be \"idp\" or \"external\", not \"${owner}\": ${path}"
+  printf '%s\n' "${owner}"
+}
+
 # base64url without padding (RFC 4648 §5), reading bytes on stdin.
 base64url() {
   openssl base64 -A | tr '+/' '-_' | tr -d '='

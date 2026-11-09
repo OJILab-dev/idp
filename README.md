@@ -10,7 +10,7 @@ Cloudflare Workers の無料枠と D1 だけで動く、パスキー専用の最
 
 残っている作業は次のとおりです。
 
-- 検証用の Cloudflare アカウントへの最初のデプロイ。運用者が [ブートストラップの実行手順](docs/deployment/runbook.md) に沿って行います。2 つの Worker のデプロイは、手動で起動する workflow（[.github/workflows/deploy.yml](.github/workflows/deploy.yml)）が `scripts/deploy.sh` を動かして行います。ビルド、D1 のマイグレーション、IdP の Worker、管理用の Worker の順にデプロイし、最後に外から確認します。
+- 検証用の Cloudflare アカウントへの最初のデプロイ。運用者が [ブートストラップの実行手順](docs/deployment/runbook.md) に沿って行います。2 つの Worker のデプロイは、手動で起動する workflow（[.github/workflows/deploy.yml](.github/workflows/deploy.yml)）が `scripts/deploy.sh` を動かして行います。ビルド、D1 のマイグレーション、IdP の Worker、管理用の Worker の順にデプロイし、最後に外から確認します（discovery と JWKS、issuer の http から https へのリダイレクト、証明書のない管理用のホスト名がエッジで止まること、`workers.dev` とプレビューの URL が無効であること）。
 - e2e テスト（Playwright）。[セキュリティ要件チェックリスト](docs/design/security-checklist.md) の攻撃ケースを実装します。
 
 ## ゴール
@@ -59,7 +59,7 @@ IdP の Worker には管理用のエンドポイントや管理 UI を置きま�
 - 2 つの Worker のビルドは、`cf` がそれぞれの Worker の `package.json` で宣言した Cloudflare Vite plugin（`@cloudflare/vite-plugin` の 2.0 ベータ）で行います。設定はそれぞれの `cloudflare.config.ts` と `vite.config.ts` です。
 - `cf auth login` は運用者が自分で実行します。
 - フォークして自分のアカウントとドメインで動かすときは、アカウント ID を 1Password に、それ以外の値（ゾーン、ホスト名、D1 や 1Password のアイテムの名前など）を `deployments/<デプロイの名前>.tfvars.json` に書きます。コード、workflow、スクリプトには、アカウントやドメインに固有の値を書きません。
-- issuer と管理用のホスト名を持つゾーンは、2 つの Worker をデプロイする Cloudflare アカウントに置きます。Worker のカスタムドメイン、mTLS、WAF とゾーンの設定はゾーン単位で、別のアカウントにある親のドメインの下にサブドメインだけのゾーンを置く形は Enterprise プランでしか使えないため、Free と Pro ではデプロイするアカウントにフルセットアップのゾーンが要ります。
+- IdP の 2 つの Worker と D1 は、issuer と管理用のホスト名を持つゾーンと同じ Cloudflare アカウントに置きます。典型的には IdP が仕えるサービスのアカウントで、ゾーンをサービスと共有できます（[ドメインの置き場所](docs/design/domain-placement.md)）。ゾーンの単一資源（管理用のホスト名の mTLS と WAF、issuer のリダイレクト、レート制限ルール）は、ゾーンを IdP だけで使うなら IdP の Terraform が適用し（`zone_singletons_owner` が `idp`）、サービスと共有するなら Terraform の出力 `zone_singletons` をゾーンの持ち主に渡して適用してもらいます（`external`）。`external` では、デプロイの前に適用を済ませます。デプロイの最後の確認が、ルールが欠けていれば失敗して知らせます。
 
 ## コマンド
 
