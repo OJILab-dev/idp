@@ -25,7 +25,7 @@
 - `cf` のスクリプトは、運用者が `cf auth login` で認証したセッションを使う。このセッションは複数のアカウントにまたがりうるので、スクリプトは `cf` を呼ぶたびに入力のアカウント ID を明示し、変更の前に対象のアカウントを確かめる（[デプロイと設定](../design/deployment.md)の直書きの禁止を参照）。
 - スクリプトと Terraform は、デプロイの設定ファイル（`deployments/<デプロイの名前>.tfvars.json`）と、1Password から受け取るアカウント ID だけを入力にする。入力が欠けていれば、何もせずに止まる。
 - 手元の Terraform は、Terraform 用の API トークンと state の R2 の認証情報を、1Password の Vault のアイテムから `op` で実行時にプロセスの環境変数として受け取る。値をファイルやコマンドラインに書かない。CI 用の 1Password Environment とは別に、人が使う認証情報として Vault に置く（[1Password Environments と GitHub Actions](secret.md)の Vault と Environment の境界を参照）。
-- 段階 5 以降の Terraform の apply、マイグレーション、デプロイは、すべて CI で行い、手元からは行わない。例外として、CI の 1Password Environment がまだ用意できないときに限り、段階 5 のデプロイを、CI と同じスクリプト（`scripts/deploy.sh`）で手元から行ってよい。手順とコードが CI と同じなので、結果も同じになるため。
+- 段階 5 以降の Terraform の apply、マイグレーション、デプロイは、すべて CI で行い、手元からは行わない。例外として、CI の 1Password Environment がまだ用意できないときに限り、段階 5 のデプロイを、CI と同じスクリプト（`scripts/deploy.sh`）で手元から行ってよい。手順とコードが CI と同じなので、結果も同じになるため。そのときスクリプトは、作業ツリーが変更のない `origin/main` そのものであることを確かめ、レビューを通っていないコードをデプロイしない。
 
 ## 手順
 

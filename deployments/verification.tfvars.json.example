@@ -2,7 +2,7 @@
   "zone": "example.com",
   "issuer_host": "id.example.com",
   "admin_host": "admin.id.example.com",
-  "zone_singletons_owner": "external",
+  "zone_singletons_owner": "idp",
   "admin_client_certificates": {},
   "admin_allowlist": [],
   "d1_database_name": "idp-verification",

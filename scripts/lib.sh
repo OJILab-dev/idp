@@ -137,6 +137,25 @@ is_https_redirect() {
   [[ "${status}" == "301" ]] && [[ "${location}" == "${expected}" ]]
 }
 
+# Stops unless the checkout is exactly the reviewed main: no uncommitted or untracked change, and HEAD equal to the
+# remote's main just fetched. A local deploy (outside CI) labels the version with HEAD, so without this the label
+# could name a commit that is not what was built, or one that never went through review (the main ruleset is the
+# only gate for infrastructure changes; docs/design/deployment.md).
+require_reviewed_checkout() {
+  local repo="${1}"
+  local remote="${2:-origin}"
+  local status
+  status="$(git -C "${repo}" status --porcelain)" || fail "cannot read the git status of ${repo}"
+  [[ -z "${status}" ]] || fail "the checkout has uncommitted or untracked changes; deploy only a clean checkout of the reviewed main"
+  git -C "${repo}" fetch --quiet "${remote}" main || fail "cannot fetch main from ${remote}"
+  local head
+  local reviewed
+  head="$(git -C "${repo}" rev-parse HEAD)"
+  reviewed="$(git -C "${repo}" rev-parse "refs/remotes/${remote}/main")"
+  [[ "${head}" == "${reviewed}" ]] ||
+    fail "HEAD (${head}) is not ${remote}/main (${reviewed}); check out the reviewed main before a local deploy"
+}
+
 # Prints zone_singletons_owner after checking it is one of the two values infra/variables.tf accepts. No default:
 # a deployment that forgot it stops (docs/design/domain-placement.md, 2).
 config_zone_singletons_owner() {

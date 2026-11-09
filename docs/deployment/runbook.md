@@ -18,6 +18,14 @@
 5. CI 用の 1Password Environment（設定ファイルの `onepassword_deploy_environment`。`CLOUDFLARE_API_TOKEN` にデプロイ用のトークン、`CLOUDFLARE_ACCOUNT_ID` にアカウント ID）と GitHub Actions の destination を作り、`setup-1password-integration.sh` を実行する（[1Password Environments と GitHub Actions](secret.md)参照）。GitHub に、設定ファイルの `github_deploy_environment` の名前で GitHub Environment を作る。これらは段階 5 の前までに済ませればよい。
 6. アカウントをサービスと共有するときは、IdP の Rate Limiting の名前空間の ID（設定ファイルの `rate_limit_namespace_id`）に、サービスの Worker が使っていない値を選ぶ。
 
+## ゾーンの単一資源の持ち主の選び方
+
+既定は `idp` で、雛形（`deployments/verification.tfvars.json.example`）も `idp` にしてある。IdP の Terraform が、管理用のホスト名の mTLS の割り当て、WAF のカスタムルール、issuer のリダイレクトのルール、レート制限ルールを作って持つ。`external` は、ゾーンの持ち主がそれらのフェーズを自分のリポジトリですでに持っているときにだけ選ぶ。
+
+- ゾーンの DNS のレコードを別のリポジトリ（ドメインを管理するリポジトリの Terraform）で管理していても、`idp` にできる。そのリポジトリが持つのが DNS のレコードだけで、WAF のカスタムルール、レート制限ルール、シングルリダイレクトのエントリポイントのルールセットと、managed CA の mTLS のホスト名の割り当てを持たないこと。持っていれば、片方の apply がもう片方のルールを消すので `external` にする（[ドメインの置き場所](../design/domain-placement.md)の共存の設計の 2）。
+- `idp` でも `external` でも、issuer と管理用のホスト名の DNS のレコードは、段階 5 の `cf deploy` がカスタムドメインとして作る。ドメインを管理するリポジトリに、この 2 つのホスト名のレコードを足さない。同じホスト名のレコードがあると、カスタムドメインを付けられないか、`cf deploy` と DNS のリポジトリが互いに書き換える。
+- 段階 4b の plan が、ゾーンの既存のルールセットを消す差分を出したら apply しない。そのゾーンは `external` に切り替える。
+
 ## 手元の準備
 
 1. リポジトリのルートで `mise install` と `pnpm install --frozen-lockfile` を実行し、mise が固定した Terraform と `jq`、`package.json` が固定した `cf` を入れる。`openssl`（3.x）、`op`、`curl` も使う。
@@ -55,10 +63,10 @@
   4. IdP の Worker、管理用の Worker の順に、2 で作ったものを `cf deploy --prebuilt` でデプロイする。管理用の Worker の Service Binding `IDP` が IdP の Worker の名前付きのエントリポイント `IdpInternal` を指し、バインディングを作るときにそのエントリポイントがなければならないため、この順にする。
   5. 外から確かめる。issuer の discovery と JWKS が https で応答し、JWKS に鍵があること（最初のデプロイでは、代わりに IdP の Worker が 500 で拒否すること）。2 つの Worker で `workers.dev` とプレビューの URL が無効であること。
   6. ゾーンのルールを外から確かめる。issuer への平文の HTTP の要求が、エッジで同じ URL（クエリを含む）の https へ 301 でリダイレクトされること（IdP の Worker まで届くと 404 になる）。証明書のない管理用のホスト名への要求が 403 で止まり、それが管理用の Worker の応答（`application/problem+json`）ではないこと（エッジで止まったこと）。両方を確かめてから、欠けたものがあれば、欠けたルールと適用する側を示して失敗する。`external` ならゾーンの持ち主に `zone_singletons` の出力を渡して適用してもらい（段階 4b'）、`idp` なら段階 4b の apply をやり直してから、workflow をもう一度起動する。このとき 2 つの Worker はデプロイ済みだが、どちらも自分の確認で不正な要求を拒否する。
-- A2（IdP をサービスのアカウントに置く形）での運用者の手順の順番は次のとおり。前提の手作業（ゾーンの持ち主との合意、名前空間の ID の選択、1Password と GitHub の Environment）、段階 0〜4a、段階 4b（`external` では管理者の証明書だけができる）、`external` なら段階 4b'（`zone_singletons` の出力をゾーンの持ち主に渡し、適用されたことを確かめる）、段階 4c、段階 5（`before_signing_key` を有効にした Deploy）、段階 5b、段階 5 の Deploy をもう一度（`before_signing_key` を無効）、ブートストラップの段階 6 と 7。
+- A2（IdP をサービスのアカウントに置く形）での運用者の手順の順番は次のとおり。既定の `idp` では、前提の手作業（ゾーンの持ち主との合意、名前空間の ID の選択、1Password と GitHub の Environment）、段階 0〜4a、段階 4b（証明書とゾーンのルールができる）、段階 4c、段階 5（`before_signing_key` を有効にした Deploy）、段階 5b、段階 5 の Deploy をもう一度（`before_signing_key` を無効）、ブートストラップの段階 6 と 7。`external` では、段階 4b で管理者の証明書だけができ、段階 4c の前に段階 4b'（`zone_singletons` の出力をゾーンの持ち主に渡し、適用されたことを確かめる）を挟む。
 - workflow は `main` でだけ動く。最初の job がデプロイの設定ファイルからデプロイ用の GitHub Environment の名前を読み、デプロイの job はその Environment で、1Password Environment から `CLOUDFLARE_API_TOKEN` と `CLOUDFLARE_ACCOUNT_ID` を受け取る（[1Password Environments と GitHub Actions](secret.md)参照）。アカウント ID はログに出ないように mask する。
 - 1Password の destination は、このリポジトリ、`.github/workflows/deploy.yml`、`main`、設定ファイルの `github_deploy_environment` の GitHub Environment に限る。repository variable の `OP_ENVIRONMENT_ID` は、設定ファイルの `onepassword_deploy_environment` の Environment を指す。デプロイが複数になったら、GitHub Environment ごとに同じ名前の変数を置く（GitHub Environment の変数が repository variable より優先される）。
-- 手元からのデプロイ（`--ci` なし）は、CI の 1Password Environment がまだないときの例外にだけ使う。アカウント ID を 1Password のアイテムから読み、運用者の `cf auth login` のセッションが対象のアカウントであることを確かめてから動く。
+- 手元からのデプロイ（`--ci` なし）は、CI の 1Password Environment がまだないときの例外にだけ使う。アカウント ID を 1Password のアイテムから読み、運用者の `cf auth login` のセッションが対象のアカウントであることを確かめてから動く。また、作業ツリーに未コミットや追跡していないファイルがなく、HEAD が取得し直した `origin/main` と同じであることを確かめ、そうでなければ何も変えずに止まる。バージョンのメッセージに付ける HEAD のコミットが、レビューを通ってビルドしたものそのものであることを保つため。上書きする手段は置かない。
 - 段階 5b で署名鍵を登録した後は、`before_signing_key` を無効にして workflow をもう一度起動し、discovery と JWKS の確認を通す。これが段階 6 の discovery と JWKS の確認を兼ねる。
 - main へのマージでの自動のデプロイと、CI での Terraform の apply は、まだ workflow にない。今は運用者が起動する。
 
@@ -85,5 +93,6 @@
 - `workers.dev` とプレビューの URL に、外から実際に届かないこと。スクリプトは `cf workers get` の設定だけを確かめ、アカウントの `workers.dev` のサブドメインは入力にないので URL には要求しない（段階 5 の確認）
 - Workers の Rate Limiting バインディングが Workers Free で使え、`cf deploy` が名前空間の ID を受け付けること（[ドメインの置き場所](../design/domain-placement.md)の 4）。使えなければ IdP の Worker のデプロイが失敗する（段階 5）
 - デプロイの job の Takumi Runner に `curl` があること（段階 5 の確認で使う）
+- 既存の DNS のレコードがあるホスト名に、`cf deploy` がカスタムドメインを付けられるか（付けられないか、レコードを置き換えるか）。DNS を別のリポジトリで管理するゾーンでは、issuer と管理用のホスト名のレコードをそのリポジトリに置かずに確かめる（段階 5）
 - 1Password の load-secrets-action が、秘密でない `CLOUDFLARE_ACCOUNT_ID` を mask するか。workflow は自分でも mask する（段階 5）
 - 段階 5b で登録した Worker Secret が、その後の `cf deploy`（`--secrets-file` を付けない）で新しいバージョンに引き継がれること（[未決事項](../design/open-questions.md)）。引き継がれなければ、署名鍵の登録の後の再デプロイで IdP の Worker が 500 を返し、workflow の確認で止まる

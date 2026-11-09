@@ -26,7 +26,8 @@ usage() {
     "" \
     "      --ci                  Take the account from CLOUDFLARE_ACCOUNT_ID and the token from CLOUDFLARE_API_TOKEN," \
     "                            both loaded from the deployment's 1Password Environment. Without it, the account" \
-    "                            is read from the 1Password item and cf uses the operator's cf auth login session." \
+    "                            is read from the 1Password item and cf uses the operator's cf auth login session," \
+    "                            and the checkout must be clean and equal to the freshly fetched origin/main." \
     "      --before-signing-key  Expect the IdP Worker to refuse every request (500), because the signing key is" \
     "                            registered only after the first deploy (bootstrap stage 5b)." \
     "  -h, --help                Show this help."
@@ -183,6 +184,8 @@ main() {
     # No verify_cf_account: the token is scoped to the one account of the Environment, so there is no session
     # that could span accounts, and the deploy token need not read account details.
   else
+    # In CI the workflow refuses anything but main and checks out that commit; locally nothing else guarantees it.
+    require_reviewed_checkout "${IDP_REPO_ROOT}"
     require_command op
     local vault
     local cloudflare_item

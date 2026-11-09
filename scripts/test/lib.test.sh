@@ -136,6 +136,52 @@ test_zone_singletons_owner_is_idp_or_external() {
   rm -f "${config}"
 }
 
+# A throwaway origin (bare) and a clone of its main, so require_reviewed_checkout runs against real git offline.
+make_reviewed_clone() {
+  local root="${1}"
+  git init --quiet --bare --initial-branch=main "${root}/origin.git"
+  git clone --quiet "${root}/origin.git" "${root}/work" 2>/dev/null
+  git -C "${root}/work" checkout --quiet -b main
+  printf 'reviewed\n' >"${root}/work/file"
+  git -C "${root}/work" add file
+  git -C "${root}/work" -c user.name=test -c user.email=test@example.invalid commit --quiet -m reviewed
+  git -C "${root}/work" push --quiet origin main
+}
+
+local_commit() {
+  local repo="${1}"
+  printf 'local\n' >>"${repo}/file"
+  git -C "${repo}" -c user.name=test -c user.email=test@example.invalid commit --quiet -am local
+}
+
+remote_moves_ahead() {
+  local root="${1}"
+  git clone --quiet "${root}/origin.git" "${root}/other" 2>/dev/null
+  printf 'merged\n' >>"${root}/other/file"
+  git -C "${root}/other" -c user.name=test -c user.email=test@example.invalid commit --quiet -am merged
+  git -C "${root}/other" push --quiet origin main
+}
+
+test_require_reviewed_checkout() {
+  local root
+  root="$(mktemp -d)"
+  make_reviewed_clone "${root}"
+  assert_succeeds "a clean checkout of origin/main is reviewed" require_reviewed_checkout "${root}/work"
+  printf 'x\n' >"${root}/work/untracked"
+  assert_fails "an untracked file is refused" require_reviewed_checkout "${root}/work"
+  rm -f "${root}/work/untracked"
+  printf 'edit\n' >>"${root}/work/file"
+  assert_fails "an uncommitted change is refused" require_reviewed_checkout "${root}/work"
+  git -C "${root}/work" checkout --quiet -- file
+  local_commit "${root}/work"
+  assert_fails "a local commit not on origin/main is refused" require_reviewed_checkout "${root}/work"
+  git -C "${root}/work" reset --quiet --hard origin/main
+  remote_moves_ahead "${root}"
+  # The stale remote-tracking ref still equals HEAD; only the fetch inside the check reveals the newer main.
+  assert_fails "a checkout behind the freshly fetched main is refused" require_reviewed_checkout "${root}/work"
+  rm -rf "${root}"
+}
+
 test_kid_matches_rfc8037
 test_private_jwk_from_pkcs8
 test_public_jwk_has_no_private_member
@@ -146,6 +192,7 @@ test_config_string_fails_closed
 test_is_waf_block_tells_the_edge_from_the_worker
 test_is_https_redirect_requires_the_rule_shape
 test_zone_singletons_owner_is_idp_or_external
+test_require_reviewed_checkout
 
 if [[ "${failures}" -ne 0 ]]; then
   printf '%s test(s) failed\n' "${failures}" >&2
