@@ -1,6 +1,6 @@
 // The issuer must be exactly https://<host> (the Worker refuses anything else), so the local IdP is served over TLS
-// with a certificate generated for this run only; the RP stand-in serves the same one. It never leaves e2e/.output and
-// is never committed.
+// with a certificate generated for this run only; the RP stand-in serves the same one. It never leaves e2e/dist and is
+// never committed.
 import { execFile } from "node:child_process";
 import { createHash, X509Certificate } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";

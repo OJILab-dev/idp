@@ -7,7 +7,7 @@ import { executeOperation, findOperation, type AdminContext, type OperationName 
 import { parseIssuer, randomToken } from "../../packages/core/src/shared/index.js";
 import { ISSUER } from "./idp.js";
 
-/** The RP stand-in's redirect URI; Chromium never resolves rp.test, the test intercepts the navigation. */
+/** The RP stand-in's redirect URI; Chromium maps rp.test to the stand-in's local HTTPS server (support/rp.ts). */
 export const REDIRECT_URI = "https://rp.test/callback";
 
 /** A registered client as the RP stand-in knows it. */

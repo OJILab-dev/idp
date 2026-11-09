@@ -1,7 +1,6 @@
 // Scenario 2: sign-in from an RP's /authorize, through conditional mediation and through the button, ending in a code
 // redirect that the RP exchanges (authentication.md, steps 1 to 8).
-import { attach, detach, expect, expectSignInPage, test } from "../support/fixtures.js";
-import { en } from "../../apps/worker/pages/locales/en.js";
+import { detach, expect, signInWithButton, test } from "../support/fixtures.js";
 import { enrolledUser, finishCodeFlow } from "../support/flows.js";
 import { IDP_HOST } from "../support/idp.js";
 import { authorizeFlow } from "../support/rp.js";
@@ -30,8 +29,6 @@ test("the button signs in when no passkey was offered by autofill", async ({ pag
 
   const flow = authorizeFlow(client);
   await page.goto(flow.url);
-  await expectSignInPage(page);
-  await attach(authenticators, passkeys);
-  await page.getByRole("button", { name: en.signin_button }).click();
+  await signInWithButton(page, authenticators, passkeys);
   await finishCodeFlow(page, idp, client, flow);
 });

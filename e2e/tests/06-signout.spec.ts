@@ -1,7 +1,7 @@
 // Scenario 6: signing out on the account page ends the session, so the next /authorize asks for the passkey again
 // (authentication.md, "サインアウト").
 import { en } from "../../apps/worker/pages/locales/en.js";
-import { attach, detach, expect, expectSignInPage, test } from "../support/fixtures.js";
+import { detach, expect, signInWithButton, test } from "../support/fixtures.js";
 import { enrolledUser, finishCodeFlow } from "../support/flows.js";
 import { IDP_HOST, ISSUER } from "../support/idp.js";
 import { authorizeFlow } from "../support/rp.js";
@@ -23,8 +23,6 @@ test("sign-out clears the session and the next authorization request needs a sig
   const passkeys = await detach(authenticators, user.authenticatorId);
   const next = authorizeFlow(client);
   await page.goto(next.url);
-  await expectSignInPage(page);
-  await attach(authenticators, passkeys);
-  await page.getByRole("button", { name: en.signin_button }).click();
+  await signInWithButton(page, authenticators, passkeys);
   await finishCodeFlow(page, idp, client, next);
 });

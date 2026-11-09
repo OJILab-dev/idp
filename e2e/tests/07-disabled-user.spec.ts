@@ -1,7 +1,7 @@
 // Scenario 7: a user disabled through the core's user_disable loses the session and cannot sign in again
 // (authentication.md, "無効化されたユーザー").
 import { en } from "../../apps/worker/pages/locales/en.js";
-import { attach, detach, expect, expectSignInPage, test } from "../support/fixtures.js";
+import { detach, expect, expectSignInPage, signInWithButton, test } from "../support/fixtures.js";
 import { enrolledUser, finishCodeFlow } from "../support/flows.js";
 import { RP_HOST, authorizeFlow } from "../support/rp.js";
 
@@ -22,9 +22,7 @@ test("a disabled user is sent to sign in and the passkey is refused", async ({ p
   const passkeys = await detach(authenticators, user.authenticatorId);
   const next = authorizeFlow(client);
   await page.goto(next.url);
-  await expectSignInPage(page);
-  await attach(authenticators, passkeys);
-  await page.getByRole("button", { name: en.signin_button }).click();
+  await signInWithButton(page, authenticators, passkeys);
   await expect(page.getByRole("alert")).toHaveText(`${en.failed} (${en.error_type}: passkey_rejected)`);
   await expectSignInPage(page);
   expect(toRp).toEqual([]);

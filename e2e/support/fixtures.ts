@@ -116,6 +116,34 @@ export async function attach(authenticators: Authenticators, credentials: readon
   return authenticatorId;
 }
 
+// How long a pending conditional request gets to complete on its own after the authenticator returns. The virtual
+// authenticator answers within milliseconds, so a request that would complete does so well inside this.
+const CONDITIONAL_GRACE_MS = 1_000;
+
+/**
+ * Signs in on the sign-in page with the button, after the page loaded with no authenticator attached. It proves the
+ * button did the work: re-attaching the passkey alone sends no /webauthn/auth/verify and leaves the tab on /signin,
+ * and the verify request follows the click.
+ *
+ * @param credentials The passkeys {@link detach} took away; attached again before the click.
+ * @throws {Error} The page signs in before the click, or not after it.
+ */
+export async function signInWithButton(page: Page, authenticators: Authenticators, credentials: readonly VirtualCredential[]): Promise<void> {
+  await expectSignInPage(page);
+  const verifies: string[] = [];
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/webauthn/auth/verify") verifies.push(request.url());
+  });
+  await attach(authenticators, credentials);
+  await page.waitForTimeout(CONDITIONAL_GRACE_MS);
+  expect(verifies, "a sign-in before the click").toEqual([]);
+  await expectSignInPage(page);
+
+  const verify = page.waitForRequest((request) => new URL(request.url()).pathname === "/webauthn/auth/verify");
+  await page.getByRole("button", { name: en.signin_button }).click();
+  await verify;
+}
+
 /**
  * Asserts the tab shows the sign-in page, ready for the button.
  *

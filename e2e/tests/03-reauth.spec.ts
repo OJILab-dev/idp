@@ -1,8 +1,7 @@
 // Scenario 3: prompt=login, and every public client, require a fresh passkey sign-in even with a live session
 // (authentication.md, steps 2 and 4).
 import type { Page } from "@playwright/test";
-import { attach, detach, expect, expectSignInPage, test } from "../support/fixtures.js";
-import { en } from "../../apps/worker/pages/locales/en.js";
+import { detach, expect, signInWithButton, test } from "../support/fixtures.js";
 import { enrolledUser, finishCodeFlow } from "../support/flows.js";
 import { IDP_HOST } from "../support/idp.js";
 import { authorizeFlow } from "../support/rp.js";
@@ -34,9 +33,7 @@ test("prompt=login asks for the passkey again although the session is live", asy
   const passkeys = await detach(authenticators, user.authenticatorId);
   const login = authorizeFlow(client, { prompt: "login" });
   await page.goto(login.url);
-  await expectSignInPage(page);
-  await attach(authenticators, passkeys);
-  await page.getByRole("button", { name: en.signin_button }).click();
+  await signInWithButton(page, authenticators, passkeys);
   await finishCodeFlow(page, idp, client, login);
 });
 
@@ -51,8 +48,6 @@ test("a public client always asks for the passkey", async ({ page, admin, authen
   const passkeys = await detach(authenticators, user.authenticatorId);
   const flow = authorizeFlow(publicClient);
   await page.goto(flow.url);
-  await expectSignInPage(page);
-  await attach(authenticators, passkeys);
-  await page.getByRole("button", { name: en.signin_button }).click();
+  await signInWithButton(page, authenticators, passkeys);
   await finishCodeFlow(page, idp, publicClient, flow);
 });
