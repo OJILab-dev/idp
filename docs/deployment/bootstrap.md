@@ -6,7 +6,7 @@
 
 手順は 2 つのホスティングのモード（カスタムドメインと `workers.dev`。[ホスティングのモード](../design/hosting-modes.md)）で同じで、違うのはゾーンに関わる前提と確認だけ。管理者の認証は、どちらのモードでも RFC 9421 の署名で行う。
 
-管理用の Worker は[ホスティングのモード](../design/hosting-modes.md)の実装の順番の 6 で署名だけで管理者を確かめるようになり、実装の順番の 7 で mTLS（Terraform の mTLS の割り当てとクライアント証明書、`idpctl` の `--cert`、`admin_allowlist` と `admin_client_certificates` の入力）を外した。mTLS を使ったデプロイは一度もなかったので、移行の手順も、証明書を消す apply も要らない。モードの入力（`hosting_mode` と `workers_dev_subdomain`）は実装の順番の 8 で足した。`workers.dev` のモードでこの手順を最後まで通すことは、実装の順番の 9 で確かめる。
+管理用の Worker は[ホスティングのモード](../design/hosting-modes.md)の実装の順番の 6 で署名だけで管理者を確かめるようになり、実装の順番の 7 で mTLS（Terraform の mTLS の割り当てとクライアント証明書、`idpctl` の `--cert`、`admin_allowlist` と `admin_client_certificates` の入力）を外した。mTLS を使ったデプロイは一度もなかったので、移行の手順も、証明書を消す apply も要らない。モードの入力（`hosting_mode` と `workers_dev_subdomain`）は実装の順番の 8 で足した。`workers.dev` のモードの道筋は、下の「モードごとの道筋」にカスタムドメインのモードと並べて書いた（実装の順番の 9）。Playwright の e2e は、両方のモードの形の issuer で同じシナリオを流す。本物のアカウントに `workers.dev` のモードでこの手順を最後まで通すことは、運用者が[未決事項](../design/open-questions.md)の移植性のテストの `workers_dev` 版で確かめる。
 
 モードは段階 0 で `hosting_mode` に書き、既定値はない。モードを変えることは issuer を変えることなので、最初のデプロイの前に決め、変えるときは新しいデプロイとして作り直す。カスタムドメインのモードで作った既存のデプロイは、設定ファイルに `"hosting_mode": "custom_domain"` を足すだけでよく、ほかは何も変わらない。`workers.dev` のモードを選ぶ前に、次の警告を読む。
 
@@ -48,7 +48,7 @@
 
 | 段階 | 行うこと | 場所と道具 | 確かめること |
 | --- | --- | --- | --- |
-| 0 | ホスティングのモードを決め、デプロイごとの入力を決める。アカウント ID を 1Password に置き、それ以外の入力（`hosting_mode`、カスタムドメインのモードでは issuer と管理用のホスト名、`workers.dev` のモードではアカウントのサブドメイン、2 つの Rate Limiting の名前空間の ID を含む）をデプロイの設定ファイルに書く。許可リストは空にしておく | 手元。1Password、リポジトリの設定ファイル（PR でレビューする） | 入力の一覧（[デプロイと設定](../design/deployment.md)のデプロイごとの入力）がモードで必須のものだけそろい、禁止のものがなく、アカウント ID がリポジトリにないこと。issuer は運用を始めた後に変えない（[デプロイと設定](../design/deployment.md)のホスト名を変えるときの影響を参照） |
+| 0 | 上の警告を読んでから、ホスティングのモードを決め、デプロイごとの入力を決める。アカウント ID を 1Password に置き、それ以外の入力（`hosting_mode`、カスタムドメインのモードでは issuer と管理用のホスト名、`workers.dev` のモードではアカウントのサブドメイン、2 つの Rate Limiting の名前空間の ID を含む）をデプロイの設定ファイルに書く。許可リストは空にしておく | 手元。1Password、リポジトリの設定ファイル（PR でレビューする） | 入力の一覧（[デプロイと設定](../design/deployment.md)のデプロイごとの入力）がモードで必須のものだけそろい、禁止のものがなく、アカウント ID がリポジトリにないこと。issuer は運用を始めた後に変えない（[デプロイと設定](../design/deployment.md)のホスト名を変えるときの影響を参照） |
 | 1 | Terraform の state 用の R2 のバケットを作る。D1 のデータベースを APAC で作る | 手元。`cf` のスクリプト（バケットと D1。Terraform には D1 を置かない。[デプロイと設定](../design/deployment.md)の Terraform とスクリプトの分担を参照） | バケットと D1 が入力のアカウントにあること。D1 の ID はスクリプトが名前から引き、設定ファイルにも手順にも書き写さないこと。D1 が production バックエンドにあること（Cloudflare API の「Get D1 Database」の `version`。[未決事項](../design/open-questions.md)参照） |
 | 2 | マイグレーション（テーブル、ビュー、トリガー）を適用する | 手元。`cf` のスクリプト | トリガーが更新と削除を拒否すること（[データモデル](../design/data-model.md)参照） |
 | 3 | トークンの署名鍵（Ed25519）を生成し、1Password のアイテムにだけ入れる。Worker Secret には、まだ登録しない（Worker がまだないため。段階 5b で登録する） | 手元。生成スクリプト | 出力が `kid` と公開鍵だけで、平文がディスクにないこと |
@@ -64,6 +64,43 @@
 - 各段階で運用者が実行するスクリプトと順番は[実行手順](runbook.md)にまとめる。
 - 段階 3 と 4 の生成スクリプトと、段階 5b の登録スクリプトは秘密を扱うので、`-x` を付けない（[デプロイと設定](../design/deployment.md)のシェルスクリプトの規則を参照）。
 - 段階 7 の登録リンクの平文は `idpctl` が `0600` のファイルに書き、パスだけを表示する（[管理 CLI と管理用の Worker](../design/idpctl.md)参照）。
+
+## モードごとの道筋
+
+上の手順の段階は、どちらのモードでも同じで、同じスクリプト、同じ Terraform のコード、同じ CI の workflow、同じ Worker のコードを使う。モードで変わるのは、段階 0 の入力と、その入力から導かれるホスト名、ゾーンの有無、`workers.dev` のサブドメインの確認だけである。モードを選ぶ前に、上の「`workers.dev` のモードを選ぶ前の警告」を読む。モードは後から変えられず、変えることは issuer を変えること（全員のパスキーの登録し直しと、すべての RP の設定の移行）になる（[ホスティングのモード](../design/hosting-modes.md)の 1.5 と 2.3）。
+
+### 入力
+
+入力の規則は[ホスティングのモード](../design/hosting-modes.md)の 1.1 の表のとおり。「禁止」の入力は、値が空や `null` でもキーがあればすべてのスクリプトと Terraform が止まる。
+
+| 入力 | カスタムドメインのモード | `workers.dev` のモード |
+| --- | --- | --- |
+| `hosting_mode` | `custom_domain` | `workers_dev` |
+| `zone` | 必須。アカウントにあるゾーンの名前 | 禁止 |
+| `issuer_host` | 必須。ゾーンの中のホスト名で、`workers.dev` の下にない | 禁止。`idp.<workers_dev_subdomain>.workers.dev` に導かれる |
+| `admin_host` | 必須。ゾーンの中で `issuer_host` と違うホスト名 | 禁止。`idp-admin.<workers_dev_subdomain>.workers.dev` に導かれる |
+| `workers_dev_subdomain` | 禁止 | 必須。アカウントの `workers.dev` のサブドメインの 1 ラベル |
+| `admin_signing_keys` | 段階 0 では空のリスト。段階 4 で行を足す | 同じ |
+| 2 つの Rate Limiting の名前空間の ID、D1、R2、1Password、GitHub Environment の入力 | 必須 | 必須（同じ意味） |
+| 廃止した入力（`admin_allowlist`、`admin_client_certificates`、`zone_singletons_owner`） | 禁止 | 禁止 |
+
+設定ファイルのひな形は、カスタムドメインのモードが `deployments/verification.tfvars.json.example`、`workers.dev` のモードが `deployments/workers-dev.tfvars.json.example` で、どちらも入力のキーだけを持つ。
+
+### 段階ごとの違い
+
+| 段階 | カスタムドメインのモード | `workers.dev` のモード |
+| --- | --- | --- |
+| 前提 | ゾーンをアカウントに置く。ゾーンをサービスと共有するなら、ゾーンの TLS の最小バージョンが 1.2 以上であることを持ち主と確かめる | ゾーンは要らない。アカウントの `workers.dev` のサブドメインを、ダッシュボードで作る（まだないとき）。警告を読んだうえで、変えないサブドメインを選ぶ |
+| 0 | `zone`、`issuer_host`、`admin_host` を書く。`workers_dev_subdomain` を書かない | `workers_dev_subdomain` を書く。`zone`、`issuer_host`、`admin_host` を書かない。導かれる issuer（`https://idp.<サブドメイン>.workers.dev`）を、RP に渡す値としてレビューで読む |
+| 1〜3 | 違いはない（R2、D1、マイグレーション、署名鍵はモードに依らない） | 同じ |
+| 4 | 管理者の鍵と許可リストの行は同じ。Terraform の plan はゾーンを data source で引き、ゾーンの外のゾーン名なら止まる。ゾーンの資源は作らない | 管理者の鍵と許可リストの行は同じ。Terraform はゾーンの data source を置かず、ゾーンのデータを読まない。Terraform 用のトークンにゾーンの権限を持たせない。`plan` と `apply` の前に、運用者のスクリプトがアカウントの `workers.dev` のサブドメインを Cloudflare API で読み、`workers_dev_subdomain` と違うか、サブドメインがなければ、何も変えずに止まる |
+| 5 | 2 つの Worker をカスタムドメインで公開する（`workers.dev` とプレビューの URL は無効） | デプロイの前に、運用者がサブドメインの確認のスクリプトを実行する（CI では動かない）。2 つの Worker を `workers.dev` のルートだけで公開する（カスタムドメインなし、プレビューの URL は無効） |
+| 5b | 違いはない | 同じ |
+| 6 | 共通の確認に加えて、サービスのほかのホスト名の動きが変わっていないこと | 共通の確認に加えて、`idpctl` の要求と、つなぐ RP のサーバーの discovery、JWKS、`/token`、`/userinfo` の要求が Browser Integrity Check で拒否されないこと（`User-Agent`）。discovery の `issuer` が導いた issuer と一致すること。パスキーの RP ID が issuer のホスト名そのもので、`<サブドメイン>.workers.dev` でないこと。IdP の Cookie がすべて `__Host-` の接頭辞を持ち、同じアカウントのほかの Worker のホスト名に送られないこと |
+| 7 | 違いはない | 同じ。`idpctl` の接続先は導いた管理用のホスト名にする |
+
+- 段階 6 のうち、ブラウザで確かめる項目（RP ID、`__Host-` の Cookie、discovery の issuer、ほかのホスト名での拒否、署名のない管理 API の要求の拒否と、テストの鍵で署名した要求の受け付け。署名は `idpctl` ではなくテスト用の署名器で行う）は、e2e が両方のモードの形のホスト名で、ローカルの workerd に対して確かめている。本物の `workers.dev` に固有のこと（Browser Integrity Check、エッジの TLS と平文の HTTP の扱い、`request.cf.tlsVersion` の値）は e2e では確かめられないので、段階 6 で確かめる（[未決事項](../design/open-questions.md)の「ホスティングのモードと署名による管理者の認証」）。
+- 各段階で実行するスクリプトの名前と順番は[実行手順](runbook.md)にある。
 
 ## 失敗したとき
 

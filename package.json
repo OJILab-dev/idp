@@ -8,7 +8,9 @@
     "lint": "eslint .",
     "test": "vitest run",
     "check": "pnpm run typecheck && pnpm run lint && pnpm run test",
-    "e2e": "playwright test -c e2e/playwright.config.ts",
+    "e2e": "pnpm run e2e:custom-domain && pnpm run e2e:workers-dev",
+    "e2e:custom-domain": "E2E_HOSTING_MODE=custom_domain playwright test -c e2e/playwright.config.ts",
+    "e2e:workers-dev": "E2E_HOSTING_MODE=workers_dev playwright test -c e2e/playwright.config.ts",
     "openapi:generate": "UPDATE_OPENAPI=1 vitest run apps/admin-worker/test/openapi.test.ts"
   },
   "engines": {

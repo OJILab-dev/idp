@@ -5,6 +5,7 @@ import { test as base, expect, type Page } from "@playwright/test";
 import { en } from "../../apps/worker/pages/locales/en.js";
 import { virtualAuthenticators, type Authenticators, type VirtualCredential } from "./authenticator.js";
 import { OUTPUT_DIR } from "./build.js";
+import { HOSTING } from "./hosting.js";
 import { IDP_HOST, startIdp, type LocalIdp } from "./idp.js";
 import { RP_HOST, startRp, type LocalRp } from "./rp.js";
 import { adminFor, type Admin } from "./seed.js";
@@ -26,7 +27,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
   idp: [
     // eslint-disable-next-line no-empty-pattern -- Playwright reads the dependencies from a destructuring pattern.
     async ({}, use, workerInfo) => {
-      const certificate = await generateCertificate([IDP_HOST, RP_HOST], join(OUTPUT_DIR, `tls-${workerInfo.workerIndex}`));
+      const certificate = await generateCertificate([IDP_HOST, RP_HOST, HOSTING.neighbourHost], join(OUTPUT_DIR, `tls-${workerInfo.workerIndex}`));
       const idp = await startIdp(certificate);
       await use(idp);
       await idp.dispose();
@@ -41,14 +42,17 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
     },
     { scope: "worker" },
   ],
-  // The issuer is https://idp.test on port 443: Chromium maps that host and port (and the RP's) to the local servers
+  // The issuer is https://<the run's issuer host> on port 443 (support/hosting.ts): Chromium maps that host and port (and the RP's) to the local servers
   // and trusts the run's certificate by its key alone, so the pages are secure contexts without certificate errors,
   // which WebAuthn requires. No production check is relaxed: the Worker still sees https and its own issuer host.
+  // The neighbour host (support/hosting.ts) reaches the IdP's server too, as a re-enabled route would, so a test can
+  // see which cookies the browser sends there and that the Worker refuses the host.
   launchOptions: [
     async ({ idp, rp }, use) => {
+      const rules = [`MAP ${IDP_HOST}:443 127.0.0.1:${idp.port}`, `MAP ${RP_HOST}:443 127.0.0.1:${rp.port}`, `MAP ${HOSTING.neighbourHost}:443 127.0.0.1:${idp.port}`];
       await use({
         args: [
-          `--host-resolver-rules=MAP ${IDP_HOST}:443 127.0.0.1:${idp.port}, MAP ${RP_HOST}:443 127.0.0.1:${rp.port}`,
+          `--host-resolver-rules=${rules.join(", ")}`,
           `--ignore-certificate-errors-spki-list=${idp.certificate.spkiSha256}`,
         ],
       });

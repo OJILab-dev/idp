@@ -21,7 +21,21 @@
 - [ ] アカウントの `workers.dev` のサブドメインを変えた後、古いサブドメインを別のアカウントが取れるか（取れるなら issuer のなりすましになる。抑え方はサブドメインを変えないこと）
 - [ ] 運用者のスクリプトが `curl` で読む Cloudflare API の「Get a Workers Subdomain」の応答が、`result.subdomain` にサブドメインのラベルだけを持つこと（固定した `cf` 1.0.0-beta.21 には同じ情報を出すコマンドがないので API で読む。[ホスティングのモード](hosting-modes.md)の 1.1）。`workers.dev` のモードの Terraform 用のトークンに、`Workers Scripts Read` を足せば足りること
 - [ ] `workers.dev` のモードで `cf deploy` が、アカウントにサブドメインがないときに自分で作ろうとするか（`cf` の内部に、`workers.dev` のサブドメインを登録する処理がある）。運用者のスクリプトは、サブドメインがなければデプロイの前に止まる
-- [ ] ブラウザとパスワードマネージャーが、Public Suffix List の私的な領域のホスト名（`workers.dev` の下）のパスキーを、カスタムドメインと同じに扱うか（e2e と、つなぐ予定の端末で確かめる）
+- [ ] ブラウザとパスワードマネージャーが、Public Suffix List の私的な領域のホスト名（`workers.dev` の下）のパスキーを、カスタムドメインと同じに扱うか（e2e と、つなぐ予定の端末で確かめる）。e2e では、Chromium の仮想オーセンティケータが `idp.<サブドメイン>.workers.dev` を RP ID とするパスキーを作り、それでサインインできることを確かめた（e2e の `workers_dev` の実行）。残るのは、つなぐ予定の端末の実際のパスキーのプロバイダでの確認
+
+**移植性のテストの `workers_dev` 版（[ホスティングのモード](hosting-modes.md)の実装の順番の 9）**
+
+運用者が、ドメインを持たない 2 つ目の Cloudflare アカウントに、[ブートストラップ](../deployment/bootstrap.md)の段階 0 から 7 までを `workers.dev` のモードで通す。変えてよいのは、デプロイの設定ファイル（`deployments/<デプロイの名前>.tfvars.json`）の入力と、1Password とダッシュボードの前提の作業だけ。Terraform、スクリプト、CI の workflow、Worker のコード、手順の文書を変える必要が出たら、そこで止め、移植性の欠陥として先に直す（手順に手作業を足さない）。結果は未記入で、運用者が実行して埋める。
+
+- [ ] 前提：アカウントにゾーンがなく、ドメインを 1 つも持たないこと。`workers.dev` のサブドメインをダッシュボードで作り、[ブートストラップ](../deployment/bootstrap.md)の警告を読んでから選んだこと。R2 の有効化、2 つの Rate Limiting の名前空間の ID の選択、役割ごとの API トークン（Terraform 用はゾーンの権限なし、`Workers Scripts Read` あり）、R2 の S3 互換の認証情報、1Password の Vault と Environment、GitHub Environment が、ブートストラップの前提のとおりそろっていること
+- [ ] 段階 0：`deployments/workers-dev.tfvars.json.example` を写した設定ファイルが、`hosting_mode` を `workers_dev` にし、`workers_dev_subdomain` を持ち、`zone`、`issuer_host`、`admin_host`、廃止した入力を持たないこと。リポジトリにアカウント ID がないこと。すべてのスクリプトの入力の検証を通ること
+- [ ] 段階 1 と 2：state のバケットと APAC の D1 が 2 つ目のアカウントにだけでき、マイグレーションのトリガーが更新と削除を拒否すること
+- [ ] 段階 3 と 4：署名鍵と管理者の鍵の生成スクリプトが、秘密でない値だけを出力すること。サブドメインの確認のスクリプトが、正しいサブドメインで通り、`workers_dev_subdomain` をわざと違う値にしたときに何も変えずに止まること（確かめた後に戻す）。Terraform の plan がゾーンを引かず、資源を何も作らず変えないこと
+- [ ] 段階 5 と 5b：CI のデプロイが、2 つの Worker を `idp.<サブドメイン>.workers.dev` と `idp-admin.<サブドメイン>.workers.dev` に公開し、カスタムドメインとプレビューの URL を作らないこと。`cf deploy` が、サブドメインを作ろうとしたり変えたりしないこと。署名鍵の登録の後に、IdP の Worker が鍵を読めること
+- [ ] 段階 6：ブートストラップの段階 6 の共通の確認と、`workers.dev` のモードの確認（Browser Integrity Check と `User-Agent`、discovery の `issuer`、RP ID、`__Host-` の Cookie、同じアカウントのほかの Worker のホスト名での拒否）がすべて通ること。上の「ホスティングのモードと署名による管理者の認証」の `workers.dev` の項目（TLS のバージョン、平文の HTTP、バージョンの URL、1 日の上限、BIC と上限の数え方）の結果を、この実行で埋めること
+- [ ] 段階 7：導いた管理用のホスト名に向けた `idpctl` で、自分のユーザー、登録リンク、パスキー、グループ、最初の RP、grant を作り、`access_check` で自分がその RP を使えること。つないだ RP が、導いた issuer で discovery、`/token`、`/userinfo` を呼べること
+- [ ] 後片付けの確認：リポジトリにアカウント ID と D1 の ID が残っていないこと（`workers_dev_subdomain` は設定ファイルの入力なので残る）。最初のアカウントのデプロイ（カスタムドメインのモード）の plan が、この作業の前と変わらないこと
+- [ ] 結果：（未記入。運用者が実行した日、通ったかどうか、止まった段階と直した入力か欠陥を書く）
 
 **ゾーンをサービスと共有する構成（[ドメインの置き場所](domain-placement.md)の A2）**
 
