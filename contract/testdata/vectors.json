@@ -338,5 +338,1702 @@
     { "case": "accept-language zero quality excluded", "ui_locales": null, "accept_language": "ja;q=0, fr", "locale": "en" },
     { "case": "accept-language wildcard ignored", "ui_locales": null, "accept_language": "*", "locale": "en" },
     { "case": "accept-language malformed quality ignored", "ui_locales": null, "accept_language": "ja;q=abc, en;q=0.1", "locale": "en" }
-  ]
+  ],
+  "admin_signature": {
+    "profile": {
+      "label": "sig1",
+      "tag": "idp-admin",
+      "algorithm": "ecdsa-p384-sha384",
+      "fallback_algorithm": "ed25519",
+      "signature_bytes": 96,
+      "window_seconds": 60,
+      "nonce_bytes": 32,
+      "content_digest_algorithm": "sha-256",
+      "components": [
+        "@method",
+        "@target-uri",
+        "@authority",
+        "content-digest",
+        "content-type",
+        "idempotency-key"
+      ],
+      "parameters": [
+        "created",
+        "nonce",
+        "keyid",
+        "tag"
+      ]
+    },
+    "content_digest": {
+      "valid": [
+        {
+          "source": "RFC 9530 Appendix B.1",
+          "body_utf8": "{\"hello\": \"world\"}\n",
+          "header": "sha-256=:RK/0qy18MlBSVnWgjwz6lZEWjP/lF5HF9bvEF8FabDg=:"
+        },
+        {
+          "source": "empty body (GET and DELETE)",
+          "body_utf8": "",
+          "header": "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+        },
+        {
+          "source": "generated",
+          "body_utf8": "{\"name\":\"Alice\"}",
+          "header": "sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:"
+        }
+      ],
+      "invalid": [
+        {
+          "body_utf8": "",
+          "header": "",
+          "reason": "empty field"
+        },
+        {
+          "body_utf8": "",
+          "header": "sha-512=:z4PhNX7vuL3xVChQ1m2AB9Yg5AULVxXcg/SpIdNs6c5H0NE8XYXysP+DGNKHfuwvY7kxvUdBeoGlODJ6+SfaPg==:",
+          "reason": "sha-512 only"
+        },
+        {
+          "body_utf8": "",
+          "header": "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:, sha-512=:z4PhNX7vuL3xVChQ1m2AB9Yg5AULVxXcg/SpIdNs6c5H0NE8XYXysP+DGNKHfuwvY7kxvUdBeoGlODJ6+SfaPg==:",
+          "reason": "a member besides sha-256"
+        },
+        {
+          "body_utf8": "",
+          "header": "SHA-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:",
+          "reason": "uppercase key is not a structured field key"
+        },
+        {
+          "body_utf8": "",
+          "header": "sha-256=47DEQpj8HBSaaaTImWa5JCeuQeRkm5NMpJWZG3hSuFU",
+          "reason": "value is not a byte sequence"
+        },
+        {
+          "body_utf8": "",
+          "header": "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuA==:",
+          "reason": "value is 31 bytes"
+        },
+        {
+          "body_utf8": "",
+          "header": "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:;p=1",
+          "reason": "member has parameters"
+        },
+        {
+          "body_utf8": "x",
+          "header": "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:",
+          "reason": "value does not match the body"
+        },
+        {
+          "body_utf8": "",
+          "header": "sha-256=:47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU:",
+          "reason": "byte sequence uses the URL-safe alphabet"
+        }
+      ]
+    },
+    "keyid": {
+      "valid": [
+        {
+          "source": "generated P-384 interop key",
+          "spki": "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEZ26eOyy4/KQpxMCdT6VmqrMErkGHgSxubfgw/6bNU5YWsJaYOmEAq08VjZEJLiCYGqnDBAMnb3jDkOgxpxX6KvnW5H7LYjsz4lsJrXx/VrZJwwjK12UjHtec+hf5HoLT",
+          "keyid": "5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767"
+        },
+        {
+          "source": "RFC 9421 Appendix B.1.4 (test-key-ed25519)",
+          "spki": "MCowBQYDK2VwAyEAJrQLj5P/89iXES9+vFgrIy29clF9CC/oPPsw3c5D0bs=",
+          "keyid": "34571606cb7a0d71be377e671ddcccae2a169ed7733598214129231cd30c4a3c"
+        }
+      ],
+      "invalid": [
+        {
+          "value": "5021275A9B968D7D198D5A7B402CEE7EA30EDD3E47811B1B2736EA7F8F185767",
+          "reason": "uppercase hex"
+        },
+        {
+          "value": "5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f18576",
+          "reason": "63 characters"
+        },
+        {
+          "value": "5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f1857670",
+          "reason": "65 characters"
+        },
+        {
+          "value": "50:21:27:5a:9b:96:8d:7d:19:8d:5a:7b:40:2c:ee:7e:a3:0e:dd:3e:47:81:1b:1b:27:36:ea:7f:8f:18:57:67",
+          "reason": "colon separated"
+        },
+        {
+          "value": "5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f18576g",
+          "reason": "character outside hex"
+        },
+        {
+          "value": "",
+          "reason": "empty"
+        }
+      ]
+    },
+    "nonce": {
+      "valid": [
+        "O8_3pm6onyoa4Tsu00sy8ZRUGjz50Rh7a91YS5s4Rhc",
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        "__________________________________________8"
+      ],
+      "invalid": [
+        {
+          "value": "ZovUD7DfysfQTfaera2-zwkhuLpaaWdHJHQucdL1bJY=",
+          "reason": "padding"
+        },
+        {
+          "value": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ",
+          "reason": "31 bytes"
+        },
+        {
+          "value": "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEB",
+          "reason": "33 bytes"
+        },
+        {
+          "value": "+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/v7+/s",
+          "reason": "standard alphabet"
+        },
+        {
+          "value": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB",
+          "reason": "non-canonical trailing bits"
+        },
+        {
+          "value": "",
+          "reason": "empty"
+        }
+      ]
+    },
+    "signature_base": [
+      {
+        "case": "get-without-body",
+        "request": {
+          "method": "GET",
+          "url": "https://admin.example.com/v1/users?limit=50",
+          "headers": [
+            [
+              "Content-Digest",
+              "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+            ]
+          ],
+          "body_utf8": ""
+        },
+        "created": 1767225600,
+        "nonce": "eCqW35o-nG8vDqCekB7HkFFvCYhNI1774mI-sAnvn-Q",
+        "keyid": "5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"eCqW35o-nG8vDqCekB7HkFFvCYhNI1774mI-sAnvn-Q\";keyid=\"5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767\";tag=\"idp-admin\"",
+        "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"eCqW35o-nG8vDqCekB7HkFFvCYhNI1774mI-sAnvn-Q\";keyid=\"5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767\";tag=\"idp-admin\""
+      },
+      {
+        "case": "post-with-body-and-idempotency-key",
+        "request": {
+          "method": "POST",
+          "url": "https://admin.example.com/v1/users",
+          "headers": [
+            [
+              "Content-Type",
+              "application/json"
+            ],
+            [
+              "Content-Digest",
+              "sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:"
+            ],
+            [
+              "Idempotency-Key",
+              "O29qOyWx3RlwwHT-3qPVXmN_G3V7aiMwsbsWM7Ygq6I"
+            ]
+          ],
+          "body_utf8": "{\"name\":\"Alice\"}"
+        },
+        "created": 1767225600,
+        "nonce": "hYOpq6hJJY8D57eGSyAshGuCkd9m418zPfzj7SIq-Sk",
+        "keyid": "5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"hYOpq6hJJY8D57eGSyAshGuCkd9m418zPfzj7SIq-Sk\";keyid=\"5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767\";tag=\"idp-admin\"",
+        "signature_base": "\"@method\": POST\n\"@target-uri\": https://admin.example.com/v1/users\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:\n\"content-type\": application/json\n\"idempotency-key\": O29qOyWx3RlwwHT-3qPVXmN_G3V7aiMwsbsWM7Ygq6I\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"hYOpq6hJJY8D57eGSyAshGuCkd9m418zPfzj7SIq-Sk\";keyid=\"5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767\";tag=\"idp-admin\""
+      },
+      {
+        "case": "put-without-idempotency-key",
+        "request": {
+          "method": "PUT",
+          "url": "https://admin.example.com/v1/users/3f0c2a5e-8b1d-4c7a-9e2f-6d4b1a0c9e85/name",
+          "headers": [
+            [
+              "Content-Type",
+              "application/json"
+            ],
+            [
+              "Content-Digest",
+              "sha-256=:hAw5hfIS++WdcT8CrPRkJpvber5/zWb7QNUjIO8Np5k=:"
+            ]
+          ],
+          "body_utf8": "{\"name\":\"Bob\"}"
+        },
+        "created": 1767225600,
+        "nonce": "Ru1ORCx4MbuWSWUpxDx2XIe7hj_S325HC7WACpoY40g",
+        "keyid": "5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\");created=1767225600;nonce=\"Ru1ORCx4MbuWSWUpxDx2XIe7hj_S325HC7WACpoY40g\";keyid=\"5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767\";tag=\"idp-admin\"",
+        "signature_base": "\"@method\": PUT\n\"@target-uri\": https://admin.example.com/v1/users/3f0c2a5e-8b1d-4c7a-9e2f-6d4b1a0c9e85/name\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:hAw5hfIS++WdcT8CrPRkJpvber5/zWb7QNUjIO8Np5k=:\n\"content-type\": application/json\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\");created=1767225600;nonce=\"Ru1ORCx4MbuWSWUpxDx2XIe7hj_S325HC7WACpoY40g\";keyid=\"5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767\";tag=\"idp-admin\""
+      },
+      {
+        "case": "delete-with-percent-encoded-path",
+        "request": {
+          "method": "DELETE",
+          "url": "https://admin.example.com/v1/clients/grafana/grants/user%3A3f0c2a5e-8b1d-4c7a-9e2f-6d4b1a0c9e85",
+          "headers": [
+            [
+              "Content-Digest",
+              "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+            ]
+          ],
+          "body_utf8": ""
+        },
+        "created": 1767225600,
+        "nonce": "VHHlXhoQeTvv50opTIpkiQLIZ8tTKs4falRsEzeBAPY",
+        "keyid": "5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"VHHlXhoQeTvv50opTIpkiQLIZ8tTKs4falRsEzeBAPY\";keyid=\"5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767\";tag=\"idp-admin\"",
+        "signature_base": "\"@method\": DELETE\n\"@target-uri\": https://admin.example.com/v1/clients/grafana/grants/user%3A3f0c2a5e-8b1d-4c7a-9e2f-6d4b1a0c9e85\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"VHHlXhoQeTvv50opTIpkiQLIZ8tTKs4falRsEzeBAPY\";keyid=\"5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767\";tag=\"idp-admin\""
+      },
+      {
+        "case": "get-with-percent-encoded-query",
+        "request": {
+          "method": "GET",
+          "url": "https://admin.example.com/v1/audit-events?target=user%3A3f0c2a5e-8b1d-4c7a-9e2f-6d4b1a0c9e85&limit=10",
+          "headers": [
+            [
+              "Content-Digest",
+              "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+            ]
+          ],
+          "body_utf8": ""
+        },
+        "created": 1767225600,
+        "nonce": "b19bQrCUKCUFikfTtRyO4JGLiJoVikXnih4wNW6zteA",
+        "keyid": "5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"b19bQrCUKCUFikfTtRyO4JGLiJoVikXnih4wNW6zteA\";keyid=\"5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767\";tag=\"idp-admin\"",
+        "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/audit-events?target=user%3A3f0c2a5e-8b1d-4c7a-9e2f-6d4b1a0c9e85&limit=10\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"b19bQrCUKCUFikfTtRyO4JGLiJoVikXnih4wNW6zteA\";keyid=\"5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767\";tag=\"idp-admin\""
+      }
+    ],
+    "interop": [
+      {
+        "case": "get-without-body",
+        "algorithm": "ecdsa-p384-sha384",
+        "spki": "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEZ26eOyy4/KQpxMCdT6VmqrMErkGHgSxubfgw/6bNU5YWsJaYOmEAq08VjZEJLiCYGqnDBAMnb3jDkOgxpxX6KvnW5H7LYjsz4lsJrXx/VrZJwwjK12UjHtec+hf5HoLT",
+        "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"eCqW35o-nG8vDqCekB7HkFFvCYhNI1774mI-sAnvn-Q\";keyid=\"5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767\";tag=\"idp-admin\"",
+        "signature": "I6PWRb9fWQCeCK1Af31P4RoNozYmp1mytO5QWgFCoFpP1puVzVt7jsLdZKRpZHm37p/jNA+C8XYlrU9jShnotY78KkPaa1uCo64EJXnf50v0TVTtUtOrvcIIJaV8CUwi"
+      },
+      {
+        "case": "post-with-body-and-idempotency-key",
+        "algorithm": "ecdsa-p384-sha384",
+        "spki": "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEZ26eOyy4/KQpxMCdT6VmqrMErkGHgSxubfgw/6bNU5YWsJaYOmEAq08VjZEJLiCYGqnDBAMnb3jDkOgxpxX6KvnW5H7LYjsz4lsJrXx/VrZJwwjK12UjHtec+hf5HoLT",
+        "signature_base": "\"@method\": POST\n\"@target-uri\": https://admin.example.com/v1/users\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:\n\"content-type\": application/json\n\"idempotency-key\": O29qOyWx3RlwwHT-3qPVXmN_G3V7aiMwsbsWM7Ygq6I\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"hYOpq6hJJY8D57eGSyAshGuCkd9m418zPfzj7SIq-Sk\";keyid=\"5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767\";tag=\"idp-admin\"",
+        "signature": "gHnCoWQ7STGr6locgC/lv+CFDt5mvC2hXmSP7FptIzwyCEGTU/7QzidC+wV+0FkWzg/FjpaJpWw+28eDFJqNaLkznVa0Mq8nhiz6rkJTA7ECTtkRxM8ScNYwd423Xs8v"
+      },
+      {
+        "case": "rfc9421-b.2.6",
+        "source": "RFC 9421 Appendix B.2.6 (test-key-ed25519, B.1.4)",
+        "algorithm": "ed25519",
+        "spki": "MCowBQYDK2VwAyEAJrQLj5P/89iXES9+vFgrIy29clF9CC/oPPsw3c5D0bs=",
+        "signature_base": "\"date\": Tue, 20 Apr 2021 02:07:55 GMT\n\"@method\": POST\n\"@path\": /foo\n\"@authority\": example.com\n\"content-type\": application/json\n\"content-length\": 18\n\"@signature-params\": (\"date\" \"@method\" \"@path\" \"@authority\" \"content-type\" \"content-length\");created=1618884473;keyid=\"test-key-ed25519\"",
+        "signature": "wqcAqbmYJ2ji2glfAMaRy4gruYYnx2nEFN2HN6jrnDnQCK1u02Gb04v9EDgwUPiu4A0w6vuQv5lIp5WPpBKRCw=="
+      }
+    ],
+    "verify": {
+      "now": 1767225600,
+      "admin_host": "admin.example.com",
+      "valid": [
+        {
+          "case": "get-without-body",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"xMqC-D22YekRFeQyPW_wJURp5-AaaeKbKCOYg7rClew\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"xMqC-D22YekRFeQyPW_wJURp5-AaaeKbKCOYg7rClew\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "post-with-body-and-idempotency-key",
+          "request": {
+            "method": "POST",
+            "url": "https://admin.example.com/v1/users",
+            "headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Content-Digest",
+                "sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:"
+              ],
+              [
+                "Idempotency-Key",
+                "f7AlfiXTfT0oavOMqYRxC1Ew8l0cEGhvCNADsryeKTM"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"tSSetm0LOs7GKDuGOijVeeWyLz1w59FGgfzjKNr-ucE\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": "{\"name\":\"Alice\"}"
+          },
+          "signature_base": "\"@method\": POST\n\"@target-uri\": https://admin.example.com/v1/users\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:\n\"content-type\": application/json\n\"idempotency-key\": f7AlfiXTfT0oavOMqYRxC1Ew8l0cEGhvCNADsryeKTM\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"tSSetm0LOs7GKDuGOijVeeWyLz1w59FGgfzjKNr-ucE\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "delete-with-percent-encoded-path",
+          "request": {
+            "method": "DELETE",
+            "url": "https://admin.example.com/v1/clients/grafana/grants/user%3A3f0c2a5e-8b1d-4c7a-9e2f-6d4b1a0c9e85",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"ukyimqnU3tVDIYeHfi_Ze7y0RdCZluz_wzAQpEEUpPc\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": DELETE\n\"@target-uri\": https://admin.example.com/v1/clients/grafana/grants/user%3A3f0c2a5e-8b1d-4c7a-9e2f-6d4b1a0c9e85\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"ukyimqnU3tVDIYeHfi_Ze7y0RdCZluz_wzAQpEEUpPc\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "created-at-window-start",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225540;nonce=\"lYdhLXjAYyUL3QeyvFC-Td83x6l68nMFOFu5r3YQfko\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225540;nonce=\"lYdhLXjAYyUL3QeyvFC-Td83x6l68nMFOFu5r3YQfko\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "created-at-window-end",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225660;nonce=\"kX7Soje_9N5gvMi7Y789Mf5yb6aXlqX1jQDe1ST8dhs\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225660;nonce=\"kX7Soje_9N5gvMi7Y789Mf5yb6aXlqX1jQDe1ST8dhs\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        }
+      ],
+      "invalid": [
+        {
+          "case": "no-signature",
+          "reason": "no Signature-Input and no Signature",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ]
+            ],
+            "body_utf8": ""
+          }
+        },
+        {
+          "case": "signature-input-without-signature",
+          "reason": "Signature is missing",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"hvXpw1czZGh73k0FtCQR8oHosM4eFn_Rx39YQgSbP54\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ]
+            ],
+            "body_utf8": ""
+          }
+        },
+        {
+          "case": "signature-without-signature-input",
+          "reason": "Signature-Input is missing",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"hvXpw1czZGh73k0FtCQR8oHosM4eFn_Rx39YQgSbP54\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "two-signatures",
+          "reason": "more than one signature",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"hvXpw1czZGh73k0FtCQR8oHosM4eFn_Rx39YQgSbP54\";keyid=\"{keyid}\";tag=\"idp-admin\", sig2=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"hvXpw1czZGh73k0FtCQR8oHosM4eFn_Rx39YQgSbP54\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:, sig2=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"hvXpw1czZGh73k0FtCQR8oHosM4eFn_Rx39YQgSbP54\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "duplicate-label",
+          "reason": "Signature-Input repeats the label (a repeated header joined by the runtime)",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"hvXpw1czZGh73k0FtCQR8oHosM4eFn_Rx39YQgSbP54\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"hvXpw1czZGh73k0FtCQR8oHosM4eFn_Rx39YQgSbP54\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"hvXpw1czZGh73k0FtCQR8oHosM4eFn_Rx39YQgSbP54\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "label-mismatch",
+          "reason": "Signature-Input and Signature use different labels",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"hvXpw1czZGh73k0FtCQR8oHosM4eFn_Rx39YQgSbP54\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig2=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"hvXpw1czZGh73k0FtCQR8oHosM4eFn_Rx39YQgSbP54\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "signature-not-byte-sequence",
+          "reason": "the Signature member is not a byte sequence",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"hvXpw1czZGh73k0FtCQR8oHosM4eFn_Rx39YQgSbP54\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1={signature}"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"hvXpw1czZGh73k0FtCQR8oHosM4eFn_Rx39YQgSbP54\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "missing-content-digest-component",
+          "reason": "content-digest is not covered",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\");created=1767225600;nonce=\"NiCACCbR96rVcL25LvEXeUVjyklnHLFDlhsi0nWmro0\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\");created=1767225600;nonce=\"NiCACCbR96rVcL25LvEXeUVjyklnHLFDlhsi0nWmro0\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "extra-component",
+          "reason": "a component outside the fixed list is covered",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"@path\");created=1767225600;nonce=\"CzfRJCxVtD8vVK06hF4jcblPpzWi9aNE5URouIGtX4s\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@path\": /v1/users\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"@path\");created=1767225600;nonce=\"CzfRJCxVtD8vVK06hF4jcblPpzWi9aNE5URouIGtX4s\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "components-out-of-order",
+          "reason": "the covered components are not in the fixed order",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@target-uri\" \"@method\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"7dc-7BZMveFkeLOJCioJJJXV0kxfCMgmf9gU4mSlUsc\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@method\": GET\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@target-uri\" \"@method\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"7dc-7BZMveFkeLOJCioJJJXV0kxfCMgmf9gU4mSlUsc\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "path-instead-of-target-uri",
+          "reason": "@path replaces @target-uri",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@path\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"Ch627OWSQiRV0YgCqsCO40gq5WJkwcavGw16JoKxgXU\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@path\": /v1/users\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@path\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"Ch627OWSQiRV0YgCqsCO40gq5WJkwcavGw16JoKxgXU\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "host-header-instead-of-authority",
+          "reason": "the Host header replaces @authority",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Host",
+                "admin.example.com"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"host\" \"content-digest\");created=1767225600;nonce=\"KG0Y8OC3uZAZ-dCFMCHucbkVOl40ne1DIpO2IzN0QRw\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"host\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"host\" \"content-digest\");created=1767225600;nonce=\"KG0Y8OC3uZAZ-dCFMCHucbkVOl40ne1DIpO2IzN0QRw\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "post-without-content-type-component",
+          "reason": "a request with a body does not cover content-type",
+          "request": {
+            "method": "POST",
+            "url": "https://admin.example.com/v1/users",
+            "headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Content-Digest",
+                "sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:"
+              ],
+              [
+                "Idempotency-Key",
+                "zUKyDg_GxhYJVnzZW-b1UB4XuSNX9wR7gmCRcAmqRck"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"idempotency-key\");created=1767225600;nonce=\"3QBYwMutO6e_Mxr-0dLMyFBYdXbAkH897CkHmx5OI8k\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": "{\"name\":\"Alice\"}"
+          },
+          "signature_base": "\"@method\": POST\n\"@target-uri\": https://admin.example.com/v1/users\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:\n\"idempotency-key\": zUKyDg_GxhYJVnzZW-b1UB4XuSNX9wR7gmCRcAmqRck\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"idempotency-key\");created=1767225600;nonce=\"3QBYwMutO6e_Mxr-0dLMyFBYdXbAkH897CkHmx5OI8k\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "idempotency-key-not-covered",
+          "reason": "Idempotency-Key is sent but not covered",
+          "request": {
+            "method": "POST",
+            "url": "https://admin.example.com/v1/users",
+            "headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Content-Digest",
+                "sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:"
+              ],
+              [
+                "Idempotency-Key",
+                "zUKyDg_GxhYJVnzZW-b1UB4XuSNX9wR7gmCRcAmqRck"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\");created=1767225600;nonce=\"5aNIaiXX3QLDIbkIIsubk3ZWhBYL9xFtcz2jmK4B9HI\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": "{\"name\":\"Alice\"}"
+          },
+          "signature_base": "\"@method\": POST\n\"@target-uri\": https://admin.example.com/v1/users\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:\n\"content-type\": application/json\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\");created=1767225600;nonce=\"5aNIaiXX3QLDIbkIIsubk3ZWhBYL9xFtcz2jmK4B9HI\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "idempotency-key-covered-but-absent",
+          "reason": "idempotency-key is covered but the header is not sent",
+          "request": {
+            "method": "POST",
+            "url": "https://admin.example.com/v1/users",
+            "headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Content-Digest",
+                "sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"h7j5DfZQNj3Sl0D54UhX9sipdbxdyLydn3FWChSwQrQ\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": "{\"name\":\"Alice\"}"
+          },
+          "signature_base": "\"@method\": POST\n\"@target-uri\": https://admin.example.com/v1/users\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:\n\"content-type\": application/json\n\"idempotency-key\": gYplP1sfH0i3nHk66HqX2_nD_jgC-GwPKI2VzDhMMSk\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"h7j5DfZQNj3Sl0D54UhX9sipdbxdyLydn3FWChSwQrQ\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "content-type-covered-without-body",
+          "reason": "a request without a body covers content-type",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\");created=1767225600;nonce=\"hftTbKqEyAeJpajtpDa-AqAi5KoC7WVAgKtBF0vcTRI\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"content-type\": application/json\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\");created=1767225600;nonce=\"hftTbKqEyAeJpajtpDa-AqAi5KoC7WVAgKtBF0vcTRI\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "alg-present",
+          "reason": "alg is present",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"s-OMX92GiotDFnqi0fEfTqns6vQQtpxJlUwCvuEVdCU\";keyid=\"{keyid}\";tag=\"idp-admin\";alg=\"ecdsa-p384-sha384\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"s-OMX92GiotDFnqi0fEfTqns6vQQtpxJlUwCvuEVdCU\";keyid=\"{keyid}\";tag=\"idp-admin\";alg=\"ecdsa-p384-sha384\""
+        },
+        {
+          "case": "expires-present",
+          "reason": "expires is present",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"3eb4ZNHO_JOkHf8NwfjQs_MGjbW7osj-8Zhqcy2uSkw\";keyid=\"{keyid}\";tag=\"idp-admin\";expires=1767225660"
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"3eb4ZNHO_JOkHf8NwfjQs_MGjbW7osj-8Zhqcy2uSkw\";keyid=\"{keyid}\";tag=\"idp-admin\";expires=1767225660"
+        },
+        {
+          "case": "unknown-parameter",
+          "reason": "a parameter outside created, nonce, keyid, tag",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"vRsYEQ_e2EWNuxBWyR_mbDlVNF_hs-MDgGEKHt8v0hY\";keyid=\"{keyid}\";tag=\"idp-admin\";foo=\"bar\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"vRsYEQ_e2EWNuxBWyR_mbDlVNF_hs-MDgGEKHt8v0hY\";keyid=\"{keyid}\";tag=\"idp-admin\";foo=\"bar\""
+        },
+        {
+          "case": "missing-created",
+          "reason": "created is missing",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");nonce=\"SWvzmph-I-aPoBU6FRADh-kX1T6qtvhShATJnxEnj-s\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");nonce=\"SWvzmph-I-aPoBU6FRADh-kX1T6qtvhShATJnxEnj-s\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "missing-nonce",
+          "reason": "nonce is missing",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "missing-keyid",
+          "reason": "keyid is missing",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"SWvzmph-I-aPoBU6FRADh-kX1T6qtvhShATJnxEnj-s\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"SWvzmph-I-aPoBU6FRADh-kX1T6qtvhShATJnxEnj-s\";tag=\"idp-admin\""
+        },
+        {
+          "case": "missing-tag",
+          "reason": "tag is missing",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"SWvzmph-I-aPoBU6FRADh-kX1T6qtvhShATJnxEnj-s\";keyid=\"{keyid}\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"SWvzmph-I-aPoBU6FRADh-kX1T6qtvhShATJnxEnj-s\";keyid=\"{keyid}\""
+        },
+        {
+          "case": "wrong-tag",
+          "reason": "tag is not idp-admin",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"SWvzmph-I-aPoBU6FRADh-kX1T6qtvhShATJnxEnj-s\";keyid=\"{keyid}\";tag=\"idp-other\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"SWvzmph-I-aPoBU6FRADh-kX1T6qtvhShATJnxEnj-s\";keyid=\"{keyid}\";tag=\"idp-other\""
+        },
+        {
+          "case": "created-not-integer",
+          "reason": "created is a string",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=\"1767225600\";nonce=\"SWvzmph-I-aPoBU6FRADh-kX1T6qtvhShATJnxEnj-s\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=\"1767225600\";nonce=\"SWvzmph-I-aPoBU6FRADh-kX1T6qtvhShATJnxEnj-s\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "created-too-old",
+          "reason": "created is 61 seconds before now",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225539;nonce=\"Lv8We79UywhpzbkoggYDbznI4-TRAUvnTY68ofRNqQI\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225539;nonce=\"Lv8We79UywhpzbkoggYDbznI4-TRAUvnTY68ofRNqQI\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "created-in-future",
+          "reason": "created is 61 seconds after now",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225661;nonce=\"Jd-9SJG5uVSmWJZYPE6nBvLdKDAxir8MBkg0YiwY4oc\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225661;nonce=\"Jd-9SJG5uVSmWJZYPE6nBvLdKDAxir8MBkg0YiwY4oc\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "nonce-padded",
+          "reason": "nonce is not strict base64url (padding)",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"OQljGZpNCkz8UDeoswd7tTpHBcHSDquttTTM2XDh2eE=\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"OQljGZpNCkz8UDeoswd7tTpHBcHSDquttTTM2XDh2eE=\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "nonce-too-short",
+          "reason": "nonce decodes to 31 bytes",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBw\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBw\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "keyid-uppercase",
+          "reason": "keyid is not lowercase hex",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"X3bU2Xbndz_wOgD-NyIH7POLAar4LkSyu5ROTxvlOb0\";keyid=\"{keyid_upper}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"X3bU2Xbndz_wOgD-NyIH7POLAar4LkSyu5ROTxvlOb0\";keyid=\"{keyid_upper}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "keyid-not-allowlisted",
+          "reason": "keyid is not in the allowlist",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"4NG8_heYRzOb7SarZnmoiAEJfUfPIxCSPJiemmiTJNU\";keyid=\"{other_keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"4NG8_heYRzOb7SarZnmoiAEJfUfPIxCSPJiemmiTJNU\";keyid=\"{other_keyid}\";tag=\"idp-admin\"",
+          "key": "other"
+        },
+        {
+          "case": "signed-by-another-key",
+          "reason": "keyid is allowlisted but another key made the signature",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"TkWfXuqr2MsFZwzzxbXmbbkpK-ikhnfSuXfV72KiOKU\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"TkWfXuqr2MsFZwzzxbXmbbkpK-ikhnfSuXfV72KiOKU\";keyid=\"{keyid}\";tag=\"idp-admin\"",
+          "key": "other"
+        },
+        {
+          "case": "signature-byte-flipped",
+          "reason": "the first byte of the signature is flipped",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"KGUvZG3xi_qUGpcZApV04mm49PdW20p2zyyw6egXYqU\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"KGUvZG3xi_qUGpcZApV04mm49PdW20p2zyyw6egXYqU\";keyid=\"{keyid}\";tag=\"idp-admin\"",
+          "signature_tamper": "flip_first_byte"
+        },
+        {
+          "case": "signature-95-bytes",
+          "reason": "the signature is 95 bytes",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"itdwUYyZesGzERjjGoTmShY-BnPzwPnqxMvIsk4KuIg\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"itdwUYyZesGzERjjGoTmShY-BnPzwPnqxMvIsk4KuIg\";keyid=\"{keyid}\";tag=\"idp-admin\"",
+          "signature_tamper": "drop_last_byte"
+        },
+        {
+          "case": "signature-97-bytes",
+          "reason": "the signature is 97 bytes",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"oVRok-BHGk7Itm8ObZi81LSGTUnatCkHdRV6DdbZPsQ\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"oVRok-BHGk7Itm8ObZi81LSGTUnatCkHdRV6DdbZPsQ\";keyid=\"{keyid}\";tag=\"idp-admin\"",
+          "signature_tamper": "append_zero_byte"
+        },
+        {
+          "case": "signature-der-encoded",
+          "reason": "the signature is ASN.1 DER, not r and s concatenated",
+          "request": {
+            "method": "GET",
+            "url": "https://admin.example.com/v1/users?limit=50",
+            "headers": [
+              [
+                "Content-Digest",
+                "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"UEDJll7mkDmHS6QLgw03yb-I7yBusYBY_PzfP7mxr70\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": ""
+          },
+          "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/users?limit=50\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"UEDJll7mkDmHS6QLgw03yb-I7yBusYBY_PzfP7mxr70\";keyid=\"{keyid}\";tag=\"idp-admin\"",
+          "signature_tamper": "der_encode"
+        },
+        {
+          "case": "method-changed",
+          "reason": "the method differs from the signed one",
+          "request": {
+            "method": "PUT",
+            "url": "https://admin.example.com/v1/users",
+            "headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Content-Digest",
+                "sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:"
+              ],
+              [
+                "Idempotency-Key",
+                "YLrkePvja3yM2zhhvBu3hc_tGFV6zySBuqcJX49qGwI"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"amW8QO74uizMX65z2TtFAmP1gZH7M6bSGMEbj5lkP74\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": "{\"name\":\"Alice\"}"
+          },
+          "signature_base": "\"@method\": POST\n\"@target-uri\": https://admin.example.com/v1/users\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:\n\"content-type\": application/json\n\"idempotency-key\": YLrkePvja3yM2zhhvBu3hc_tGFV6zySBuqcJX49qGwI\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"amW8QO74uizMX65z2TtFAmP1gZH7M6bSGMEbj5lkP74\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "path-changed",
+          "reason": "the path differs from the signed one",
+          "request": {
+            "method": "POST",
+            "url": "https://admin.example.com/v1/groups",
+            "headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Content-Digest",
+                "sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:"
+              ],
+              [
+                "Idempotency-Key",
+                "YLrkePvja3yM2zhhvBu3hc_tGFV6zySBuqcJX49qGwI"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"amW8QO74uizMX65z2TtFAmP1gZH7M6bSGMEbj5lkP74\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": "{\"name\":\"Alice\"}"
+          },
+          "signature_base": "\"@method\": POST\n\"@target-uri\": https://admin.example.com/v1/users\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:\n\"content-type\": application/json\n\"idempotency-key\": YLrkePvja3yM2zhhvBu3hc_tGFV6zySBuqcJX49qGwI\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"amW8QO74uizMX65z2TtFAmP1gZH7M6bSGMEbj5lkP74\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "query-added",
+          "reason": "a query is added after signing",
+          "request": {
+            "method": "POST",
+            "url": "https://admin.example.com/v1/users?x=1",
+            "headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Content-Digest",
+                "sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:"
+              ],
+              [
+                "Idempotency-Key",
+                "YLrkePvja3yM2zhhvBu3hc_tGFV6zySBuqcJX49qGwI"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"amW8QO74uizMX65z2TtFAmP1gZH7M6bSGMEbj5lkP74\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": "{\"name\":\"Alice\"}"
+          },
+          "signature_base": "\"@method\": POST\n\"@target-uri\": https://admin.example.com/v1/users\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:\n\"content-type\": application/json\n\"idempotency-key\": YLrkePvja3yM2zhhvBu3hc_tGFV6zySBuqcJX49qGwI\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"amW8QO74uizMX65z2TtFAmP1gZH7M6bSGMEbj5lkP74\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "authority-changed",
+          "reason": "the host differs from the signed one",
+          "request": {
+            "method": "POST",
+            "url": "https://admin2.example.com/v1/users",
+            "headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Content-Digest",
+                "sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:"
+              ],
+              [
+                "Idempotency-Key",
+                "YLrkePvja3yM2zhhvBu3hc_tGFV6zySBuqcJX49qGwI"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"amW8QO74uizMX65z2TtFAmP1gZH7M6bSGMEbj5lkP74\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": "{\"name\":\"Alice\"}"
+          },
+          "signature_base": "\"@method\": POST\n\"@target-uri\": https://admin.example.com/v1/users\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:\n\"content-type\": application/json\n\"idempotency-key\": YLrkePvja3yM2zhhvBu3hc_tGFV6zySBuqcJX49qGwI\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"amW8QO74uizMX65z2TtFAmP1gZH7M6bSGMEbj5lkP74\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "content-type-changed",
+          "reason": "Content-Type differs from the signed one",
+          "request": {
+            "method": "POST",
+            "url": "https://admin.example.com/v1/users",
+            "headers": [
+              [
+                "Content-Type",
+                "text/plain"
+              ],
+              [
+                "Content-Digest",
+                "sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:"
+              ],
+              [
+                "Idempotency-Key",
+                "YLrkePvja3yM2zhhvBu3hc_tGFV6zySBuqcJX49qGwI"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"amW8QO74uizMX65z2TtFAmP1gZH7M6bSGMEbj5lkP74\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": "{\"name\":\"Alice\"}"
+          },
+          "signature_base": "\"@method\": POST\n\"@target-uri\": https://admin.example.com/v1/users\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:\n\"content-type\": application/json\n\"idempotency-key\": YLrkePvja3yM2zhhvBu3hc_tGFV6zySBuqcJX49qGwI\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"amW8QO74uizMX65z2TtFAmP1gZH7M6bSGMEbj5lkP74\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "idempotency-key-changed",
+          "reason": "Idempotency-Key differs from the signed one",
+          "request": {
+            "method": "POST",
+            "url": "https://admin.example.com/v1/users",
+            "headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Content-Digest",
+                "sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:"
+              ],
+              [
+                "Idempotency-Key",
+                "1XXW_4iy8qPQlI8fo4wss52fsiB14hy_L6dbAJx7rTw"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"amW8QO74uizMX65z2TtFAmP1gZH7M6bSGMEbj5lkP74\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": "{\"name\":\"Alice\"}"
+          },
+          "signature_base": "\"@method\": POST\n\"@target-uri\": https://admin.example.com/v1/users\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:\n\"content-type\": application/json\n\"idempotency-key\": YLrkePvja3yM2zhhvBu3hc_tGFV6zySBuqcJX49qGwI\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"amW8QO74uizMX65z2TtFAmP1gZH7M6bSGMEbj5lkP74\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "body-changed",
+          "reason": "the body no longer matches the signed Content-Digest",
+          "request": {
+            "method": "POST",
+            "url": "https://admin.example.com/v1/users",
+            "headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Content-Digest",
+                "sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:"
+              ],
+              [
+                "Idempotency-Key",
+                "YLrkePvja3yM2zhhvBu3hc_tGFV6zySBuqcJX49qGwI"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"amW8QO74uizMX65z2TtFAmP1gZH7M6bSGMEbj5lkP74\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": "{\"name\":\"Mallory\"}"
+          },
+          "signature_base": "\"@method\": POST\n\"@target-uri\": https://admin.example.com/v1/users\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:\n\"content-type\": application/json\n\"idempotency-key\": YLrkePvja3yM2zhhvBu3hc_tGFV6zySBuqcJX49qGwI\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"amW8QO74uizMX65z2TtFAmP1gZH7M6bSGMEbj5lkP74\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "body-and-content-digest-changed",
+          "reason": "the body and Content-Digest both differ from the signed ones",
+          "request": {
+            "method": "POST",
+            "url": "https://admin.example.com/v1/users",
+            "headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Content-Digest",
+                "sha-256=:ZJ0H/ncnvc+sxzjGLaXFRXpIvpbl5lrBUhZPhcVD3e8=:"
+              ],
+              [
+                "Idempotency-Key",
+                "YLrkePvja3yM2zhhvBu3hc_tGFV6zySBuqcJX49qGwI"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"amW8QO74uizMX65z2TtFAmP1gZH7M6bSGMEbj5lkP74\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": "{\"name\":\"Mallory\"}"
+          },
+          "signature_base": "\"@method\": POST\n\"@target-uri\": https://admin.example.com/v1/users\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:\n\"content-type\": application/json\n\"idempotency-key\": YLrkePvja3yM2zhhvBu3hc_tGFV6zySBuqcJX49qGwI\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"amW8QO74uizMX65z2TtFAmP1gZH7M6bSGMEbj5lkP74\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "content-digest-sha-512-only",
+          "reason": "Content-Digest has sha-512 only",
+          "request": {
+            "method": "POST",
+            "url": "https://admin.example.com/v1/users",
+            "headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Content-Digest",
+                "sha-512=:qqapoO89yyWJBrK+/8P6ZRg/kr/7XR9kskMu9t0RFqDfYAP/QVWQRaV6la/+Ai6R6/DUyGV7FHjQcuicU83J7Q==:"
+              ],
+              [
+                "Idempotency-Key",
+                "EF1A9ngIyla8aVSyWn3LRHj9kENj1GMvhAsI47tW5bw"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"usau7bpj2jwG-0Vi3t64rPyI9A_pICTWuvAoJW-kwi4\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": "{\"name\":\"Alice\"}"
+          },
+          "signature_base": "\"@method\": POST\n\"@target-uri\": https://admin.example.com/v1/users\n\"@authority\": admin.example.com\n\"content-digest\": sha-512=:qqapoO89yyWJBrK+/8P6ZRg/kr/7XR9kskMu9t0RFqDfYAP/QVWQRaV6la/+Ai6R6/DUyGV7FHjQcuicU83J7Q==:\n\"content-type\": application/json\n\"idempotency-key\": EF1A9ngIyla8aVSyWn3LRHj9kENj1GMvhAsI47tW5bw\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"usau7bpj2jwG-0Vi3t64rPyI9A_pICTWuvAoJW-kwi4\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "content-digest-two-members",
+          "reason": "Content-Digest has sha-256 and sha-512",
+          "request": {
+            "method": "POST",
+            "url": "https://admin.example.com/v1/users",
+            "headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Content-Digest",
+                "sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:, sha-512=:qqapoO89yyWJBrK+/8P6ZRg/kr/7XR9kskMu9t0RFqDfYAP/QVWQRaV6la/+Ai6R6/DUyGV7FHjQcuicU83J7Q==:"
+              ],
+              [
+                "Idempotency-Key",
+                "VszL-Alh8L6cmyOwIUjuT1lskiXzkUv1DNxgVDTUKO8"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"xA91_EgWAcMbjfaUf0x0Cd5k_OPFG5HKCyUfuZUfqJk\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": "{\"name\":\"Alice\"}"
+          },
+          "signature_base": "\"@method\": POST\n\"@target-uri\": https://admin.example.com/v1/users\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:, sha-512=:qqapoO89yyWJBrK+/8P6ZRg/kr/7XR9kskMu9t0RFqDfYAP/QVWQRaV6la/+Ai6R6/DUyGV7FHjQcuicU83J7Q==:\n\"content-type\": application/json\n\"idempotency-key\": VszL-Alh8L6cmyOwIUjuT1lskiXzkUv1DNxgVDTUKO8\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"xA91_EgWAcMbjfaUf0x0Cd5k_OPFG5HKCyUfuZUfqJk\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        },
+        {
+          "case": "content-digest-wrong-value",
+          "reason": "Content-Digest is the digest of another body",
+          "request": {
+            "method": "POST",
+            "url": "https://admin.example.com/v1/users",
+            "headers": [
+              [
+                "Content-Type",
+                "application/json"
+              ],
+              [
+                "Content-Digest",
+                "sha-256=:hAw5hfIS++WdcT8CrPRkJpvber5/zWb7QNUjIO8Np5k=:"
+              ],
+              [
+                "Idempotency-Key",
+                "1us_loKKb99WOR6DRBzYzKuayqOJhsHhv0_XDj0ZIoQ"
+              ],
+              [
+                "Signature-Input",
+                "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"-dRb5FAqQDN0ZicVEW7PF5BVKBbKyU0E6ujG5BUtoZI\";keyid=\"{keyid}\";tag=\"idp-admin\""
+              ],
+              [
+                "Signature",
+                "sig1=:{signature}:"
+              ]
+            ],
+            "body_utf8": "{\"name\":\"Alice\"}"
+          },
+          "signature_base": "\"@method\": POST\n\"@target-uri\": https://admin.example.com/v1/users\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:hAw5hfIS++WdcT8CrPRkJpvber5/zWb7QNUjIO8Np5k=:\n\"content-type\": application/json\n\"idempotency-key\": 1us_loKKb99WOR6DRBzYzKuayqOJhsHhv0_XDj0ZIoQ\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"-dRb5FAqQDN0ZicVEW7PF5BVKBbKyU0E6ujG5BUtoZI\";keyid=\"{keyid}\";tag=\"idp-admin\""
+        }
+      ],
+      "replay": {
+        "case": "same-request-twice",
+        "reason": "the second request reuses the nonce",
+        "request": {
+          "method": "POST",
+          "url": "https://admin.example.com/v1/users",
+          "headers": [
+            [
+              "Content-Type",
+              "application/json"
+            ],
+            [
+              "Content-Digest",
+              "sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:"
+            ],
+            [
+              "Idempotency-Key",
+              "p3iwqeQZYRBFKju7w9gV2Mq0E2FWsPd0RTLph2hY8vY"
+            ],
+            [
+              "Signature-Input",
+              "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"DeSswvZ-qFqcZhVfI2rcdFVorRiuH6QVrl8Hy7i2liM\";keyid=\"{keyid}\";tag=\"idp-admin\""
+            ],
+            [
+              "Signature",
+              "sig1=:{signature}:"
+            ]
+          ],
+          "body_utf8": "{\"name\":\"Alice\"}"
+        },
+        "signature_base": "\"@method\": POST\n\"@target-uri\": https://admin.example.com/v1/users\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:PLoePPI8jOJLfggXHYI/vZpJKar9nydRbjBpnTpCAmo=:\n\"content-type\": application/json\n\"idempotency-key\": p3iwqeQZYRBFKju7w9gV2Mq0E2FWsPd0RTLph2hY8vY\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"content-type\" \"idempotency-key\");created=1767225600;nonce=\"DeSswvZ-qFqcZhVfI2rcdFVorRiuH6QVrl8Hy7i2liM\";keyid=\"{keyid}\";tag=\"idp-admin\""
+      }
+    }
+  }
 }

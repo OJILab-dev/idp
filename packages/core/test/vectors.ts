@@ -5,6 +5,81 @@ import { join } from "node:path";
 
 type InvalidCase = { readonly value: string; readonly reason: string };
 
+/** A request as the admin API receives it. Headers are name and value pairs so that a repeated header can be expressed. */
+export type SignedRequest = {
+  readonly method: string;
+  readonly url: string;
+  readonly headers: readonly (readonly [string, string])[];
+  readonly body_utf8: string;
+};
+
+/**
+ * One verifier case. The request may hold the placeholders `{keyid}` (the allowlisted key made at test time),
+ * `{keyid_upper}` (the same in uppercase), `{other_keyid}` (a second test-time key that is not allowlisted), and
+ * `{signature}` (the base64 signature over `signature_base` after the same substitution). Without
+ * `signature_base` the case carries no signature at all.
+ */
+export type VerifyCase = {
+  readonly case: string;
+  readonly reason?: string;
+  readonly request: SignedRequest;
+  readonly signature_base?: string;
+  /** Which test-time key signs: the allowlisted one by default. */
+  readonly key?: "other";
+  readonly signature_tamper?: "flip_first_byte" | "drop_last_byte" | "append_zero_byte" | "der_encode";
+};
+
+/** Test vectors for the RFC 9421 admin signatures (docs/design/hosting-modes.md 3; cross-language-contract.md). */
+export type AdminSignatureVectors = {
+  readonly profile: {
+    readonly label: string;
+    readonly tag: string;
+    readonly algorithm: "ecdsa-p384-sha384";
+    readonly fallback_algorithm: "ed25519";
+    readonly signature_bytes: number;
+    readonly window_seconds: number;
+    readonly nonce_bytes: number;
+    readonly content_digest_algorithm: "sha-256";
+    readonly components: readonly string[];
+    readonly parameters: readonly string[];
+  };
+  readonly content_digest: {
+    readonly valid: readonly { readonly source: string; readonly body_utf8: string; readonly header: string }[];
+    readonly invalid: readonly { readonly body_utf8: string; readonly header: string; readonly reason: string }[];
+  };
+  readonly keyid: {
+    readonly valid: readonly { readonly source: string; readonly spki: string; readonly keyid: string }[];
+    readonly invalid: readonly InvalidCase[];
+  };
+  readonly nonce: { readonly valid: readonly string[]; readonly invalid: readonly InvalidCase[] };
+  /** What the signer must produce for a request, given `created`, `nonce`, and `keyid`. */
+  readonly signature_base: readonly {
+    readonly case: string;
+    readonly request: SignedRequest;
+    readonly created: number;
+    readonly nonce: string;
+    readonly keyid: string;
+    readonly signature_input: string;
+    readonly signature_base: string;
+  }[];
+  /** Fixed signatures: a P-384 key whose private half was discarded, and the published RFC 9421 Ed25519 example. */
+  readonly interop: readonly {
+    readonly case: string;
+    readonly source?: string;
+    readonly algorithm: "ecdsa-p384-sha384" | "ed25519";
+    readonly spki: string;
+    readonly signature_base: string;
+    readonly signature: string;
+  }[];
+  readonly verify: {
+    readonly now: number;
+    readonly admin_host: string;
+    readonly valid: readonly VerifyCase[];
+    readonly invalid: readonly VerifyCase[];
+    readonly replay: VerifyCase;
+  };
+};
+
 type Vectors = {
   readonly max_passkeys_per_user: number;
   readonly base64url: {
@@ -88,6 +163,7 @@ type Vectors = {
     readonly accept_language: string | null;
     readonly locale: "en" | "ja";
   }[];
+  readonly admin_signature: AdminSignatureVectors;
 };
 
 export const vectors = JSON.parse(
