@@ -5,16 +5,16 @@
 | 構成要素 | 選択 | 理由 |
 | --- | --- | --- |
 | IdP 本体（Worker） | TypeScript + Hono | WebAuthn の検証と JWS の署名を、外部のライブラリなしに Workers の WebCrypto だけで書け、無料枠の CPU とサイズに収まる（下の「WebAuthn の検証」参照） |
-| 管理用の Worker | TypeScript | 共有コアの管理系のユースケースを、IdP 本体とは別のホスト名で HTTPS の管理 API として出す。管理者は mTLS で認証する（[管理 CLI と管理用の Worker](idpctl.md)参照） |
+| 管理用の Worker | TypeScript | 共有コアの管理系のユースケースを、IdP 本体とは別のホスト名で HTTPS の管理 API として出す。管理者は RFC 9421 の署名を許可リストの公開鍵で検証して認証する（[管理 CLI と管理用の Worker](idpctl.md)参照） |
 | 共有コア | TypeScript（`packages/core`） | ドメインの規則、入力のスキーマと検証、SQL 文、ユースケースを 1 か所に置き、2 つの Worker が同じ実装を使う（下の「コードの構成」参照） |
-| 管理 CLI | Go（`idpctl`） | HTTPS のクライアントだけを持ち、ドメインの規則を評価しない。単一バイナリで配れ、mTLS のクライアント証明書を標準ライブラリで扱える |
+| 管理 CLI | Go（`idpctl`） | HTTPS のクライアントだけを持ち、ドメインの規則を評価しない。単一バイナリで配れ、RFC 9421 の署名（ECDSA P-384 と SHA-256 の `Content-Digest`）を標準ライブラリ（`crypto/ecdsa`、`crypto/sha256`）だけで作れる |
 | パッケージ管理 | pnpm の workspace | 共有コアと 2 つの Worker を 1 つのリポジトリで管理し、依存の向きを機械的に確かめられる |
 | データベース | D1 | `DELETE … RETURNING` で使い捨て値を原子的に消費でき、無料枠で足りる |
 | トークン署名 | Ed25519（JOSE の `alg` は RFC 9864 の `Ed25519`、WebCrypto）。RS256 は RSA の鍵を設定したときだけ有効にする任意の機能 | Ed25519 は鍵が小さく、RSA より署名が軽い。OIDC Discovery 1.0 §3 と OIDC Core 1.0 §15.1 は RS256 を必須とするので、RSA を必要とする RP をつなぐときと適合性テストでは RS256 を有効にする。無効の間の逸脱は[標準準拠](standards-compliance.md)に例外として記録する |
 | e2e テスト | Playwright（ブラックボックス） | HTTP とブラウザ操作で IdP を外から叩くので実装言語に依存せず、Rust に移行しても同じテストを流せる。仮想オーセンティケータでパスキーの操作を自動化できる |
 | 画面 | TypeScript + Vite（UI のフレームワークなし） | ページは 3 つだけで、CSP を `default-src 'self'` に保てる。Vite は `cf` が Cloudflare Vite plugin のために使うので、道具が増えない。要求と応答の型を共有コアと共有する（[認証フロー](authentication.md)の画面と言語を参照） |
 | 基盤の構成管理 | Terraform（Cloudflare provider）と、`cf` を使うシェルスクリプト | 宣言できる基盤は Terraform、手続きの操作（マイグレーション、デプロイ、Secret の登録、鍵の生成）はスクリプトに分ける（[デプロイと設定](deployment.md)参照） |
-| Worker の中のレート制限 | Workers の Rate Limiting バインディング（IdP の Worker だけ） | IdP はゾーンのルールセットを持たない（[ドメインの置き場所](domain-placement.md)の決定 ③）ので、ゾーンの WAF のレート制限ルールは使わない。バインディングは、ゾーンのプランによらず IdP のホスト名にだけ効き、認証前の D1 の書き込みを守れる。近似で、Durable Objects のような厳密な数えはしないが、家族規模の IdP にそこまでは要らない（[無料枠](free-tier.md)、[ドメインの置き場所](domain-placement.md)の共存の設計の 4） |
+| Worker の中のレート制限 | Workers の Rate Limiting バインディング（IdP の Worker と管理用の Worker。名前空間は別） | IdP はゾーンのルールセットを持たない（[ドメインの置き場所](domain-placement.md)の決定 ③）ので、ゾーンの WAF のレート制限ルールは使わない。バインディングは、ゾーンのプランとホスティングのモードによらず IdP のホスト名にだけ効き、IdP の Worker では認証前の D1 の書き込みを、管理用の Worker では署名の検証の CPU 時間を守れる。近似で、Durable Objects のような厳密な数えはしないが、家族規模の IdP にそこまでは要らない（[無料枠](free-tier.md)、[ドメインの置き場所](domain-placement.md)の共存の設計の 4） |
 | ストレージに使わないもの | KV | 結果整合で使い捨て値に向かず、無料枠の書き込みが 1 日 1,000 件と少ない |
 
 **コードの構成**
@@ -26,7 +26,7 @@ pnpm の workspace に次の 4 つを置く。`idpctl` は Go なので、この
 | `packages/core` | ドメインの規則（パスキーの上限、最後の 1 本は失効できない規則、無効化されたユーザーの確認など）、入力のスキーマと検証、SQL 文、利用者向けのユースケースと `idpctl` の全 29 操作のユースケース、操作ごとの分類のメタデータ、D1 を操作するポート（インターフェース） | 触れない。ポート越しに、実行する文のバッチを渡すだけ |
 | `packages/d1-adapter` | コアの D1 のポートを D1 バインディングで実装する薄いアダプタと、その適合テスト。2 つの Worker が同じものを使う | D1 バインディング（Worker から渡される） |
 | `apps/worker` | IdP の Worker。`packages/d1-adapter` に D1 バインディングを渡す配線と、公開する HTTP（OIDC、パスキー API、静的アセット） | D1 バインディング |
-| `apps/admin-worker` | 管理用の Worker。`packages/d1-adapter` に D1 バインディングを渡す配線、mTLS の再確認と許可リストによる管理者の確定、管理 API の HTTP | D1 バインディング（IdP の Worker と同じ D1） |
+| `apps/admin-worker` | 管理用の Worker。`packages/d1-adapter` に D1 バインディングを渡す配線、署名の検証と許可リストによる管理者の確定、管理 API の HTTP | D1 バインディング（IdP の Worker と同じ D1） |
 
 - **規則の実装は 1 つ**：IdP の Worker もパスキー（本人による追加と失効、登録リンクによる登録）と監査ログの行を書くので、パスキーの上限、最後の 1 本の規則、無効化の確認、監査ログの行の形、入力の検証は、2 つの Worker が共有する規則である。これらは共有コアにだけ実装し、アプリ側にも `idpctl` にも書き直さない。
 - **スキーマは 1 つ**：各操作の入力のスキーマは共有コアで定義し、同じスキーマが入力の検証と管理 API の仕様（OpenAPI など）を決める。管理 API の仕様はこのスキーマから生成し、`idpctl` の Go の型はその仕様から生成する。手でコピーした型は置かない（[実装に依存しない契約](cross-language-contract.md)参照）。

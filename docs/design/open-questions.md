@@ -2,7 +2,25 @@
 
 実装に入る前に決めること（有効・無効の持ち方と削除しない方針、管理 API の形、ブートストラップ、トークンのクレーム、デプロイのパイプライン、ログ、画面と多言語化を含む）は、すべて各トピックのドキュメントに記録した。決めていないことが見つかったら、ここではなく、そのトピックのドキュメントに決定として書く。ここに残すのは、実装の前に確かめる前提と、作りながら実測で確かめるものだけ。
 
-ホスティングのモード（`workers.dev` と RFC 9421 の署名）で確かめることは、承認されるまで[ホスティングのモード](hosting-modes.md)の「未確認の事項」に置く。
+**ホスティングのモードと署名による管理者の認証（[ホスティングのモード](hosting-modes.md)）**
+
+設計は運用者が 2026-11-10 に承認した。管理者の認証は両方のモードで RFC 9421 の署名だけにする。次は、公式の資料で確かめられなかったので、実装とデプロイで確かめる。
+
+- [ ] Workers の Web Crypto で ECDSA の P-384 と SHA-384 の署名を検証できるか（Cloudflare の対応表は曲線を挙げていない）。署名の値の形が r と s を 48 バイトずつ連結した 96 バイトであること。実装の順番の 2 のテストベクタを、ローカルの workerd（`cf` が同梱する miniflare）で検証して決める。できなければ Ed25519 に切り替えて管理者の鍵を作り直す（運用者の決定の 4）。残るのは本物の Workers での確認
+- [ ] P-384 の署名の検証の CPU 時間が、無料枠の 10 ms の中で、管理操作のほかの処理と合わせて収まるか
+- [ ] Workers の実行環境が、要求の URL のパスとクエリのパーセントエンコードを正規化するか（`@target-uri` の組み立てに効く。食い違うと正しい要求が `forbidden` になる、安全側の失敗）
+- [ ] 管理用の Worker の Rate Limiting バインディングのしきい値（仮の値で 10 秒あたり 10 件）が、`idpctl` の正規の連続した操作を止めないこと
+- [ ] D1 が、主キーへの書き込みを索引の行として別に数えるか（`admin_request_nonces` の書き込みの見込みに効く）
+- [ ] D1 が `ALTER TABLE … ADD COLUMN` と、追加した列を確かめる挿入のトリガーを、ローカルと同じに扱うか（`0004` のマイグレーション）
+- [ ] `workers.dev` で、`request.cf.tlsVersion` がカスタムドメインと同じ値（`TLSv1.2`、`TLSv1.3`）をとるか。`workers.dev` のエッジの TLS の最小バージョン
+- [ ] `workers.dev` が平文の HTTP の要求を Worker に届けるか、エッジでリダイレクトするか
+- [ ] `workers.dev` のバージョンの URL とデプロイメントの URL を、設定で無効にできるか（プレビューの URL は `previewUrls` で無効にできる）
+- [ ] `workers.dev` で 1 日の要求の上限を超えたときに返るもの（ルートの fail closed の設定がない）
+- [ ] Browser Integrity Check（BIC）で拒否された要求が、1 日の要求の上限に数えられるか
+- [ ] Go の HTTP クライアントの既定の `User-Agent` が BIC で拒否されるか（`idpctl` は常に明示するので、結果によらず設計は変わらない）
+- [ ] アカウントの `workers.dev` のサブドメインを変えた後、古いサブドメインを別のアカウントが取れるか（取れるなら issuer のなりすましになる。抑え方はサブドメインを変えないこと）
+- [ ] `cf` にアカウントの `workers.dev` のサブドメインを読むコマンドがあるか（なければ Cloudflare API の「Get a Workers Subdomain」で読む）
+- [ ] ブラウザとパスワードマネージャーが、Public Suffix List の私的な領域のホスト名（`workers.dev` の下）のパスキーを、カスタムドメインと同じに扱うか（e2e と、つなぐ予定の端末で確かめる）
 
 **ゾーンをサービスと共有する構成（[ドメインの置き場所](domain-placement.md)の A2）**
 
@@ -10,10 +28,8 @@
 
 - [ ] Workers の Rate Limiting バインディングを Workers Free で使えるか、料金がかかるか。ドキュメント（Workers の「Rate Limiting」、料金、上限のページ）に書かれていない。使えなければ最初の `cf deploy` が失敗する。IdP は WAF のレート制限ルールを持たない（[ドメインの置き場所](domain-placement.md)の決定 ③）ので、そのときは、IdP の Worker から D1 の書き込みの保護がなくなることを受け入れるリスクとして[無料枠](free-tier.md)に記録し直すか、別の数え方（Durable Objects など）を検討する
 - [ ] `run_worker_first` を真にしたカスタムドメインの IdP の Worker に、平文の HTTP の要求が `http:` の URL のまま届き、Worker の 308 のリダイレクトが返ること（ゾーンの Always Use HTTPS が無効のとき。有効なら、エッジがその前にリダイレクトする）。ページ（`/signin`）も Worker を通ることを、平文の要求と TLS 1.2 の要求で確かめる。ローカルの workerd では e2e で確かめた
-- [ ] 管理用のホスト名で、証明書のない要求が WAF のルールなしに管理用の Worker に届き、`forbidden` が返ること（エッジの mTLS は遮断しない前提。遮断されても安全側だが、前提が違うことになるので記録する）
 - [ ] `request.cf.tlsVersion` が、TLS 1.2 と 1.3 の接続でそれぞれ `TLSv1.2` と `TLSv1.3` になること（Cloudflare「Block on TLS」の例の綴り）。違えば、2 つの Worker がすべての要求を拒否するので、最初のデプロイの段階 6 で気付く
-- [ ] API トークンの最小の権限の組み合わせ（Terraform 用の、クライアント証明書と mTLS の割り当ての権限の正確な名前と、ゾーンを 1 つに絞れること）。権限の一覧のページは 2 つの表で名前が食い違う
-- [ ] ゾーンの managed CA に、管理用のホスト名のほかに割り当てられたホスト名がないこと（ブートストラップの前提。あれば IdP の Terraform の最初の apply が外してしまう）
+- [ ] API トークンの最小の権限の組み合わせ（Terraform 用はゾーンの読み取りだけで足り、ゾーンを 1 つに絞れること。デプロイ用は `cf deploy` が成功する最小の組み合わせ）。権限の一覧のページは 2 つの表で名前が食い違う
 - [ ] ゾーンの持ち主がゾーンの TLS の最小バージョンを 1.2 以上にしているか（ブートストラップの前提。低ければ RFC 8996 の例外が実際に起きる）
 
 **実装の前に必ず確かめること**
@@ -30,7 +46,7 @@
 デプロイのパイプライン（[デプロイと設定](deployment.md)参照）は、次を前提にしている。どれかが成り立たなければ、wrangler に戻さず、Cloudflare API かダッシュボードで行う形に設計を見直す。
 
 - [ ] `cf`（`cf workers deployments` など）か Cloudflare API で、Worker を前のバージョンにロールバックできるか。Cloudflare「Rollbacks」はダッシュボードと `wrangler rollback` しか説明していない。できなければ、ロールバックはダッシュボードで行う手順にする
-- [ ] Terraform の Cloudflare provider が、fail closed の設定を扱えるか。扱えないものは `cf` か Cloudflare API のスクリプトにする（CSR からのクライアント証明書と、管理用のホスト名への mTLS の割り当ては、provider 5.28.1 で持てることを確かめた。[デプロイと設定](deployment.md)）
+- [ ] Terraform の Cloudflare provider が、fail closed の設定を扱えるか。扱えないものは `cf` か Cloudflare API のスクリプトにする（[デプロイと設定](deployment.md)）
 - [ ] `cf` で R2 のバケットを作れるか（Terraform の state のバケットは Terraform より先に要る）
 - [ ] `cf` で D1 のデータベースを APAC のリージョンを指定して作れるか（plan のトークンから D1 の権限を外すため、D1 のデータベースは Terraform に置かない）。作れなければ、Cloudflare API の「Create D1 Database」のスクリプトにする
 - [ ] 1Password Environments の GitHub Actions の destination を、plan の workflow の、同じリポジトリのブランチからの `pull_request` のイベントに限れるか。限れなければ、PR の `terraform plan` をやめる（[デプロイと設定](deployment.md)の例外を参照）
@@ -39,11 +55,6 @@
 - [ ] 運用者の `cf auth login` のセッション（複数のアカウントにまたがりうる）の下で、`CLOUDFLARE_ACCOUNT_ID` を設定すると、`cf` がそのアカウントだけを対象にするか。`cf` 1.0.0-beta.21 のグローバルフラグにはアカウントを指定するものがない。従わなければ、アカウントごとの `--profile` か Cloudflare API のスクリプトにする（[デプロイと設定](deployment.md)の直書きの禁止を参照）
 - [ ] `cf` で、D1 のデータベースの ID をリポジトリのファイルに書かずに、Worker の D1 のバインディングに渡せるか（デプロイのスクリプトが名前から引いた ID を渡す）。渡せなければ、スクリプトがデプロイのたびにバインディングの設定を生成し、コミットしない形にする
 - [ ] Takumi Guard の下で、固定した pnpm のセットアップの Action と `pnpm install --frozen-lockfile` が動くこと（利用者は pnpm への対応を確認済み。実装で軽く確かめる）
-
-管理用の Worker（[管理 CLI と管理用の Worker](idpctl.md)参照）は、次が成り立つことを前提にしている。どれかが成り立たなければ、実装に入る前に設計を見直す。
-
-- [ ] Cloudflare の managed CA が、ECDSA P-384 の鍵の CSR を受け付けるか。ドキュメントには RSA 2048 の例しかない。受け付けなければ P-256 にする（RSA にはしない）
-- [ ] `cf` CLI にクライアント証明書を扱うコマンドがあるか（`cf cli search "client certificate"` で確認する）。なければ、証明書の発行と失効はダッシュボードか API で行う
 
 デプロイの道具を `cf` に揃えること（[デプロイと設定](deployment.md)参照）は、次が成り立つことを前提にしている。どれかが成り立たなければ、wrangler に戻さず、Cloudflare API かダッシュボードで行う形に設計を見直す。
 
@@ -74,4 +85,3 @@ RS256 を任意の機能として持つこと（[トークン設計](tokens.md)�
 - [ ] 対象のブラウザで、条件付きメディエーション（パスキーの自動入力）と、WebAuthn Level 3 の `parseCreationOptionsFromJSON()`、`parseRequestOptionsFromJSON()`、`toJSON()` が使えるか（[認証フロー](authentication.md)の画面と言語を参照）
 - [ ] サインインページの読み込みごとのチャレンジの書き込みを含めて、D1 の 1 日の書き込みが見込みに収まること（[無料枠](free-tier.md)参照）
 - [ ] 正規の利用での Workers Logs の 1 日の取り込み量が、2026 年 12 月 1 日からの Free の上限（0.5 GB / 日）に十分収まること（[デプロイと設定](deployment.md)のログを参照）
-- [ ] Cloudflare のクライアント証明書の失効を API で要求してから、`pending_revocation` が `revoked` になり、管理用の Worker に届く `certRevoked` が `"1"` になるまでの時間（ドキュメントに書かれていない。それまでは許可リストから消すことで締め出す）

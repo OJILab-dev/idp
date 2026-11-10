@@ -16,12 +16,13 @@ Cloudflare Workers の無料枠だけで動く、パスキー専用の最小構�
 - 無料枠の範囲で常時稼働する
 - ユーザーの認証手段はパスキーだけにし、OIDC と WebAuthn の標準に厳格に準拠する
 - アプリ単位で「誰が使えるか」を管理できる
-- 管理操作は手元の CLI から行い、管理者は IdP 自身ではなく mTLS で確かめる
+- 管理操作は手元の CLI から行い、管理者は IdP 自身ではなく、IdP の外の鍵による RFC 9421 の署名で確かめる
+- ドメインを持たない人も fork してデプロイできる（`workers.dev` のモード。[ホスティングのモード](hosting-modes.md)）
 - 将来、Worker を Rust で書き直せる余地を残す
 
 **設計原則**
 
-1. 攻撃面を小さくする（Secure by Design）。IdP の Worker がインターネットに出すのは OIDC とパスキーのエンドポイントだけで、管理 UI は作らない。管理 API は別のホスト名の管理用の Worker にだけ置き、mTLS で、管理者の証明書を持たないリクエストを、管理用の Worker のゲートでどの処理よりも前に拒否する（エッジで Worker に届く前に止める形は、IdP がゾーンのルールセットを持たない決定で外した。[ドメインの置き場所](domain-placement.md)の決定 ③）。IdP の Worker のコードには管理系のユースケースを含めない。
+1. 攻撃面を小さくする（Secure by Design）。IdP の Worker がインターネットに出すのは OIDC とパスキーのエンドポイントだけで、管理 UI は作らない。管理 API は別のホスト名の管理用の Worker にだけ置き、許可リストの鍵による RFC 9421 の署名を持たないリクエストを、管理用の Worker のゲートでどの処理よりも前に拒否する（エッジで Worker に届く前に止める形は、IdP がゾーンのルールセットを持たない決定と、管理者の認証を署名だけにする決定で外した。[ドメインの置き場所](domain-placement.md)の決定 ③、[ホスティングのモード](hosting-modes.md)の 4）。IdP の Worker のコードには管理系のユースケースを含めない。
 2. 既定値は常に安全側に倒す（Secure by Default）。例：リフレッシュトークンを発行しない、PKCE とユーザー検証（UV）を必須にする、クレームは要求されたスコープの分だけ渡す。
 3. OIDC と WebAuthn は標準規格に厳格に準拠する。独自拡張や仕様の緩い解釈はせず、仕様が選択を委ねている箇所は安全側を選ぶ（[標準準拠](standards-compliance.md)参照）。
 4. 迷ったら拒否する（fail-closed）。
@@ -31,11 +32,11 @@ Cloudflare Workers の無料枠だけで動く、パスキー専用の最小構�
 
 ## 全体構成
 
-利用者と RP に公開するのは IdP の Worker 1 本だけで、状態はすべて D1 に置く。管理操作は、別のホスト名の管理用の Worker が mTLS で管理者を確かめてから行い、手元の `idpctl` はその管理 API を呼ぶだけにする。2 つの Worker は同じ D1 をバインドし、D1 を操作するロジックは TypeScript の共有コアの 1 か所に置く（[技術選定](technology.md)参照）。IdP の Worker には管理用のエンドポイントを置かない。
+利用者と RP に公開するのは IdP の Worker 1 本だけで、状態はすべて D1 に置く。管理操作は、別のホスト名の管理用の Worker が要求ごとの署名で管理者を確かめてから行い、手元の `idpctl` はその管理 API を呼ぶだけにする。2 つの Worker は、カスタムドメインか `workers.dev` で公開する（[ホスティングのモード](hosting-modes.md)）。2 つの Worker は同じ D1 をバインドし、D1 を操作するロジックは TypeScript の共有コアの 1 か所に置く（[技術選定](technology.md)参照）。IdP の Worker には管理用のエンドポイントを置かない。
 
 ```mermaid
 ---
-title: 利用者向けは IdP の Worker、管理は mTLS で守る別ホスト名の管理用の Worker
+title: 利用者向けは IdP の Worker、管理は署名で守る別ホスト名の管理用の Worker
 ---
 flowchart LR
   browser["ブラウザ<br/>パスキー（WebAuthn）"]
@@ -47,11 +48,10 @@ flowchart LR
     passkey["パスキー API<br/>登録・サインイン、本人による追加・失効、チャレンジ検証"]
   end
 
-  idpctl["idpctl（Go）<br/>管理 API の薄いクライアント<br/>管理者のクライアント証明書"]
-  edge["エッジの mTLS<br/>証明書を求めて検証し、結果を Worker に渡す（遮断しない）"]
+  idpctl["idpctl（Go）<br/>管理 API の薄いクライアント<br/>管理者の秘密鍵で要求ごとに署名"]
 
   subgraph admin["管理用の Worker（TypeScript、別ホスト名）"]
-    adminapi["管理 API<br/>ゲート（証明書の検証の結果、失効、許可リスト）<br/>idpctl の全操作"]
+    adminapi["管理 API<br/>ゲート（レート制限、RFC 9421 の署名の検証、許可リスト、nonce）<br/>idpctl の全操作"]
   end
 
   core["共有コア（packages/core）<br/>規則・検証・SQL・ユースケース"]
@@ -63,8 +63,7 @@ flowchart LR
   browser -->|"authorize · logout"| oidc
   rp -->|"discovery · jwks · token · userinfo"| oidc
   oidc --> secret
-  idpctl -->|"HTTPS（mTLS）"| edge
-  edge --> adminapi
+  idpctl -->|"HTTPS（RFC 9421 の署名）"| adminapi
   adminapi -->|"discovery（Service Binding）"| oidc
   worker -.->|"利用者向けと共有のモジュールだけ"| core
   admin -.->|"管理系と共有のモジュール"| core
@@ -72,7 +71,7 @@ flowchart LR
   admin --> d1
 ```
 
-ブラウザは静的アセットのページ（サインイン、登録、アカウント）からパスキー API を呼び、`/authorize` と `/logout` にもアクセスする。アカウントページは、サインイン中の本人が自分のパスキーを一覧し、追加し、失効させるためのページで、サインインは常に RP からの `/authorize` を経由する。RP アプリはブラウザを `/authorize` にリダイレクトし、自身は discovery、JWKS、`/token`、`/userinfo` とだけ通信する。署名鍵を使うのは OIDC エンドポイントだけで、トークンは通常 Ed25519 で署名する（RS256 は RSA の鍵を設定したときだけ有効になる任意の機能）。管理用の Worker は署名鍵を持たず、RS256 が有効かどうかを Service Binding で IdP の Worker の discovery から読む。`idpctl` は管理者のクライアント証明書で管理用のホスト名に接続する。エッジは証明書を検証して結果を渡すだけで、証明書のないリクエストも管理用の Worker に届く。管理用の Worker は、ゲートで検証の結果と失効を確かめ、フィンガープリントの許可リストで管理者を確定してから操作する。IdP の Worker は、静的なページを含むすべてのリクエストで先に動き、平文の HTTP のリダイレクトと TLS のバージョンの確認を自分で行う（IdP はゾーンのルールセットを持たない。[ドメインの置き場所](domain-placement.md)の決定 ③）。破線は共有コアへの依存で、IdP の Worker は管理系のモジュールに依存しない。ledger や MCP などの拡張も、IdP の Worker の外に足す（[将来拡張](future-extensions.md)参照）。
+ブラウザは静的アセットのページ（サインイン、登録、アカウント）からパスキー API を呼び、`/authorize` と `/logout` にもアクセスする。アカウントページは、サインイン中の本人が自分のパスキーを一覧し、追加し、失効させるためのページで、サインインは常に RP からの `/authorize` を経由する。RP アプリはブラウザを `/authorize` にリダイレクトし、自身は discovery、JWKS、`/token`、`/userinfo` とだけ通信する。署名鍵を使うのは OIDC エンドポイントだけで、トークンは通常 Ed25519 で署名する（RS256 は RSA の鍵を設定したときだけ有効になる任意の機能）。管理用の Worker は署名鍵を持たず、RS256 が有効かどうかを Service Binding で IdP の Worker の discovery から読む。`idpctl` は要求ごとに管理者の秘密鍵で RFC 9421 の署名を付けて、管理用のホスト名に送る。エッジは何も止めず、署名のないリクエストも管理用の Worker に届く。管理用の Worker は、ゲートで接続元の IP ごとのレート制限を数え、署名を署名鍵の許可リストの公開鍵で検証して管理者を確定し、`nonce` を D1 に記録してリプレイを止めてから操作する。IdP の Worker は、静的なページを含むすべてのリクエストで先に動き、平文の HTTP のリダイレクトと TLS のバージョンの確認を自分で行う（IdP はゾーンのルールセットを持たない。[ドメインの置き場所](domain-placement.md)の決定 ③）。破線は共有コアへの依存で、IdP の Worker は管理系のモジュールに依存しない。ledger や MCP などの拡張も、IdP の Worker の外に足す（[将来拡張](future-extensions.md)参照）。
 
 ## ドキュメント一覧
 
@@ -88,11 +87,11 @@ flowchart LR
 | [トークン設計](tokens.md) | 短命トークンのみでリフレッシュトークンは発行しない。各トークンの形式と中身、署名アルゴリズム（Ed25519、任意の RS256）、署名鍵のローテーションと生成・バックアップ |
 | [標準準拠](standards-compliance.md) | OIDC・OAuth・JWT・WebAuthn の準拠ポイントと、適合性テストによる確認方法 |
 | [セキュリティ要件チェックリスト](security-checklist.md) | e2e の攻撃ケースとして実装する要件の一覧（実際の CVE 事例付き） |
-| [管理 CLI と管理用の Worker（idpctl）](idpctl.md) | 別ホスト名の管理用の Worker と Go の `idpctl` による管理、mTLS と許可リストによる管理者の確定、REST の管理 API（エラー、Idempotency-Key、ページング）、IdP が発行する秘密の扱い、break-glass |
-| [実装に依存しない契約](cross-language-contract.md) | SQL・エンコーディング・ID・鍵の形式・テストベクタと、Go と TypeScript をつなぐ管理 API の仕様の取り決め |
-| [デプロイと設定](deployment.md) | アカウントの移植性、デプロイごとの入力の一覧と直書きの禁止、ホスト名を設定値で与える仕組み、変更時の影響、Cloudflare アカウント、Terraform とスクリプトの分担、デプロイのパイプライン、API トークン、鍵の生成スクリプト、ログ、署名鍵と D1 のバックアップ |
-| [ドメインの置き場所](domain-placement.md) | IdP をホスト名のゾーンと同じアカウント（典型的には仕えるサービスのアカウント）に置く決定（A2）と理由、B か A1 を選ぶ条件、ゾーンをサービスと共有するときの共存の設計、残るリスク、検討した選択肢 |
-| [ホスティングのモード](hosting-modes.md) | カスタムドメインと `workers.dev` の 2 つのモードの切り替え、`workers.dev` の issuer と RP ID、RFC 9421 の署名による管理者の認証、実装の順番（運用者の承認待ちの設計） |
+| [管理 CLI と管理用の Worker（idpctl）](idpctl.md) | 別ホスト名の管理用の Worker と Go の `idpctl` による管理、RFC 9421 の署名と署名鍵の許可リストによる管理者の確定、REST の管理 API（エラー、Idempotency-Key、ページング）、IdP が発行する秘密の扱い、break-glass |
+| [実装に依存しない契約](cross-language-contract.md) | SQL・エンコーディング・ID・鍵の形式・テストベクタと、Go と TypeScript をつなぐ管理 API の仕様と管理者の署名の形の取り決め |
+| [デプロイと設定](deployment.md) | アカウントの移植性、ホスティングのモードの入力と `workers.dev` の固定の警告、デプロイごとの入力の一覧と直書きの禁止、ホスト名を設定値で与える仕組み、変更時の影響、Cloudflare アカウント、Terraform とスクリプトの分担、デプロイのパイプライン、API トークン、鍵の生成スクリプト、ログ、署名鍵と D1 のバックアップ |
+| [ドメインの置き場所](domain-placement.md) | IdP をホスト名のゾーンと同じアカウント（典型的には仕えるサービスのアカウント）に置く決定（A2）と理由、B か A1 を選ぶ条件、ゾーンをサービスと共有するときの共存の設計（ゾーンの単一資源を持たない）、残るリスク、検討した選択肢 |
+| [ホスティングのモード](hosting-modes.md) | カスタムドメインと `workers.dev` の 2 つのモードの切り替え、`workers.dev` の issuer と RP ID、両方のモードでの RFC 9421 の署名による管理者の認証（mTLS を外す）、管理用の Worker のレート制限、実装の順番（2026-11-10 に運用者が承認） |
 | [ブートストラップ](../deployment/bootstrap.md) | 空のアカウントから最初のユーザーと RP をつなぐまでの手順の設計 |
 | [無料枠の見積もりと制約](free-tier.md) | Workers と D1 の無料枠に対する見込みと、最初に確定すべき制約 |
 | [将来拡張](future-extensions.md) | ledger / entitlements、管理権限の分離、MCP など、IdP の外側に足す拡張 |

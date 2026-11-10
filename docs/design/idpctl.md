@@ -1,10 +1,12 @@
 # 管理 CLI と管理用の Worker（idpctl）
 
-管理操作はすべて、IdP の Worker とは別のホスト名に置く管理用の Worker が、共有コアのユースケースとして実行する。手元の `idpctl` は、その HTTPS の管理 API を呼ぶだけの Go の薄いクライアントにする。管理者は、Cloudflare の managed CA が発行したクライアント証明書による mTLS と、管理用の Worker が持つ証明書のフィンガープリントの許可リストで確かめる。
+管理操作はすべて、IdP の Worker とは別のホスト名に置く管理用の Worker が、共有コアのユースケースとして実行する。手元の `idpctl` は、その HTTPS の管理 API を呼ぶだけの Go の薄いクライアントにする。管理者は、`idpctl` が管理者の秘密鍵で要求ごとに付ける HTTP Message Signatures（RFC 9421）の署名を、管理用の Worker が持つ公開鍵の許可リストで検証して確かめる。どちらのホスティングのモード（カスタムドメインと `workers.dev`）でも同じ方法を使う（[ホスティングのモード](hosting-modes.md)。運用者の決定は 2026-11-10）。
+
+移行の間の注意：この文書は決定の後の姿を書く。[ホスティングのモード](hosting-modes.md)の実装の順番の 6 が main に入るまで、今のコードの管理用の Worker は、Cloudflare の managed CA が発行したクライアント証明書による mTLS と、証明書のフィンガープリントの許可リスト（`ADMIN_ALLOWLIST`）で管理者を確かめ、`idpctl` は `--cert` でクライアント証明書を出す。mTLS の撤去は実装の順番の 7 で行う。
 
 このドキュメントでは、次の 2 種類の秘密を区別して書く。
 
-- **管理者の秘密鍵（mTLS）**：管理者が自分で生成し、自分で持つ。クライアント証明書と対になり、管理 API への接続に使う。IdP は受け取らず、保存もしない。
+- **管理者の秘密鍵（署名鍵）**：管理者が生成スクリプトで生成し、自分で持つ。管理 API への要求に署名するのに使う。IdP は公開鍵だけを持ち、秘密鍵は受け取らず、保存もしない。
 - **IdP が発行する秘密（クライアントシークレット、登録トークン）**：管理用の Worker の共有コアが生成し、D1 にはハッシュだけを書く。
 
 **構成**
@@ -14,9 +16,9 @@
 - `idpctl` が持つもの：引数の解釈、管理 API の呼び出し、出力の整形、手元の入出力（管理者の秘密鍵を標準入力から読む、IdP が発行する秘密を `0600` のファイルに書く）、`Idempotency-Key` の生成と自分の再試行での再利用だけ。ドメインの規則は評価せず、管理用の Worker が返すエラーをそのまま表示する。管理用の Worker が規則の唯一の判定者である。
 - 管理 API の仕様（OpenAPI など）は共有コアの入力のスキーマから生成し、`idpctl` の Go の型はその仕様から生成する。仕様は Go と TypeScript の間の契約として扱う（[実装に依存しない契約](cross-language-contract.md)参照）。
 - issuer は IdP の Worker と同じ値を管理用の Worker が設定として持ち、登録リンクの組み立てに使う。`idpctl` が持つ設定は、管理 API のホスト名だけにする。
-- 管理用の Worker は、設定された管理用のホスト名へのリクエストだけを受け付ける。`workers.dev` とプレビューの URL は無効にする。そこでは mTLS が効かないため。無効化を忘れても、下の Worker 側の確認で拒否される。ホスト名の確認は、URL が `https` で、ホストが管理用のホスト名と完全に一致する（ポートを含まない）ことで行い、違えば何もせずに `forbidden` を返す。平文の HTTP の要求もこの確認で拒否し、リダイレクトはしない（`idpctl` はリダイレクトに従わず、平文で届いた要求の中身はすでに露出しているため）。
-- 管理用の Worker の設定の名前は次のとおり。D1 のバインディングは `DB`、IdP の Worker への Service Binding は `IDP`、issuer は `ISSUER`、管理用のホスト名は `ADMIN_HOST`、許可リストは `ADMIN_ALLOWLIST`（下の許可リストの節を参照）、Worker のバージョンのメタデータのバインディングは `CF_VERSION_METADATA` とする。監査ログの `writer_version` は `admin-worker@<バージョンの ID>` にする。
-- 設定は最初のリクエストの前に検証し、どれかが欠けているか形が違えば、すべてのリクエストを `internal` で拒否する（fail-closed）。管理用のホスト名は issuer と同じ規則（正規の形、ポートなし、IP アドレスでない）に従い、issuer のホスト名と同じ値も拒否する。管理 API を公開のエンドポイントと同じホストに置かないため。`IDP` だけは欠けても拒否せず、RS256 を無効として扱う（下記）。
+- 管理用の Worker は、設定された管理用のホスト名へのリクエストだけを受け付ける。カスタムドメインのモードでは `workers.dev` とプレビューの URL を無効にし、`workers.dev` のモードでは `workers.dev` のルートだけで公開してプレビューの URL を無効にする（[ホスティングのモード](hosting-modes.md)の 1.2）。どちらでも、ほかのホスト名で届いた要求は下の Worker 側の確認で拒否される。ホスト名の確認は、URL が `https` で、ホストが管理用のホスト名と完全に一致する（ポートを含まない）ことで行い、違えば何もせずに `forbidden` を返す。平文の HTTP の要求もこの確認で拒否し、リダイレクトはしない（`idpctl` はリダイレクトに従わず、平文で届いた要求の中身はすでに露出しているため）。
+- 管理用の Worker の設定の名前は次のとおり。D1 のバインディングは `DB`、IdP の Worker への Service Binding は `IDP`、issuer は `ISSUER`、管理用のホスト名は `ADMIN_HOST`、ホスティングのモードは `HOSTING_MODE`、署名鍵の許可リストは `ADMIN_SIGNING_KEYS`（下の許可リストの節を参照）、Rate Limiting のバインディングは `RATE_LIMITER`、Worker のバージョンのメタデータのバインディングは `CF_VERSION_METADATA` とする。監査ログの `writer_version` は `admin-worker@<バージョンの ID>` にする。
+- 設定は最初のリクエストの前に検証し、どれかが欠けているか形が違えば、すべてのリクエストを `internal` で拒否する（fail-closed）。管理用のホスト名は issuer と同じ規則（正規の形、ポートなし、IP アドレスでない）に従い、issuer のホスト名と同じ値も拒否する。管理 API を公開のエンドポイントと同じホストに置かないため。`HOSTING_MODE` と、issuer と管理用のホスト名の形が合わない設定も拒否する（[ホスティングのモード](hosting-modes.md)の 1.4）。`IDP` だけは欠けても拒否せず、RS256 を無効として扱う（下記）。
 
 **管理用の Worker に API を置く理由**
 
@@ -29,47 +31,47 @@ D1 を手元から直接操作する形（D1 REST API）をやめ、管理 API �
 そのかわり、管理用のエンドポイントをインターネットに出すことになる。設計原則 1 は、次の形で保つ。
 
 - IdP の Worker は OIDC とパスキーのエンドポイントだけを出し、管理系のコードをバンドルに含めない（[技術選定](technology.md)の境界を参照）。
-- 管理 API は別のホスト名にだけ置き、mTLS で、有効なクライアント証明書を持たないリクエストを、管理用の Worker のゲートで、どの処理（D1 の読み書きを含む）よりも前に拒否する。以前は、エッジの WAF のカスタムルールで Worker に届く前に止めていたが、IdP がゾーンのルールセットを持たない決定（[ドメインの置き場所](domain-placement.md)の決定 ③）で外した。失うのは、そうした要求が 1 日のリクエスト上限に数えられないことだけで、管理 API に入れないことは変わらない。
+- 管理 API は別のホスト名にだけ置き、許可リストの鍵による正しい署名を持たないリクエストを、管理用の Worker のゲートで、どの処理（D1 の読み書きを含む）よりも前に拒否する。以前は、エッジの mTLS と WAF のカスタムルールで、有効なクライアント証明書のない要求を Worker に届く前に止めていたが、IdP がゾーンのルールセットを持たない決定（[ドメインの置き場所](domain-placement.md)の決定 ③）で WAF のルールを外し、その後、管理者の認証を署名だけにする決定（[ホスティングのモード](hosting-modes.md)の 4）で mTLS も外した。失うのは、そうした要求が 1 日のリクエスト上限に数えられないことだけで、管理 API に入れないことは変わらない。
 - 管理者の認証に IdP 自身は使わない。権限の根拠が守る対象の中に閉じること、IdP の欠陥がそのまま管理権限の奪取になること、IdP の障害時に直す手段も止まることを避けるため（[将来拡張](future-extensions.md)の管理権限の分離と同じ理由）。
 
-**管理者の認証（mTLS）**
+**管理者の認証（RFC 9421 の署名）**
 
-- クライアント証明書は Cloudflare の managed CA で発行する。自分の秘密鍵と CSR を使って発行でき（Cloudflare「Create a client certificate」）、API の発行要求が受け取るのは `csr` と `validity_days` だけである（Cloudflare API「Create Client Certificate」）。管理者の秘密鍵は Cloudflare にも IdP にも渡らない。
-- managed CA の証明書は、Free、Pro、Business ではゾーンあたり有効なもの 100 枚までで、上限を上げるには API Shield 付きの Enterprise が要る（Cloudflare「Client certificates (mTLS)」の「Limits」）。家族規模の管理者の数には十分である。自前の CA（BYO CA）は Enterprise でしか使えない（Cloudflare「Bring your own CA for mTLS」の「Availability」）。Cloudflare Access の mTLS は Free プランに含まれない（Cloudflare One「Mutual TLS」の「Availability」）。
-- 管理用のホスト名に mTLS を有効にする（managed CA へのホスト名の割り当て）。エッジは、そのホスト名への接続でクライアント証明書を求めて検証し、結果を Worker に渡す。エッジのルール（WAF のカスタムルール）では遮断しない（[ドメインの置き場所](domain-placement.md)の決定 ③）。証明書のない要求も、検証に失敗した要求も、失効した証明書の要求も、管理用の Worker に届く。失効した証明書は、有効なものと同じく検証を通るので（Cloudflare「cf.tls_client_auth.cert_verified」、「mTLS related features」の「Certificate Revocation」）、失効は別に確かめる必要がある。
-- 管理用の Worker のゲートが、mTLS の唯一の強制の箇所になり、fail-closed で確かめる。`request.cf.tlsClientAuth.certVerified` が文字列の `"SUCCESS"` であること（Workers では真偽値ではなく文字列で、証明書がなければ `"NONE"`、失敗なら `"FAILED:…"` になる）、`certRevoked` が `"0"` であること、`certFingerprintSHA256` が許可リストにあることの 3 つがそろわなければ拒否する（Cloudflare「Client certificate variables」の「Workers variables」）。値がない、形が違うなど判定できない場合も拒否する。ゲートは D1 にも IdP の Worker にも触れる前に動くので、拒否された要求は 1 日のリクエスト上限に 1 件数えられるだけで、D1 の上限は使わない。
-- 証明書の検証はアカウント単位の CA に対して行われ、同じアカウントのどのゾーンで発行した証明書でも、mTLS を有効にしたホストで通る（Cloudflare「Enable mTLS」の「CAs in use」）。IdP をサービスのアカウントに置く形（[ドメインの置き場所](domain-placement.md)の A2）では、サービスのために同じアカウントで発行した証明書や、アカウントのどのゾーンでも証明書を発行できる人が作った証明書も、エッジの検証を通る。管理者の境界は、下の許可リストだけになる。証明書のない要求も、許可リストにない証明書の要求も、管理 API には入れないが、管理用の Worker に届いて 1 日のリクエスト上限を使える。これを受け入れるリスクとして記録する（[無料枠](free-tier.md)、[デプロイと設定](deployment.md)の Cloudflare アカウントを参照）。
-- 管理用のホスト名の mTLS の割り当ては、ゾーンに 1 つしかない（ゾーンの managed CA に割り当てたホスト名の一覧を丸ごと持つ）。IdP の Terraform が、デプロイによらず持つ（[ドメインの置き場所](domain-placement.md)の共存の設計の 2）。
+署名の形、検証の手順、リプレイの防止の正本は[ホスティングのモード](hosting-modes.md)の 3 で、言語をまたぐ取り決めは[実装に依存しない契約](cross-language-contract.md)にある。ここには管理用の Worker の振る舞いとして要点だけを書く。
+
+- `idpctl` は、要求ごとに管理者の秘密鍵で RFC 9421 の署名を作り、`Signature-Input`、`Signature`、`Content-Digest` のヘッダーで送る。対象のコンポーネントは `@method`、`@target-uri`、`@authority`、`content-digest`、本文を持つ要求の `content-type`、`Idempotency-Key` を持つ要求の `idempotency-key` に固定し、パラメーターは `created`、`nonce`、`keyid`、`tag`（`idp-admin`）の 4 つだけにする。アルゴリズムは ECDSA P-384 と SHA-384 で、要求の `alg` は受け付けない。管理者の秘密鍵は Cloudflare にも IdP にも渡らない。
+- 管理用の Worker のゲートが、管理者の認証の唯一の強制の箇所になり、fail-closed で確かめる。順番は、ホスト名、スキーム、TLS のバージョン、接続元の IP ごとの Rate Limiting バインディング、本文の大きさ、構造化フィールドの厳格な解析、コンポーネントとパラメーターの形、`keyid` が許可リストにあること、`created` が今の時刻の前後 60 秒にあること、許可リストの公開鍵による署名の検証、本文の SHA-256 と `Content-Digest` の一致、`nonce` の D1 への一意な挿入（[ホスティングのモード](hosting-modes.md)の 3.8）。D1 に書くのは最後の `nonce` だけで、署名の検証を通らない要求は D1 に 1 行も書かない。
+- Rate Limiting で上限を超えた要求は、本文のない 429 を返す。解析から `nonce` までのどこで拒否しても、同じ `forbidden` の本文を返し、理由は Worker のログにだけ書く。`nonce` の挿入が一意制約以外の理由で失敗したときは `internal` を返す。
+- 同じ `nonce` の 2 回目の要求は、署名が正しくてもリプレイとして拒否する。`nonce` は D1 の `admin_request_nonces` に `created` から 60 秒の有効期限で置き、期限切れの行は次の挿入と同じバッチで消す（[ホスティングのモード](hosting-modes.md)の 3.6）。
+- Cloudflare の managed CA とクライアント証明書は使わない。前の設計では、エッジの mTLS と、Worker での `request.cf.tlsClientAuth` の再確認（`certVerified`、`certRevoked`、`certFingerprintSHA256`）を使っていた。③ で WAF のカスタムルールを外した後は、証明書のない要求も管理用の Worker に届き、mTLS に残る利点は小さかった。managed CA はアカウント単位で検証するので、A2 ではサービスのために発行した証明書もエッジを通り、信頼の根が広かった。両方のモードで 1 つの認証の経路にするため、署名だけにした（[ホスティングのモード](hosting-modes.md)の 4.2）。
 - 管理用の Worker は、`request.cf.tlsVersion` が `TLSv1.2` か `TLSv1.3` でない要求を、ホスト名の確認と同じく何もせずに `forbidden` で拒否する。ゾーンの TLS の最小バージョンを IdP は持たないため（[デプロイと設定](deployment.md)の設定値）。
 
 **許可リストによる管理者の確定**
 
-管理者は、証明書の SHA-256 フィンガープリントから管理者の名前への許可リストで確定する。許可リストはデプロイの設定ファイル（[デプロイと設定](deployment.md)のデプロイごとの入力）としてリポジトリに置き、管理用の Worker の設定として CI のデプロイでだけ変える。D1 には置かない。フィンガープリントは秘密ではない。
+管理者は、署名を検証した公開鍵から管理者の名前への許可リストで確定する。許可リストはデプロイの設定ファイル（[デプロイと設定](deployment.md)のデプロイごとの入力の `admin_signing_keys`）としてリポジトリに置き、管理用の Worker の設定 `ADMIN_SIGNING_KEYS` として CI のデプロイでだけ変える。D1 には置かない。公開鍵と `keyid` は秘密ではない。
 
-- **証明書の主体名で認可しない**：mTLS の認可は、証明書の CN や SAN で主体を決める形（Kubernetes の CN と O、SPIFFE の URI SAN、PostgreSQL の証明書認証など）が主流である。しかし managed CA はアカウント単位で検証するので、「SSL and Certificates Write」の権限を持つ人は、任意の主体名の証明書を発行して検証を通せる（Cloudflare API「Create Client Certificate」）。主体名で認可すると、管理者の権限が「証明書を発行できること」にまで下がる。許可リストは、証明書の発行に加えてデプロイの権限も求める。
-- **すぐ締め出せる**：許可リストから消せば、その証明書はデプロイの時点で使えなくなる。Cloudflare の失効は、API で要求するとまず `pending_revocation` になり、非同期に `revoked` へ移る（Cloudflare API「Revoke Client Certificate」）。移るまでの時間は書かれていない。
-- **管理 API から自分を足せない**：許可リストを D1 に置くと、管理者や盗まれた管理者の証明書が、管理 API で別の証明書を足せる。権限の根拠が守る対象の中に閉じるので、管理系を IdP の OIDC クライアントにしない理由（[将来拡張](future-extensions.md)参照）と同じ問題になる。
-- SSH の `authorized_keys` と同じ形で、鍵（証明書）と人の対応を、守られる側の設定として持つ。
-- **設定の形**：`ADMIN_ALLOWLIST` は、`sha256` と `name` の 2 つのメンバーだけを持つオブジェクトの JSON 配列にする。`sha256` は証明書の SHA-256 フィンガープリントを小文字の 16 進 64 文字で書き、`name` は管理者の名前を英小文字、数字、ハイフンの 1〜64 文字（先頭と末尾は英小文字か数字）で書く。1 人の管理者が証明書の移行の間に複数の行を持ってよい。空の配列、JSON でない値、ほかのメンバー、大文字や区切りを含むフィンガープリント、同じフィンガープリントの重複は、設定の誤りとしてすべてのリクエストを拒否する。オブジェクトのキーにしないのは、JSON の重複したキーが黙って後勝ちになり、レビューで見落とされるため。設定はレビューされた形のまま使い、管理用の Worker の側で正規化しない。
-- **リクエストの値の正規化**：`certFingerprintSHA256` は、16 進の 64 文字であるときだけ小文字にそろえて許可リストと比べる。コロンや空白を含むもの、長さの違うもの、文字列でないものは拒否する。
-- 管理用の Worker は、`certVerified`、`certRevoked`、フィンガープリントのどれで拒否しても、同じ `forbidden` の本文を返す。どの確認で落ちたかは Worker のログにだけ書く（[デプロイと設定](deployment.md)のログを参照）。
-- **受け入れるコスト**：証明書を更新するたびに、許可リストを更新してデプロイする必要がある。新旧の証明書を一時的に両方載せ、移行が済んだら古いものを消して、Cloudflare でも失効させる。
+- **署名鍵の許可リストだけで決める**：要求の `keyid` は許可リストを引く鍵としてだけ使い、許可リストにない `keyid` は拒否する。検証には許可リストの公開鍵を使い、要求が名乗る鍵も `alg` も信じない（RFC 9421 §3.2 の手順 5、§7.3.4、§7.3.6）。前の設計の mTLS では、managed CA で証明書を発行できる人（「SSL and Certificates Write」の権限を持つ人）がエッジの検証を通れたが、署名ではそうした第三の信頼の根がなく、管理者になるにはデプロイの権限（許可リストの変更）だけが要る。
+- **すぐ締め出せる**：許可リストから消せば、その鍵の署名はデプロイの時点で使えなくなる。Cloudflare で失効させる手順はない。
+- **管理 API から自分を足せない**：許可リストを D1 に置くと、管理者や盗まれた管理者の鍵が、管理 API で別の鍵を足せる。権限の根拠が守る対象の中に閉じるので、管理系を IdP の OIDC クライアントにしない理由（[将来拡張](future-extensions.md)参照）と同じ問題になる。
+- SSH の `authorized_keys` と同じ形で、鍵と人の対応を、守られる側の設定として持つ。
+- **設定の形**：`ADMIN_SIGNING_KEYS` は、`keyid`、`name`、`public_key` の 3 つのメンバーだけを持つオブジェクトの JSON 配列にする。`keyid` は公開鍵の SubjectPublicKeyInfo（SPKI）の DER の SHA-256 を小文字の 16 進 64 文字で書き、`public_key` は SPKI の DER を base64（パディングあり）で 1 行に書き、`name` は管理者の名前を英小文字、数字、ハイフンの 1〜64 文字（先頭と末尾は英小文字か数字）で書く。1 人の管理者が鍵の移行の間に複数の行を持ってよい。空の配列、JSON でない値、ほかのメンバー、`keyid` の形の誤り、P-384 の公開鍵として読み込めない `public_key`、`keyid` と `public_key` の SHA-256 の食い違い、同じ `keyid` の重複は、設定の誤りとしてすべてのリクエストを拒否する。`keyid` を `public_key` から計算できるのに書かせるのは、レビューする人が 1Password のアイテムの `public_key_sha256` と監査ログの値に照らし合わせられるようにするため。オブジェクトのキーにしないのは、JSON の重複したキーが黙って後勝ちになり、レビューで見落とされるため。設定はレビューされた形のまま使い、管理用の Worker の側で正規化しない。
+- **リクエストの値の扱い**：要求の `keyid` は、小文字の 16 進 64 文字であるときだけ許可リストと比べる。大文字、区切り、長さの違うものは正規化せずに拒否する。
+- 管理用の Worker は、署名のどの確認で拒否しても、同じ `forbidden` の本文を返す。どの確認で落ちたかは Worker のログにだけ書く（[デプロイと設定](deployment.md)のログを参照）。
+- **受け入れるコスト**：鍵を替えるたびに、許可リストを更新してデプロイする必要がある。新旧の鍵を一時的に両方載せ、移行が済んだら古いものを消す。
 
-**管理者の秘密鍵と証明書**
+**管理者の秘密鍵**
 
-- 管理者の秘密鍵（mTLS）は、リポジトリのレビュー済みの生成スクリプトで手元で生成し、CSR だけを Cloudflare に送る（[ブートストラップ](../deployment/bootstrap.md)参照）。鍵は ECDSA に限り、曲線は P-384 にする。NIST SP 800-57 Part 1 Rev. 5 §5.6.1.1 の Table 2 で、P-384 のセキュリティ強度は 192 bit、P-256 は 128 bit、RSA 2048 は 112 bit である。
-- Cloudflare のドキュメントは managed CA が受け付ける CSR の鍵の種類を書いておらず、例は RSA 2048 だけなので、P-384 の CSR が受け付けられるかを実装の前に確かめる（[未決事項](open-questions.md)参照）。受け付けられなければ P-256 にし、RSA には戻さない。
-- Ed25519 は使わない。Cloudflare Access の mTLS が CA の証明書に許す署名アルゴリズムは RSA と ECDSA だけで、Ed25519 はない（Cloudflare One「Mutual TLS」の「Prerequisites」）。Cloudflare の mTLS の学習パスも、現代の mTLS には楕円曲線暗号を勧めている（Cloudflare「mTLS related features」の「Customize Cipher Suites」。この節はエッジ証明書についての説明で、クライアント証明書の鍵の種類を定めたものではない）。
+- 管理者の秘密鍵（署名鍵）は、リポジトリのレビュー済みの生成スクリプトで手元で生成する（[ブートストラップ](../deployment/bootstrap.md)参照）。鍵は ECDSA に限り、曲線は P-384 にする。NIST SP 800-57 Part 1 Rev. 5 §5.6.1.1 の Table 2 で、P-384 のセキュリティ強度は 192 bit、P-256 は 128 bit、RSA 2048 は 112 bit である。署名のアルゴリズムは RFC 9421 §3.3.5 の `ecdsa-p384-sha384` になる。
+- 前の設計（mTLS）で作った P-384 の鍵は、新しく作らずにそのまま使える。1Password のアイテムが秘密でないフィールドとして持つ公開鍵と `public_key_sha256` から許可リストの行を作る（[ホスティングのモード](hosting-modes.md)の 3.10）。
+- Workers の Web Crypto で P-384 の署名を検証できなければ、Ed25519（RFC 9421 §3.3.6）に切り替え、管理者の鍵を作り直す（運用者の決定）。どちらにするかは、契約のテストベクタをローカルの workerd で検証して決める（[ホスティングのモード](hosting-modes.md)の 3.3）。
 - IdP の署名鍵（[トークン設計](tokens.md)）とは別の鍵で、ここでの選択は署名鍵の種類を変えない。
-- 秘密鍵は 1Password で管理する。生成スクリプトは秘密鍵を `op` で 1Password のアイテムに直接入れ、平文をディスクにも標準出力にも出さず、CSR と公開鍵だけを出力する。`idpctl` は秘密鍵の PEM を標準入力からだけ読み、ファイルや引数では受け取らない。`op read` で渡すかどうかは管理者が決め、`idpctl` は 1Password に固有の機能を持たない。1Password のエージェントは SSH 用で、TLS のクライアント認証には使えない（1Password「1Password SSH Agent」）。
-- 証明書は秘密ではないので、ファイルのパスで渡す。
+- 秘密鍵は 1Password で管理する。生成スクリプトは秘密鍵を `op` で 1Password のアイテムに直接入れ、平文をディスクにも標準出力にも出さず、公開鍵と `keyid` だけを出力し、デプロイの設定ファイルの `admin_signing_keys` に行を書く。`idpctl` は秘密鍵の PEM を標準入力からだけ読み、ファイルや引数では受け取らない。`op read` で渡すかどうかは管理者が決め、`idpctl` は 1Password に固有の機能を持たない。
 - 生成はスクリプトを通すので、人が実行してもエージェント（AI）が実行しても結果は変わらない。そのため、実行する主体は限らない。ただし、秘密鍵の値そのものを AI のコンテキストに入れてはいけない（標準出力に出さない、ファイルに書かない、プロンプトに貼らない）。この規則は変わらない。
 
 **操作の一覧**
 
 CLI のサブコマンドは操作名をそのまま使う（`idpctl client_create --public`、`idpctl grant_add group:<group_id> <client_id>` など）。操作名は共有コアのユースケースの名前と同じで、監査ログの `operation` にも同じ値が入る。管理 API の OpenAPI の `operationId` も操作名にする。例外は enablement-events のエンドポイントだけで、その `operationId` は `user_enablement_switch`、`client_enablement_switch`、`group_enablement_switch` とし、1 つのエンドポイントで `*_enable` と `*_disable` の両方を受ける（下の管理 API の 2 を参照）。呼び方を 1 つに揃えるため、例外はこの 1 つだけにする。
 
-書き込みの操作は、[認可](authorization.md)の管理の関心事で分類する。基盤の操作（署名鍵、Cloudflare の API トークンと証明書の発行、許可リストの変更、デプロイ）は `idpctl` の対象外。全 29 操作は次のとおり。
+書き込みの操作は、[認可](authorization.md)の管理の関心事で分類する。基盤の操作（署名鍵、管理者の鍵の生成、Cloudflare の API トークン、許可リストの変更、デプロイ）は `idpctl` の対象外。全 29 操作は次のとおり。
 
 - 読み取り（7）：`users_list`、`user_get`、`clients_list`、`groups_list`、`grants_list`、`access_check`、`audit_tail`
 - ユーザーの管理（13）：`user_create`、`user_rename`、`user_disable`、`user_enable`、`enroll_link_issue`、`passkey_revoke`、`session_revoke`、`group_create`、`group_rename`、`group_disable`、`group_enable`、`group_member_add`、`group_member_remove`
@@ -195,7 +197,8 @@ ID トークンの署名アルゴリズム（[トークン設計](tokens.md)参�
   - `algorithm-disabled`（409）：RS256 が無効なデプロイでの `RS256` の指定
   - `secret-not-replayable`（409）：秘密を返す操作の `Idempotency-Key` による再生（下記）
   - `idempotency-key-reused`（422）：同じ `Idempotency-Key` を別の要求に使った（下記）
-  - `forbidden`（403）：ゲート（ホスト名とスキーム、TLS のバージョン、mTLS の検証の結果、許可リスト）で拒否した。理由は返さない
+  - `forbidden`（403）：ゲート（ホスト名とスキーム、TLS のバージョン、署名の解析と検証、許可リスト、`created` の窓、`Content-Digest`、`nonce` のリプレイ）で拒否した。理由は返さない
+- Rate Limiting バインディングの上限を超えた要求は、`kind` を増やさず、本文のない 429 を返す（problem details ではない）。
   - `internal`（500）：内部の詳細は返さず、管理用の Worker のログにだけ残す
 - `detail` には、秘密、トークン、SQL、スタックトレースを入れない。
 - `idpctl` は `type` で分岐し、表示のために `type` を日本語の文に対応付けてよい。規則の判定には使わない（規則の判定者は管理用の Worker だけ）。
@@ -238,9 +241,12 @@ ID トークンの署名アルゴリズム（[トークン設計](tokens.md)参�
 
 ここに書くのは `idpctl` の手元の入出力の決定で、管理用の Worker の規則には関わらない。
 
-- **設定**：管理 API のホスト名は `--host` か環境変数 `IDPCTL_HOST`、クライアント証明書のパスは `--cert` か環境変数 `IDPCTL_CERT` で渡し、フラグが環境変数より優先する。ホスト名は英小文字の DNS 名だけを受け付け、スキーム、ポート、パス、利用者情報、IP アドレス、末尾のドットを含むものは、何も送らずに使い方の誤りにする。クライアント証明書を意図しない相手に出さないため。管理者の秘密鍵は上のとおり標準入力からだけ読み、秘密鍵のパスを受け取るフラグも環境変数も置かない。鍵は ECDSA の P-384 か P-256 だけを受け付け、証明書と対にならなければ何も送らない。
-- **接続**：TLS 1.2 以上で、サーバーの証明書はシステムのルート証明書で必ず検証する。リダイレクトには従わない。管理 API はリダイレクトを返さず、従うとクライアント証明書を別のホストに出しうるため。
-- **再試行**：応答が届かなかったとき（接続の失敗や 1 回ごとの時間切れ）と、problem details でない 502、503、504（エッジが Worker に届けなかった応答）のときだけ、同じ要求をそのまま送り直す。回数は `--retries`（既定 2、0〜10）、1 回ごとの時間切れは `--timeout`（既定 30 秒）で変えられる。再試行の前の待ち時間は 1 回ごとに倍にし、30 秒で頭打ちにする。`Idempotency-Key` は 1 回の実行ごとに 1 つ作り、再試行では同じキーと同じ本文を送る。管理用の Worker が返した problem details は、`internal` も含めて再試行しない。
+- **設定**：管理 API のホスト名は `--host` か環境変数 `IDPCTL_HOST` で渡し、フラグが環境変数より優先する。`idpctl` はホスティングのモードを知らず、`workers.dev` のホスト名も同じ規則で受け付ける。ホスト名は英小文字の DNS 名だけを受け付け、スキーム、ポート、パス、利用者情報、IP アドレス、末尾のドットを含むものは、何も送らずに使い方の誤りにする。署名した要求を意図しない相手に送らないため。管理者の秘密鍵は上のとおり標準入力からだけ読み、秘密鍵のパスを受け取るフラグも環境変数も置かない。鍵は ECDSA の P-384 だけを受け付ける。`keyid` は読み込んだ秘密鍵の公開鍵から計算し、フラグでは受け取らない。手で書いた `keyid` と鍵が食い違う余地をなくすため。前の設計のクライアント証明書の `--cert` と `IDPCTL_CERT` は、mTLS の撤去（[ホスティングのモード](hosting-modes.md)の実装の順番の 7）で外す。
+- **署名**：要求を送る直前に、送るバイト列そのもの（メソッド、URL、`Content-Type`、本文、`Idempotency-Key`）から署名を作り、`Signature-Input`、`Signature`、`Content-Digest` を付ける（[ホスティングのモード](hosting-modes.md)の 5.2）。
+- **`User-Agent`**：すべての要求に `idpctl/<バージョン>` の `User-Agent` を付ける。`workers.dev` の Browser Integrity Check は、ライブラリの既定の `User-Agent` を Worker に届く前に拒否するため。モードによらず常に付ける。
+- **接続**：TLS 1.2 以上で、サーバーの証明書はシステムのルート証明書で必ず検証する。リダイレクトには従わない。管理 API はリダイレクトを返さず、従うと署名した要求を別のホストに送りうるため。クライアント証明書は出さない。
+- **再試行**：応答が届かなかったとき（接続の失敗や 1 回ごとの時間切れ）と、problem details でない 502、503、504（エッジが Worker に届けなかった応答）のときだけ、同じ要求を送り直す。回数は `--retries`（既定 2、0〜10）、1 回ごとの時間切れは `--timeout`（既定 30 秒）で変えられる。再試行の前の待ち時間は 1 回ごとに倍にし、30 秒で頭打ちにする。`Idempotency-Key` は 1 回の実行ごとに 1 つ作り、再試行では同じキーと同じ本文を送る。再試行のたびに、新しい `created` と `nonce` で署名し直す。前の試行が管理用の Worker に届いていた場合、同じ署名を送り直すと `nonce` のリプレイとして `forbidden` になるため。管理用の Worker が返した problem details は、`internal` も含めて再試行しない。本文のない 429 も再試行せず、problem details でない応答として終了コード 1 で終わる。
+- **`forbidden` の手がかり**：`forbidden` のときは、確かめること（手元の時計が合っているか、鍵が許可リストにあり、そのデプロイが済んでいるか、ホスト名）を標準エラー出力に出す。管理用の Worker は理由を返さないため。
 - **出力**：成功の応答の本文は JSON のまま整形して標準出力に出す。ログと problem details は `slog` のテキストの形で標準エラー出力に出し、problem details は `kind`、ステータス、`title`、`detail`、`validation-failed` の JSON Pointer の一覧を表示する。
 - **IdP が発行する秘密の書き出し**：秘密を返す操作（confidential client の `client_create`、`client_rotate_secret`、`enroll_link_issue`）は、書き出し先の `--secret-out` を必須にする。登録リンクは登録トークンを含むので、秘密として扱う。ファイルは要求を送る前に、権限 `0600` で、既存のファイルやシンボリックリンクがあれば失敗する排他的な作成で作る。書き出せないパスのせいで、受け取れない秘密をサーバーに発行させないため。操作が失敗すれば、ファイルを消す。標準出力には、秘密のメンバーを除き、代わりに `<メンバー名>_file` として書き出したファイルの絶対パスを入れた JSON を出す。秘密を返さない操作に `--secret-out` を渡すと、使い方の誤りにする。どの操作でも、`--secret-out` に書き出さなかった `client_secret` か `enrollment_link` のメンバーが応答のどこかに残っていれば、何も表示せずに失敗にする。サーバーの誤りで秘密が返っても、標準出力に出さないため。このときファイルに書き出した秘密があれば、ファイルを消して、やり直し方を表示する。ファイルを残すのは、そのパスを含む出力を表示できると決まった後だけにする。`secret-not-replayable` のときは、やり直し方（`client_create` なら `client_rotate_secret`、ほかは同じ操作を新しいキーで実行し直す）を標準エラー出力に表示する。
 - **引数**：位置の引数は操作の対象の ID と値で、`grant_add` と `grant_remove` は主体（`user:<id>` か `group:<id>`）、client ID の順に受け取る。一覧のページングは `--limit` と `--cursor` で渡し、応答の `next_cursor` と `prev_cursor` を次の呼び出しの `--cursor` に使う。絞り込みは、`clients_list` が `--id-token-alg`、`grants_list` が `--client` と `--principal`、`audit_tail` が `--target`、`--operation`、`--since`、`--until` を受け取る。`client_create` は redirect URI を繰り返しの `--redirect-uri` で、`client_set_redirects` は位置の引数で受け取る。値はどれも手元で検証しない。
@@ -248,13 +254,13 @@ ID トークンの署名アルゴリズム（[トークン設計](tokens.md)参�
 
 **監査ログ**
 
-- 管理用の Worker は管理操作を監査ログに書き、操作者として、許可リストで確定した管理者の名前と、使われた証明書のフィンガープリントを残す。本人のパスキー操作（登録リンクによる登録、本人による追加と失効）は IdP の Worker が同じ表に書く。セッション ID、トークン、シークレット、登録トークンは書かない（スキーマは[データモデル](data-model.md)参照）。失敗した操作も `failure` の行として記録する（IdP の Worker は成功の行だけを書く）。
+- 管理用の Worker は管理操作を監査ログに書き、操作者として、許可リストで確定した管理者の名前と、署名を検証した鍵の `keyid`（SPKI の DER の SHA-256）を残す。列は前の設計の `admin_cert_sha256` を使い、資格情報の種類を `admin_credential`（`signing-key`）で区別する（[ホスティングのモード](hosting-modes.md)の 3.9。列を足すマイグレーションは実装の順番の 6 で足す）。本人のパスキー操作（登録リンクによる登録、本人による追加と失効）は IdP の Worker が同じ表に書く。セッション ID、トークン、シークレット、登録トークンは書かない（スキーマは[データモデル](data-model.md)参照）。失敗した操作も `failure` の行として記録する（IdP の Worker は成功の行だけを書く）。
 - 操作者はサーバーが確かめた値なので、管理者が監査ログの行を管理 API で偽造したり消したりすることはできない。管理 API には監査ログを書き換える操作を置かない。
 - **受け入れるリスク**：D1 の API トークンを持つ人（下の break-glass、基盤の権限）は、共有コアを通らずに D1 を書けるので、管理者の行も `actor` が `user` の行（本人によるパスキーの追加と失効）も偽造でき、行を消すこともできる。本人の行は、本人への通知をしない NIST の通知要件の例外を補う手段（[認証フロー](authentication.md)参照）なので、API トークンを持つ人に対しては、その補いが効かない。ただし API トークンはそれだけで全ユーザーの全操作ができる基盤の権限であり（[操作とリスク](operations-and-risks.md)参照）、監査ログでそれを防ぐことはもともとできない。家族規模の運用では、この限界を受け入れる。
 
 **break-glass（管理用の Worker が使えないとき）**
 
-- 管理用の Worker やその mTLS が使えないときは、基盤の権限で `cf` CLI の `cf d1 query <DATABASE_ID>` を、break-glass 用の D1 の API トークンで実行する。このトークンは常設せず、必要になったときに作り、作業が終わったら失効させる（[デプロイと設定](deployment.md)参照）。`cf` はデータベースの名前ではなく ID を受け取り、既定でリモートのデータを対象にする（Cloudflare「cf for Wrangler users」の「What changes」）。`cf` はベータで、コマンドが安定版の前に変わりうる（Cloudflare「Cloudflare CLI」）。
+- 管理用の Worker やその署名の検証が使えないときは、基盤の権限で `cf` CLI の `cf d1 query <DATABASE_ID>` を、break-glass 用の D1 の API トークンで実行する。このトークンは常設せず、必要になったときに作り、作業が終わったら失効させる（[デプロイと設定](deployment.md)参照）。`cf` はデータベースの名前ではなく ID を受け取り、既定でリモートのデータを対象にする（Cloudflare「cf for Wrangler users」の「What changes」）。`cf` はベータで、コマンドが安定版の前に変わりうる（Cloudflare「Cloudflare CLI」）。
 - break-glass の書き込みは共有コアを通らないので、パスキーの上限などの規則は SQL を書く人が守る必要があり、監査ログの行も手で書かなければ残らない。日常の管理には使わないので、このことを受け入れる。
 - 行の削除を拒否するトリガー（[データモデル](data-model.md)参照）は、break-glass でも外さない限り効く。誤って入れた個人情報を消すなど、緊急に行を消すときだけ、同じ作業の中で先にトリガーを外し、消した後に戻す。外したことと戻したことは、手で監査ログの行を書いて残す。行の形は、`actor` を `break_glass`、`target` を `schema`、`result` を `success` にし、管理者の列を持たせない（[データモデル](data-model.md)の監査ログを参照）。出来事の表は対象を ON DELETE なしで参照し、自分の削除を拒否するトリガーも持つので、対象ごとに次のトリガーを外し、出来事の行を先に消してから対象を消す。
   - ユーザー：`principals_no_delete`、`users_no_delete`、`user_enablement_events_no_delete` を外し、`user_enablement_events` のそのユーザーの行を消してから、`principals` の行を消す。外部キーの連鎖で、`users` の行、パスキー、セッション、所属、grant、登録トークン、チャレンジ、認可コードも消える。
