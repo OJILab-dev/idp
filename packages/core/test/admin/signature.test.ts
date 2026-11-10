@@ -162,6 +162,16 @@ describe("verifyAdminSignature: checks beyond the vectors", () => {
     expect((await verifyAdminSignature(request, allowlist, NOW)).ok).toBe(true);
   });
 
+  it.each([
+    ["NaN", Number.NaN],
+    ["not an integer", NOW + 0.5],
+    ["infinite", Number.POSITIVE_INFINITY],
+  ])("refuses every request when the clock is %s (fail-closed)", async (_, now) => {
+    const canonical = params.replace("{keyid}", keys.keyid);
+    const request = await signedGet(canonical, baseFor("GET", canonical));
+    expect(await verifyAdminSignature(request, allowlist, now)).toEqual({ ok: false, reason: "created" });
+  });
+
   it("refuses a URL that is not absolute", async () => {
     const canonical = params.replace("{keyid}", keys.keyid);
     const request = { ...(await signedGet(canonical, baseFor("GET", canonical))), url: "/v1/users" };

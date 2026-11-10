@@ -36,14 +36,33 @@ describe("createD1AdminNonceStore", () => {
     expect(await rows()).toEqual([{ nonce: NONCE, expires_at: NOW + 60 }]);
   });
 
-  it("deletes the rows that expired before now in the same batch, and keeps the row expiring now", async () => {
-    await store.claim("expired", NOW - 1, NOW - 61);
-    await store.claim("edge", NOW, NOW - 60);
+  it("deletes only the rows that expired more than one window before now, in the same batch", async () => {
+    await store.claim("expired", NOW - 61, NOW - 121);
+    await store.claim("edge", NOW - 60, NOW - 120);
     await store.claim(NONCE, NOW + 60, NOW);
     expect(await rows()).toEqual([
       { nonce: NONCE, expires_at: NOW + 60 },
-      { nonce: "edge", expires_at: NOW },
+      { nonce: "edge", expires_at: NOW - 60 },
     ]);
+  });
+
+  it("does not let a later claim's sweep free a nonce that a replay verified at the window's end can still claim", async () => {
+    // L was accepted with created = c; its replay L' verifies at now = c + 60, the last second of the window.
+    const c = NOW;
+    await expect(store.claim(NONCE, c + 60, c)).resolves.toBe("fresh");
+    // Another admin request is claimed first, one second later, while L' is still in flight.
+    await expect(store.claim("other", c + 121, c + 61)).resolves.toBe("fresh");
+    await expect(store.claim(NONCE, c + 60, c + 60)).resolves.toBe("replayed");
+  });
+
+  it.each([
+    ["now is NaN", NOW + 60, Number.NaN],
+    ["now is not an integer", NOW + 60, NOW + 0.5],
+    ["expiresAt is NaN", Number.NaN, NOW],
+    ["expiresAt is infinite", Number.POSITIVE_INFINITY, NOW],
+  ])("fails closed with AdminNonceStoreError when %s, writing nothing", async (_, expiresAt, now) => {
+    await expect(store.claim(NONCE, expiresAt, now)).rejects.toThrow(AdminNonceStoreError);
+    expect(await rows()).toEqual([]);
   });
 
   it("fails closed with AdminNonceStoreError when D1 fails for another reason", async () => {

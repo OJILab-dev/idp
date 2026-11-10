@@ -300,7 +300,7 @@ WHEN NEW.id IS NOT NULL AND EXISTS (SELECT 1 FROM audit_log WHERE id = NEW.id)
 BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END;
 ```
 
-`0003_admin_request_nonces.sql` は、管理者の RFC 9421 の署名の `nonce` を置く表を足す（[ホスティングのモード](hosting-modes.md)の 3.6）。管理用の Worker は、署名の検証と本文のダイジェストの確認がすべて通った要求の `nonce` だけを、管理操作の書き込みより前の別の文で挿入し、主キーの一意制約で 2 回目をリプレイとして拒否する。`expires_at` は `created` に 60 秒を足した UNIX 秒で、期限切れの行は挿入と同じバッチで消す（cron は置かない）。`expires_at` を過ぎた `nonce` を持つ要求は `created` の窓で必ず拒否されるので、行を消してもリプレイを通さない。管理者の名前は持たない（`nonce` はすべての管理者で一意であればよい）。この表は既存の表を参照も変更もしないので、管理用の Worker が使い始める前に適用しても、今の書き込みに影響しない。
+`0003_admin_request_nonces.sql` は、管理者の RFC 9421 の署名の `nonce` を置く表を足す（[ホスティングのモード](hosting-modes.md)の 3.6）。管理用の Worker は、署名の検証と本文のダイジェストの確認がすべて通った要求の `nonce` だけを、管理操作の書き込みより前の別の文で挿入し、主キーの一意制約で 2 回目をリプレイとして拒否する。`expires_at` は `created` に 60 秒を足した UNIX 秒で、期限切れの行は挿入と同じバッチで消す（cron は置かない）。消すのは `expires_at` が挿入の時刻より窓の 60 秒以上前の行だけで、窓の最後の秒で検証を通ったリプレイが届く前に、別の要求の掃除が行を消すことはない（[ホスティングのモード](hosting-modes.md)の 3.6）。表はおよそ窓 2 つ分の行しか持たない。管理者の名前は持たない（`nonce` はすべての管理者で一意であればよい）。この表は既存の表を参照も変更もしないので、管理用の Worker が使い始める前に適用しても、今の書き込みに影響しない。
 
 ```sql
 -- 管理者の RFC 9421 の署名の nonce。署名の検証を通った要求の nonce だけを挿入し、主キーの一意制約で

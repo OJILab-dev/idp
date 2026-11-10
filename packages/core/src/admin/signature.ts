@@ -108,7 +108,8 @@ export async function verifyAdminSignature(
     const profile = checkProfile(parsed.input, request);
     const key = keys.get(profile.keyid);
     if (key === undefined) throw new Refusal("unknown-key");
-    if (Math.abs(profile.created - now) > ADMIN_SIGNATURE_WINDOW_SECONDS) throw new Refusal("created");
+    // Written as "not inside" so that a NaN clock, for which every comparison is false, refuses instead of passing.
+    if (!Number.isSafeInteger(now) || !(Math.abs(profile.created - now) <= ADMIN_SIGNATURE_WINDOW_SECONDS)) throw new Refusal("created");
     if (!(await verifySignature(key.publicKey, parsed, profile, request))) throw new Refusal("signature");
     const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", request.body));
     if (!constantTimeEqual(digest, parsed.digest)) throw new Refusal("content-digest");
