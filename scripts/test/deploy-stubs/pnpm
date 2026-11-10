@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# A fake pnpm for the deploy tests: only `pnpm --dir <dir> exec cf <args>`, the way scripts/lib.sh runs the pinned cf.
+# It never reaches Cloudflare. Each cf call appends "cf <dir name> <args>" to ${STUB_DIR}/calls, so a test can check
+# the order of every change against the other stubs. A build also writes the IDP_* environment that both
+# cloudflare.config.ts files read to ${STUB_DIR}/build_env_<dir name>, and fails when the project still holds an
+# earlier build's .cloudflare output. Answers come from files in ${STUB_DIR}:
+# d1_list for `d1 list`, workers_<name>.json for `workers get <name>`, account_id for `accounts get`. A file
+# fail_<subcommand> makes that subcommand fail. In CI mode the deploy token must reach cf through the environment.
+set -euxo pipefail
+
+[[ "${1-}" == "--dir" && "${3-}" == "exec" && "${4-}" == "cf" ]] || exit 1
+project_dir="${2}"
+dir="$(basename "${project_dir}")"
+shift 4
+printf 'cf %s %s\n' "${dir}" "$*" >>"${STUB_DIR}/calls"
+[[ "${CLOUDFLARE_ACCOUNT_ID-}" =~ ^[0-9a-f]{32}$ ]] || exit 3
+if [[ -f "${STUB_DIR}/expect_token" ]]; then
+  [[ "${CLOUDFLARE_API_TOKEN-}" == "stub-api-token" ]] || exit 4
+fi
+[[ ! -f "${STUB_DIR}/fail_${1}" ]] || exit 1
+
+case "${1}" in
+  build)
+    # Build output left from an earlier run must be gone, so that what is deployed is what this run built.
+    [[ ! -e "${project_dir}/.cloudflare" ]] || exit 7
+    env | grep '^IDP_' | sort >"${STUB_DIR}/build_env_${dir}"
+    ;;
+  deploy) ;;
+  d1)
+    case "${2-}" in
+      list) cat "${STUB_DIR}/d1_list" ;;
+      migrations) ;;
+      *) exit 1 ;;
+    esac
+    ;;
+  workers)
+    [[ "${2-}" == "get" ]] || exit 1
+    cat "${STUB_DIR}/workers_${3}.json"
+    ;;
+  accounts)
+    jq -n --arg id "$(cat "${STUB_DIR}/account_id")" '{id: $id}'
+    ;;
+  *)
+    exit 1
+    ;;
+esac

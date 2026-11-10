@@ -1,0 +1,185 @@
+name: Deploy
+
+# Applies Terraform and deploys the IdP Worker and the admin Worker of each deployment named in the repository
+# variable IDP_DEPLOYMENT, from the one commit merged to main (docs/design/deployment.md, デプロイのパイプライン):
+# scripts/terraform.sh --ci apply, then scripts/deploy.sh --ci (the D1 migrations, the IdP Worker, the admin Worker,
+# and the checks from outside). Every Worker input comes from the deployment file, read by the scripts, so this
+# workflow names no deployment value itself.
+#
+# Nothing runs until the operator sets IDP_DEPLOYMENT: with it unset (a fork, or before the one-time setup of
+# docs/deployment/runbook.md) the config job is skipped, and so is every job that would get credentials. Credentials
+# reach only the deploy job, which runs in the deployment's GitHub Environment; the 1Password GitHub Actions
+# destination is bound to this file's path, the main branch, and that Environment (docs/deployment/secret.md).
+# Renaming this file breaks that binding.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      deployment:
+        description: One deployment listed in IDP_DEPLOYMENT (deployments/<name>.tfvars.json)
+        required: true
+        type: string
+      before_signing_key:
+        description: First deploy only (bootstrap stage 5) - expect the IdP Worker to refuse every request until the signing key is registered
+        required: false
+        type: boolean
+        default: false
+
+permissions: {}
+
+# One run at a time across all deployments; a newer run waiting replaces an older one that is still waiting. This
+# serialises but does not order runs, so each deploy job also refuses a commit that is no longer the head of main.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+# With `shell: bash` the runner adds -o pipefail, which the bare default leaves out.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # Reads the deployment files and turns IDP_DEPLOYMENT into one matrix entry per deployment, with the GitHub
+  # Environment each one names, so the workflow names no Environment itself.
+  config:
+    if: vars.IDP_DEPLOYMENT != ''
+    runs-on: takumi-runner
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.read.outputs.matrix }}
+    steps:
+      # The destination only releases credentials to main; failing here gives a clearer error than 1Password's.
+      - name: Require the main branch
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::deploy runs only from main, not ${GITHUB_REF}"
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # No Takumi Guard step: this job fetches no npm, PyPI, RubyGems, Go, or Packagist package.
+      - name: Install jq pinned in mise.toml
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3.6.3
+        with:
+          install_args: jq
+
+      - id: read
+        name: Read the deployments and their GitHub Environments
+        env:
+          DEPLOYMENTS: ${{ vars.IDP_DEPLOYMENT }}
+          DISPATCHED: ${{ inputs.deployment }}
+        run: |
+          source scripts/lib.sh
+          # Every listed file is checked, so a broken one stops the run before any job gets credentials.
+          matrix="$(ci_deploy_matrix "${DEPLOYMENTS}")"
+          # A manual run deploys one listed deployment; a push deploys them all.
+          if [[ -n "${DISPATCHED}" ]]; then
+            matrix="$(printf '%s' "${matrix}" | jq -ce --arg name "${DISPATCHED}" 'map(select(.deployment == $name)) | select(length == 1)')" || {
+              echo "::error::${DISPATCHED} is not listed in IDP_DEPLOYMENT"
+              exit 1
+            }
+          fi
+          # Compact JSON of checked names only (ci_deploy_matrix), so it cannot carry another output.
+          echo "matrix=${matrix}" >> "${GITHUB_OUTPUT}"
+
+  deploy:
+    needs: config
+    if: needs.config.outputs.matrix != '[]'
+    runs-on: takumi-runner
+    timeout-minutes: 30
+    strategy:
+      # One deployment's failure does not stop the others: each is its own account and stops at its own first error.
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.config.outputs.matrix) }}
+    environment: ${{ matrix.environment }}
+    permissions:
+      contents: read
+      # The 1Password OIDC exchange and the Takumi Guard bot authentication. GitHub grants it to the whole job, so
+      # every step, pnpm install included, can request an OIDC token for this job (docs/design/deployment.md).
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Concurrency serialises runs but does not order them, and an old run can be re-run: a commit that is no longer
+      # the head of main stops here, before any credential is loaded. scripts/deploy.sh checks the same again.
+      - name: Require the head of main
+        run: |
+          source scripts/lib.sh
+          require_main_head "${GITHUB_WORKSPACE}" "${GITHUB_SHA}"
+
+      - name: Enable Takumi Guard for npm
+        uses: flatt-security/setup-takumi-guard-npm@6d4182745c1e474c35a023573c2612c085be45a4 # v1.2.0
+        with:
+          bot-id: BT01M0MFTWGD1BQ2CKEPG92G53Y3
+
+      # No Takumi Guard covers the Terraform provider registry; the provider is pinned by infra/.terraform.lock.hcl.
+      - name: Install Node.js, pnpm, jq, and Terraform pinned in mise.toml
+        uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3.6.3
+        with:
+          install_args: node pnpm jq terraform
+
+      # No dependency script runs: the build needs none (pnpm-workspace.yaml allows none either), and a script is
+      # code from a dependency running in a job that can request an OIDC token.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # After the dependencies, so no credential exists while they install (docs/deployment/secret.md). The
+      # deployment's 1Password Environment (onepassword_deploy_environment) is loaded as this step's outputs only,
+      # never into GITHUB_ENV, so a later step sees only the outputs it names in its own env. A GitHub Environment
+      # variable or secret of the same name takes precedence over the repository one, which is how each deployment
+      # reaches its own 1Password Environment.
+      - id: op
+        name: Load the deployment's credentials
+        uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
+        with:
+          export-env: false
+        env:
+          OP_WORKLOAD_ID: ${{ vars.OP_WORKLOAD_ID }}
+          OP_ENVIRONMENT_ID: ${{ vars.OP_ENVIRONMENT_ID }}
+          OP_INTEGRATION_KEY: ${{ secrets.OP_INTEGRATION_KEY }}
+
+      # The account ID is not a secret, but the repository and its logs are public (docs/design/deployment.md), and
+      # the scripts run with xtrace. The add-mask command itself is never echoed to the log.
+      - name: Mask the account ID
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.op.outputs.CLOUDFLARE_ACCOUNT_ID }}
+        run: echo "::add-mask::${CLOUDFLARE_ACCOUNT_ID}"
+
+      # Only the Terraform token and the R2 credentials, under the names Terraform reads; never the deploy token.
+      - name: Terraform apply
+        env:
+          DEPLOYMENT: ${{ matrix.deployment }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.op.outputs.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ steps.op.outputs.TERRAFORM_CLOUDFLARE_API_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ steps.op.outputs.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.op.outputs.R2_SECRET_ACCESS_KEY }}
+        run: |
+          scripts/terraform.sh --ci "${DEPLOYMENT}" init
+          scripts/terraform.sh --ci "${DEPLOYMENT}" apply
+
+      # Only the deploy token, under the name cf reads; never the Terraform token or the R2 credentials. cf build runs
+      # the Vite build (dependency code) inside this step, so the deploy token is visible to that code.
+      - name: Migrate, deploy, and check
+        env:
+          DEPLOYMENT: ${{ matrix.deployment }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.op.outputs.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ steps.op.outputs.DEPLOY_CLOUDFLARE_API_TOKEN }}
+          BEFORE_SIGNING_KEY: ${{ inputs.before_signing_key }}
+        run: |
+          args=(--ci)
+          if [[ "${BEFORE_SIGNING_KEY}" == "true" ]]; then
+            args+=(--before-signing-key)
+          fi
+          scripts/deploy.sh "${args[@]}" "${DEPLOYMENT}"

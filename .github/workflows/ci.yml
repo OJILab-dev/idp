@@ -91,7 +91,7 @@ jobs:
         run: terraform -chdir=infra test
 
       - name: shellcheck
-        run: shellcheck scripts/*.sh scripts/test/*.sh scripts/test/stubs/*
+        run: shellcheck scripts/*.sh scripts/test/*.sh scripts/test/stubs/* scripts/test/deploy-stubs/*
 
       # Offline: only published test vectors, no op, cf, network, or key generation.
       - name: scripts/lib.sh tests
@@ -100,6 +100,10 @@ jobs:
       # Offline: a stub op and an openssl wrapper that refuses genpkey (scripts/test/stubs).
       - name: scripts/generate-admin-key.sh tests
         run: scripts/test/generate-admin-key.test.sh
+
+      # Offline: stub pnpm (cf), curl, git, terraform, and op (scripts/test/deploy-stubs); fake tokens only.
+      - name: scripts/deploy.sh and scripts/terraform.sh --ci tests
+        run: scripts/test/deploy.test.sh
 
   e2e:
     runs-on: takumi-runner

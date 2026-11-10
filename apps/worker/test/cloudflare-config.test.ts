@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { RATE_LIMIT, workerConfig } from "../cloudflare.config.js";
 
@@ -50,6 +51,16 @@ describe("cloudflare.config.ts", () => {
     });
     // Provisional until a sign-in is measured (docs/design/open-questions.md); the binding takes 10 or 60 seconds.
     expect(RATE_LIMIT).toEqual({ period: 10, limit: 10 });
+  });
+
+  // cf evaluates this file with Node's own loader, which strips the types but does not map a `.js` specifier to the
+  // `.ts` file, so an import through the shared core's index (which re-exports `./audit.js` and so on) fails there
+  // even though Vitest resolves it.
+  it("loads under Node's own module loader, which cf uses", () => {
+    const configUrl = new URL("../cloudflare.config.ts", import.meta.url).href;
+    const script = `const m = await import(${JSON.stringify(configUrl)}); if (m.workerConfig(process.env).name !== "idp") process.exit(1);`;
+    const env = { ...process.env, ...DEPLOY };
+    expect(() => execFileSync(process.execPath, ["--input-type=module", "-e", script], { env, stdio: "pipe" })).not.toThrow();
   });
 
   it("never holds a secret: the signing keys are Worker Secrets set outside this file", () => {

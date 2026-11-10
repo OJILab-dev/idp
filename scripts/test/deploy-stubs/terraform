@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# A fake terraform for the tests of scripts/terraform.sh --ci. It never reaches Cloudflare or R2. Each call appends
+# "terraform <args>" to ${STUB_DIR}/calls, after checking that the credentials reached it through the environment
+# (the stub values the test set) and that the R2 endpoint was built from the account ID.
+set -euxo pipefail
+
+printf 'terraform %s\n' "$*" >>"${STUB_DIR}/calls"
+[[ "${CLOUDFLARE_API_TOKEN-}" == "stub-terraform-token" ]] || exit 4
+[[ "${AWS_ACCESS_KEY_ID-}" == "stub-r2-key-id" && "${AWS_SECRET_ACCESS_KEY-}" == "stub-r2-secret" ]] || exit 5
+[[ "${AWS_ENDPOINT_URL_S3-}" == "https://${TF_VAR_account_id-}.r2.cloudflarestorage.com" ]] || exit 6

@@ -7,5 +7,9 @@
     "@idp/d1-adapter": "workspace:*",
     "hono": "4.13.13",
     "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "2.0.0-beta.v.4",
+    "vite": "8.3.5"
   }
 }

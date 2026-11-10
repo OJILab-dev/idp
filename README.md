@@ -24,7 +24,7 @@ Cloudflare Workers の無料枠と D1 だけで動く、パスキー専用の最
 
 残っている作業は次のとおりです。
 
-- 検証用の Cloudflare アカウントへの最初のデプロイ。運用者が [ブートストラップの実行手順](docs/deployment/runbook.md) に沿って行います。Worker のデプロイの workflow はまだありません（雛形は [examples/github-actions/deploy.yml](examples/github-actions/deploy.yml)）。
+- 検証用の Cloudflare アカウントへの最初のデプロイ。運用者が [ブートストラップの実行手順](docs/deployment/runbook.md) に沿って行います。段階 5 以降は、[.github/workflows/deploy.yml](.github/workflows/deploy.yml) が main へのマージ（と手動の起動）から、Terraform の apply、D1 のマイグレーション、IdP の Worker、管理用の Worker の順にデプロイし、外から確かめます。
 - e2e テスト（Playwright）。[セキュリティ要件チェックリスト](docs/design/security-checklist.md) の攻撃ケースを実装します。
 - [ホスティングのモード](docs/design/hosting-modes.md) の残りの実装（実装の順番の 9：`workers.dev` のモードのブートストラップの道筋と、`workers.dev` の形の issuer での e2e）。署名による管理者の認証、mTLS の撤去、モードの入力（`hosting_mode` と `workers_dev_subdomain`）は済みです。管理用の Worker は RFC 9421 の署名と `admin_signing_keys` の許可リストだけで管理者を確かめます。
 
@@ -60,10 +60,10 @@ IdP の Worker には管理用のエンドポイントや管理 UI を置きま�
 | [contract/](contract) | 実装に依存しない契約。D1 のマイグレーション（`migrations`）、管理 API の仕様（`openapi`）、テストベクタ（`testdata`）、スキーマのテスト（`test`） |
 | [cmd/idpctl/](cmd/idpctl) | Go の管理 CLI。管理 API のクライアントは `contract/openapi/admin.json` から生成する |
 | [infra/](infra) | Terraform と、そのオフラインのテスト。今はゾーンを引く data source と、デプロイの設定ファイルの検証だけを持ち、ゾーンに資源を置かない（管理者のクライアント証明書と mTLS の割り当ては[ホスティングのモード](docs/design/hosting-modes.md)の実装の順番の 7 で外した）。ゾーンのルールセット（WAF、リダイレクト、レート制限）は持たず、HTTPS へのリダイレクト、TLS のバージョン、管理者の認証、レート制限は Worker が行う（[ドメインの置き場所](docs/design/domain-placement.md)の決定 ③） |
-| [scripts/](scripts) | ブートストラップのスクリプト（state のバケット、D1、マイグレーション、署名鍵と管理者の鍵の生成、Terraform の実行） |
+| [scripts/](scripts) | ブートストラップのスクリプト（state のバケット、D1、マイグレーション、署名鍵と管理者の鍵の生成、Terraform の実行）と、2 つの Worker のデプロイのスクリプト（`deploy.sh`） |
 | [deployments/](deployments) | デプロイごとの設定ファイル（`<デプロイの名前>.tfvars.json`）とその雛形 |
 | [docs/](docs) | 設計思想、設計ドキュメント、デプロイの手順 |
-| [examples/](examples) | GitHub Actions の deploy workflow の雛形 |
+| [.github/workflows/](.github/workflows) | PR の CI（`ci.yml`）と、main へのマージと手動の起動で動くデプロイ（`deploy.yml`） |
 
 ## 前提とツールチェーン
 
