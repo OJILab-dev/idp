@@ -1,6 +1,7 @@
 // Package cli implements idpctl's subcommands: one per admin API operation,
 // named exactly as the operation. It parses arguments, calls the admin API
-// through the generated client over mTLS, prints the JSON result, writes
+// through the generated client with every request signed (RFC 9421) and, until
+// mTLS is removed, over mTLS, prints the JSON result, writes
 // IdP-issued secrets to a new 0600 file instead of the terminal, and turns
 // RFC 9457 problems into exit codes. It evaluates no domain rule: the admin
 // Worker is the only judge, and idpctl shows what it answers.
@@ -20,6 +21,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -173,7 +175,7 @@ func run(ctx context.Context, args []string, opts Options, logger *slog.Logger, 
 		level.Set(slog.LevelDebug)
 	}
 
-	api, err := connect(&g, opts, logger)
+	api, keyid, err := connect(&g, opts, logger)
 	if err != nil {
 		return err
 	}
@@ -209,6 +211,14 @@ func run(ctx context.Context, args []string, opts Options, logger *slog.Logger, 
 		if errors.As(err, &problem) && problem.Kind == "secret-not-replayable" {
 			logger.Info("the response held a secret and was not stored", slog.String("next_step", recoveryHint(op.name)))
 		}
+		if errors.As(err, &problem) && problem.Kind == "forbidden" {
+			// The admin Worker never says which check failed (hosting-modes.md 3.8), so idpctl lists the
+			// local causes an admin can check; the keyid is public and is what the allowlist row holds.
+			logger.Info("the admin worker refused the request",
+				slog.String("next_step", forbiddenHint),
+				slog.String("keyid", keyid),
+				slog.String("host", g.host))
+		}
 		return err
 	}
 	if out != nil {
@@ -231,6 +241,12 @@ func run(ctx context.Context, args []string, opts Options, logger *slog.Logger, 
 	}
 	return printJSON(opts.Stdout, body)
 }
+
+// forbiddenHint lists what an admin can check locally when the admin Worker
+// answers forbidden (hosting-modes.md 5.2).
+const forbiddenHint = "check that the local clock is within 60 seconds of the real time (NTP), " +
+	"that this keyid is in admin_signing_keys of the deployment and that deployment has finished, " +
+	"and that the host is the admin host of that deployment"
 
 // secretMembers are the response members that hold IdP-issued secrets.
 var secretMembers = []string{"client_secret", "enrollment_link"}
@@ -270,44 +286,57 @@ func findSecret(value any, pointer string) string {
 }
 
 // connect validates the local configuration, reads the key from stdin, and
-// builds the generated client on top of the mTLS transport.
-func connect(g *globals, opts Options, logger *slog.Logger) (*adminapi.ClientWithResponses, error) {
+// builds the generated client on top of the signing mTLS transport. It also
+// returns the keyid of the signing key, which is public, for diagnostics.
+func connect(g *globals, opts Options, logger *slog.Logger) (*adminapi.ClientWithResponses, string, error) {
 	if g.host == "" {
-		return nil, usagef("no admin host: pass --host or set %s", EnvHost)
+		return nil, "", usagef("no admin host: pass --host or set %s", EnvHost)
 	}
 	if err := checkHost(g.host); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if g.cert == "" {
-		return nil, usagef("no client certificate: pass --cert or set %s", EnvCert)
+		return nil, "", usagef("no client certificate: pass --cert or set %s", EnvCert)
 	}
 	certPEM, err := os.ReadFile(g.cert)
 	if err != nil {
-		return nil, fmt.Errorf("read the client certificate: %w", err)
+		return nil, "", fmt.Errorf("read the client certificate: %w", err)
 	}
 	keyPEM, err := io.ReadAll(io.LimitReader(opts.Stdin, maxKeyBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("read the private key from stdin: %w", err)
+		return nil, "", fmt.Errorf("read the private key from stdin: %w", err)
 	}
 	// Best effort: the key bytes do not outlive the parse in this buffer.
 	defer clear(keyPEM)
 	if len(bytes.TrimSpace(keyPEM)) == 0 {
-		return nil, usagef("no private key: pipe the admin private key PEM on stdin; idpctl reads it from nowhere else")
+		return nil, "", usagef("no private key: pipe the admin private key PEM on stdin; idpctl reads it from nowhere else")
 	}
 	if len(keyPEM) > maxKeyBytes {
-		return nil, usagef("stdin holds more than %d bytes, which is not a private key PEM", maxKeyBytes)
+		return nil, "", usagef("stdin holds more than %d bytes, which is not a private key PEM", maxKeyBytes)
 	}
 	cert, err := transport.LoadClientCertificate(certPEM, keyPEM)
 	if err != nil {
-		return nil, usagef("%v", err)
+		return nil, "", usagef("%v", err)
+	}
+	// The same key signs every request (RFC 9421) and, until plan step 7 of hosting-modes.md removes mTLS,
+	// also authenticates the TLS connection: the admin Worker before step 6 ignores the signature headers.
+	signer, err := transport.NewSigner(cert.PrivateKey)
+	if err != nil {
+		return nil, "", usagef("%v", err)
 	}
 
 	backoff := opts.Backoff
 	if backoff == 0 {
 		backoff = 500 * time.Millisecond
 	}
+	// The signer sits under the retries so every attempt gets a new created and nonce; the retries above it
+	// keep the Idempotency-Key and the body.
 	doer := &transport.RetryingDoer{
-		Doer:    transport.NewHTTPClient(transport.Config{Certificate: cert, RootCAs: opts.RootCAs, Timeout: g.timeout}),
+		Doer: &transport.SigningDoer{
+			Doer:      transport.NewHTTPClient(transport.Config{Certificate: cert, RootCAs: opts.RootCAs, Timeout: g.timeout}),
+			Signer:    signer,
+			UserAgent: userAgent(),
+		},
 		Retries: max(g.retries, 0),
 		Backoff: backoff,
 		Logger:  logger,
@@ -316,7 +345,18 @@ func connect(g *globals, opts Options, logger *slog.Logger) (*adminapi.ClientWit
 	if opts.BaseURL != "" {
 		base = opts.BaseURL
 	}
-	return adminapi.NewClientWithResponses(base, adminapi.WithHTTPClient(doer))
+	api, err := adminapi.NewClientWithResponses(base, adminapi.WithHTTPClient(doer))
+	return api, signer.Keyid(), err
+}
+
+// userAgent returns idpctl/<version>, the version being the module version Go stamped into the build, or
+// "devel" for a build from a working tree without one.
+func userAgent() string {
+	version := "devel"
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		version = info.Main.Version
+	}
+	return "idpctl/" + version
 }
 
 // checkHost accepts a bare, lower-case DNS host name. idpctl.md keeps the

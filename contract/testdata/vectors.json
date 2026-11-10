@@ -610,6 +610,29 @@
         "keyid": "5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767",
         "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"b19bQrCUKCUFikfTtRyO4JGLiJoVikXnih4wNW6zteA\";keyid=\"5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767\";tag=\"idp-admin\"",
         "signature_base": "\"@method\": GET\n\"@target-uri\": https://admin.example.com/v1/audit-events?target=user%3A3f0c2a5e-8b1d-4c7a-9e2f-6d4b1a0c9e85&limit=10\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\");created=1767225600;nonce=\"b19bQrCUKCUFikfTtRyO4JGLiJoVikXnih4wNW6zteA\";keyid=\"5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767\";tag=\"idp-admin\""
+      },
+      {
+        "case": "post-without-body",
+        "request": {
+          "method": "POST",
+          "url": "https://admin.example.com/v1/clients/grafana/secrets",
+          "headers": [
+            [
+              "Content-Digest",
+              "sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:"
+            ],
+            [
+              "Idempotency-Key",
+              "T2lgpWV21VDoNQXaLOZYiKh7zUcjIdwtH7PmDscOSt4"
+            ]
+          ],
+          "body_utf8": ""
+        },
+        "created": 1767225600,
+        "nonce": "pqW65ZpXyfqsX10T0x8sb5MbAwzNSWrsZ451Jul5pec",
+        "keyid": "5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767",
+        "signature_input": "sig1=(\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"idempotency-key\");created=1767225600;nonce=\"pqW65ZpXyfqsX10T0x8sb5MbAwzNSWrsZ451Jul5pec\";keyid=\"5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767\";tag=\"idp-admin\"",
+        "signature_base": "\"@method\": POST\n\"@target-uri\": https://admin.example.com/v1/clients/grafana/secrets\n\"@authority\": admin.example.com\n\"content-digest\": sha-256=:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=:\n\"idempotency-key\": T2lgpWV21VDoNQXaLOZYiKh7zUcjIdwtH7PmDscOSt4\n\"@signature-params\": (\"@method\" \"@target-uri\" \"@authority\" \"content-digest\" \"idempotency-key\");created=1767225600;nonce=\"pqW65ZpXyfqsX10T0x8sb5MbAwzNSWrsZ451Jul5pec\";keyid=\"5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767\";tag=\"idp-admin\""
       }
     ],
     "interop": [

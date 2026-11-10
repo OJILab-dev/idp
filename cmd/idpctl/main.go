@@ -1,6 +1,7 @@
 // Command idpctl is the thin admin CLI of the idp: each subcommand calls one
-// admin API operation over mTLS and prints the JSON result. The admin private
-// key PEM is read from stdin only, IdP-issued secrets are written to a new
+// admin API operation, signing every request with the admin private key
+// (RFC 9421; over mTLS until that is removed), and prints the JSON result. The
+// admin private key PEM is read from stdin only, IdP-issued secrets are written to a new
 // 0600 file named by --secret-out, and problems become exit codes. See
 // docs/design/idpctl.md.
 package main

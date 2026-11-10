@@ -1,8 +1,9 @@
 // Package transport builds the HTTPS client idpctl uses to reach the admin
-// API: mTLS with the admin's ECDSA certificate, server verification always on,
-// no redirects, and retries that resend the same request, so a retried write
-// carries the same Idempotency-Key and the admin Worker applies it at most
-// once.
+// API: an RFC 9421 signature by the admin's ECDSA P-384 key on every request,
+// mTLS with the admin's certificate until hosting-modes.md plan step 7 removes
+// it, server verification always on, no redirects, and retries that resend
+// the same request, re-signed, so a retried write carries the same
+// Idempotency-Key and the admin Worker applies it at most once.
 package transport
 
 import (
@@ -33,9 +34,9 @@ type Config struct {
 }
 
 // LoadClientCertificate pairs the certificate PEM with the private key PEM
-// and accepts only ECDSA P-384 or P-256 keys, the curves idpctl.md allows for
-// the admin key (P-256 only as the fallback if the managed CA rejects P-384).
-// Errors never include the key bytes.
+// and accepts only ECDSA P-384 keys: the same key signs every request with
+// ecdsa-p384-sha384 (hosting-modes.md 5.1), so the former P-256 fallback for
+// the managed CA could no longer be used. Errors never include the key bytes.
 func LoadClientCertificate(certPEM, keyPEM []byte) (tls.Certificate, error) {
 	pair, err := tls.X509KeyPair(certPEM, keyPEM)
 	if err != nil {
@@ -48,8 +49,8 @@ func LoadClientCertificate(certPEM, keyPEM []byte) (tls.Certificate, error) {
 	if !ok {
 		return tls.Certificate{}, fmt.Errorf("the admin key must be ECDSA, got %T", pair.Leaf.PublicKey)
 	}
-	if public.Curve != elliptic.P384() && public.Curve != elliptic.P256() {
-		return tls.Certificate{}, fmt.Errorf("the admin key must be on P-384 or P-256, got %s", public.Curve.Params().Name)
+	if public.Curve != elliptic.P384() {
+		return tls.Certificate{}, fmt.Errorf("the admin key must be on P-384, got %s", public.Curve.Params().Name)
 	}
 	return pair, nil
 }
@@ -101,8 +102,9 @@ type Doer interface {
 // RetryingDoer resends a request when no response arrived or when the edge
 // answered 502, 503, or 504 without a problem body. Each attempt is the same
 // request with the same headers, so writes reuse their Idempotency-Key and
-// PUT and DELETE stay idempotent. Problems from the admin Worker, including
-// internal, are final: they come from a completed attempt.
+// PUT and DELETE stay idempotent. Put a SigningDoer under it so each attempt
+// is signed again with a new created and nonce. Problems from the admin
+// Worker, including internal, are final: they come from a completed attempt.
 type RetryingDoer struct {
 	// Doer sends each attempt.
 	Doer Doer

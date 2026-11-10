@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"crypto/elliptic"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/OJILab-dev/idp/cmd/idpctl/internal/cli"
+	"github.com/OJILab-dev/idp/cmd/idpctl/internal/testpki"
 )
 
 func problem(status int, kind, detail string, extra string) reply {
@@ -146,9 +148,17 @@ func TestRetriesReuseTheIdempotencyKey(t *testing.T) {
 	if len(r) != 3 {
 		t.Fatalf("%d attempts, want 3", len(r))
 	}
+	nonces := map[string]bool{}
 	for i := range r {
 		if r[i].Header.Get("Idempotency-Key") != r[0].Header.Get("Idempotency-Key") || string(r[i].Body) != string(r[0].Body) {
 			t.Fatalf("attempt %d changed the key or body", i)
+		}
+		// Each attempt is signed again: resending the same signature would be refused as a replay whenever
+		// the earlier attempt reached the admin Worker.
+		if nonce := nonceOf(r[i]); nonce == "" || nonces[nonce] {
+			t.Fatalf("attempt %d reused or lacks a signature nonce", i)
+		} else {
+			nonces[nonce] = true
 		}
 	}
 	if !strings.Contains(got.stderr, "attempt=1") {
@@ -345,6 +355,35 @@ func TestSecretNotReplayableExplainsHowToRecover(t *testing.T) {
 	got := h.run("client_create", "grafana", "Grafana", "--redirect-uri", "https://g.example/cb", "--secret-out", filepath.Join(t.TempDir(), "s"))
 	if got.code != cli.ExitSecretNotReplayable || !strings.Contains(got.stderr, "client_rotate_secret") {
 		t.Fatalf("exit %d, stderr:\n%s", got.code, got.stderr)
+	}
+}
+
+func TestForbiddenListsWhatToCheck(t *testing.T) {
+	h := newHarness(t, func(*http.Request, int) reply { return problem(403, "forbidden", "Forbidden.", "") })
+	got := h.run("users_list")
+	if got.code != cli.ExitForbidden {
+		t.Fatalf("exit %d, stderr:\n%s", got.code, got.stderr)
+	}
+	for _, want := range []string{"clock", "admin_signing_keys", "host", "keyid="} {
+		if !strings.Contains(got.stderr, want) {
+			t.Errorf("stderr lacks %q:\n%s", want, got.stderr)
+		}
+	}
+}
+
+func TestOnlyAP384KeyCanSign(t *testing.T) {
+	h := newHarness(t, fixed(200, emptyPage))
+	ca := testpki.NewCA(t)
+	certPEM, keyPEM := ca.IssueClient(t, testpki.NewECDSAKey(t, elliptic.P256()))
+	if err := os.WriteFile(h.certPath, certPEM, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.keyPEM = keyPEM
+	if got := h.run("users_list"); got.code != cli.ExitUsage || !strings.Contains(got.stderr, "P-384") {
+		t.Fatalf("P-256 key: exit %d, stderr:\n%s", got.code, got.stderr)
+	}
+	if n := len(h.seen()); n != 0 {
+		t.Fatalf("%d requests with a P-256 key", n)
 	}
 }
 
