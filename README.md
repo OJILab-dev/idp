@@ -16,7 +16,7 @@ Cloudflare Workers の無料枠と D1 だけで動く、パスキー専用の最
 
 - 検証用の Cloudflare アカウントへの最初のデプロイ。運用者が [ブートストラップの実行手順](docs/deployment/runbook.md) に沿って行います。Worker のデプロイの workflow はまだありません（雛形は [examples/github-actions/deploy.yml](examples/github-actions/deploy.yml)）。
 - e2e テスト（Playwright）。[セキュリティ要件チェックリスト](docs/design/security-checklist.md) の攻撃ケースを実装します。
-- [ホスティングのモード](docs/design/hosting-modes.md) の実装（署名による管理者の認証、mTLS の撤去、`workers.dev` のモード）。今のコードの管理用の Worker は、まだ mTLS と証明書のフィンガープリントの許可リストで管理者を確かめます。
+- [ホスティングのモード](docs/design/hosting-modes.md) の残りの実装（`workers.dev` のモードの入力）。署名による管理者の認証と mTLS の撤去は済み、管理用の Worker は RFC 9421 の署名と `admin_signing_keys` の許可リストだけで管理者を確かめます。
 
 ## ゴール
 
@@ -44,12 +44,12 @@ IdP の Worker には管理用のエンドポイントや管理 UI を置きま�
 | パス | 内容 |
 | --- | --- |
 | [apps/worker/](apps/worker) | IdP の Worker。OIDC エンドポイント、`/webauthn/*` の API、サインイン・登録・アカウントの静的ページ |
-| [apps/admin-worker/](apps/admin-worker) | 管理用の Worker。管理者を確かめるゲートの後ろの管理 API と、その OpenAPI の仕様の生成（ゲートは今は mTLS の検証の結果と許可リスト。署名に切り替える） |
+| [apps/admin-worker/](apps/admin-worker) | 管理用の Worker。管理者を確かめるゲートの後ろの管理 API と、その OpenAPI の仕様の生成（ゲートは RFC 9421 の署名と、署名鍵の許可リスト） |
 | [packages/core/](packages/core) | 共有コア。利用者向け（`user`）、管理系（`admin`）、共通（`shared`）のユースケースとドメインの規則 |
 | [packages/d1-adapter/](packages/d1-adapter) | 共有コアのデータベースのポートを D1 で実装するアダプタと、その適合テスト |
 | [contract/](contract) | 実装に依存しない契約。D1 のマイグレーション（`migrations`）、管理 API の仕様（`openapi`）、テストベクタ（`testdata`）、スキーマのテスト（`test`） |
 | [cmd/idpctl/](cmd/idpctl) | Go の管理 CLI。管理 API のクライアントは `contract/openapi/admin.json` から生成する |
-| [infra/](infra) | Terraform と、そのオフラインのテスト。今は管理者のクライアント証明書と管理用のホスト名の mTLS の割り当てだけを持ち、署名への切り替えの後に外す（[ホスティングのモード](docs/design/hosting-modes.md)の実装の順番の 7）。ゾーンのルールセット（WAF、リダイレクト、レート制限）は持たず、HTTPS へのリダイレクト、TLS のバージョン、管理者の認証、レート制限は Worker が行う（[ドメインの置き場所](docs/design/domain-placement.md)の決定 ③） |
+| [infra/](infra) | Terraform と、そのオフラインのテスト。今はゾーンを引く data source と、デプロイの設定ファイルの検証だけを持ち、ゾーンに資源を置かない（管理者のクライアント証明書と mTLS の割り当ては[ホスティングのモード](docs/design/hosting-modes.md)の実装の順番の 7 で外した）。ゾーンのルールセット（WAF、リダイレクト、レート制限）は持たず、HTTPS へのリダイレクト、TLS のバージョン、管理者の認証、レート制限は Worker が行う（[ドメインの置き場所](docs/design/domain-placement.md)の決定 ③） |
 | [scripts/](scripts) | ブートストラップのスクリプト（state のバケット、D1、マイグレーション、署名鍵と管理者の鍵の生成、Terraform の実行） |
 | [deployments/](deployments) | デプロイごとの設定ファイル（`<デプロイの名前>.tfvars.json`）とその雛形 |
 | [docs/](docs) | 設計思想、設計ドキュメント、デプロイの手順 |

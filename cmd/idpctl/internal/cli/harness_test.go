@@ -9,13 +9,10 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"math/big"
 	"net/http"
-	"os"
-	"path/filepath"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -50,14 +47,13 @@ type reply struct {
 	Body        string
 }
 
-// harness runs idpctl against an mTLS test server that accepts only the
-// certificate the harness issued.
+// harness runs idpctl against an HTTPS test server that, like the admin
+// Worker, authenticates the admin by the request signature only.
 type harness struct {
-	t        *testing.T
-	certPath string
-	keyPEM   []byte
-	baseURL  string
-	roots    *x509.CertPool
+	t       *testing.T
+	keyPEM  []byte
+	baseURL string
+	roots   *x509.CertPool
 
 	mu       sync.Mutex
 	requests []recorded
@@ -67,18 +63,16 @@ type harness struct {
 func newHarness(t *testing.T, replies func(r *http.Request, n int) reply) *harness {
 	t.Helper()
 	h := &harness{t: t, replies: replies}
-	ca := testpki.NewCA(t)
 	key := testpki.NewECDSAKey(t, elliptic.P384())
-	certPEM, keyPEM := ca.IssueClient(t, key)
-	block, _ := pem.Decode(certPEM)
-	wantCert := block.Bytes
-	server := ca.NewMTLSServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if len(r.TLS.PeerCertificates) == 0 || !bytes.Equal(r.TLS.PeerCertificates[0].Raw, wantCert) {
-			t.Error("the request did not present the admin certificate")
+	server := testpki.NewTLSServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The signature is the only admin authentication, so the TLS connection must not carry a client
+		// certificate that a reader could mistake for a second factor.
+		if len(r.TLS.PeerCertificates) != 0 {
+			t.Error("the request presented a client certificate")
 		}
 		body, _ := io.ReadAll(r.Body)
-		// Until plan step 6 the admin Worker ignores the signature, so the harness is the verifier: every
-		// request, retries included, must carry a valid signature by the admin key.
+		// The harness is the verifier: every request, retries included, must carry a valid signature by the
+		// admin key.
 		if err := verifyAdminSignature(r, body, &key.PublicKey); err != nil {
 			t.Errorf("%s %s: %v", r.Method, r.URL.Path, err)
 		}
@@ -103,11 +97,7 @@ func newHarness(t *testing.T, replies func(r *http.Request, n int) reply) *harne
 	}))
 	h.baseURL = server.URL
 	h.roots = testpki.RootCAs(server)
-	h.keyPEM = keyPEM
-	h.certPath = filepath.Join(t.TempDir(), "admin.crt")
-	if err := os.WriteFile(h.certPath, certPEM, 0o644); err != nil {
-		t.Fatal(err)
-	}
+	h.keyPEM = testpki.EncodePKCS8(t, key)
 	return h
 }
 
@@ -122,11 +112,11 @@ type result struct {
 	stderr string
 }
 
-// run invokes idpctl with the host and certificate flags, the key on stdin,
-// and no environment.
+// run invokes idpctl with the host flag, the key on stdin, and no
+// environment.
 func (h *harness) run(args ...string) result {
 	h.t.Helper()
-	return h.runWith(map[string]string{}, append([]string{"--host", "admin.example.test", "--cert", h.certPath}, args...)...)
+	return h.runWith(map[string]string{}, append([]string{"--host", "admin.example.test"}, args...)...)
 }
 
 func (h *harness) runWith(env map[string]string, args ...string) result {

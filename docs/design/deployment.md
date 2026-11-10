@@ -33,7 +33,7 @@
 | GitHub Environment の名前（デプロイ用と plan 用） | デプロイの設定ファイル | CI の workflow、1Password の destination の条件 |
 | 管理者の署名鍵の許可リスト（`admin_signing_keys`、新設） | デプロイの設定ファイル（管理者の生成スクリプトが行を書く） | 管理用の Worker の設定 `ADMIN_SIGNING_KEYS` |
 
-- 前の設計の入力の、管理者の証明書のフィンガープリントの許可リスト（`admin_allowlist`）とクライアント証明書の CSR（`admin_client_certificates`）は、管理者の認証を署名だけにする決定で廃止する。外すのは mTLS の撤去（[ホスティングのモード](hosting-modes.md)の実装の順番の 7）で、それまでは Terraform の mTLS の割り当てとクライアント証明書が使うので残す。管理用の Worker は実装の順番の 6 から使わない。`zone_singletons_owner` は ③ で外れた。
+- 前の設計の入力の、管理者の証明書のフィンガープリントの許可リスト（`admin_allowlist`）とクライアント証明書の CSR（`admin_client_certificates`）は、管理者の認証を署名だけにする決定で廃止し、mTLS の撤去（[ホスティングのモード](hosting-modes.md)の実装の順番の 7）で外した。設定ファイルにキーが残っていれば、値によらず（空や `null` でも）、すべてのスクリプトが通る `scripts/lib.sh` の `deployment_config_path`（`reject_removed_inputs`）が処理を始める前に止める。キーがあるかどうかの判断はこちらが正とする。Terraform の変数（null だけを受け付ける廃止の印の変数）は、null でない値（空のリストや空のマップを含む）を拒否する。Terraform は明示した `null` とキーがないことを区別できないので、`null` の値は Terraform を通り、スクリプトが止める。古い設定ファイルを、まだ mTLS を使うデプロイとしてレビューで読み違えないため（fail-closed。[ホスティングのモード](hosting-modes.md)の 1.1 の「廃止」と 1.4）。`zone_singletons_owner` は ③ で外れた。
 - 新設の入力のうち、`admin_signing_keys` と `admin_rate_limit_namespace_id` は、[ホスティングのモード](hosting-modes.md)の実装の順番の 5 で、Terraform の変数（設定ファイルの検証）と生成スクリプトに足した。実装の順番の 6 で、管理用の Worker の `cloudflare.config.ts` が、デプロイのスクリプトの環境変数 `IDP_ADMIN_SIGNING_KEYS`（`admin_signing_keys` の JSON）と `IDP_ADMIN_RATE_LIMIT_NAMESPACE_ID` から `ADMIN_SIGNING_KEYS` と `RATE_LIMITER` を組み立てるようにした。ほかに、`IDP_HOSTING_MODE`、`IDP_ISSUER`、`IDP_ADMIN_HOST`、`IDP_D1_DATABASE_ID` を受け取り、どれかが欠けているか形が違えば設定の評価が失敗する。`hosting_mode` と `workers_dev_subdomain` は実装の順番の 8 で足し（それまで、デプロイのスクリプトは `IDP_HOSTING_MODE` に `custom_domain` を渡す）、それまでは設定ファイルに書かない。
 - Terraform は `admin_signing_keys` の形（3 つのメンバー、`keyid` の形、管理者の名前、P-384 の SPKI の base64 の形、`keyid` の重複）だけを確かめる。Terraform はバイト列の SHA-256 を計算できないので、`keyid` と `public_key` の一致と、公開鍵が曲線の上の点であることは、生成スクリプト（書くたびに設定ファイルのリスト全体を確かめる）と管理用の Worker が確かめる。空のリストは、[ホスティングのモード](hosting-modes.md)の 1.1 と 1.4 の必須に合わせ、Terraform の変数、デプロイの前の検証（`scripts/lib.sh` の `check_admin_signing_keys`）、管理用の Worker の `cloudflare.config.ts`、管理用の Worker 自身のすべてで拒否する（実装の順番の 6 で、実装の順番の 5 の一時的な例外を終えた）。例外は生成スクリプトだけで、新しいデプロイの空のリストに最初の行を足すために、書く前の確認では空を受け付け、書いた後のリストは空を拒否する確認に通す。
 
@@ -75,7 +75,7 @@
 
 基盤はできるだけコードで持つ（IaC）。宣言できるものは Terraform に、手続きでしか表せないものは `cf` を使うシェルスクリプトに置き、手作業の手順を残さない。例外は、ダッシュボードでしかできない操作と認証情報を作る操作だけで、[ブートストラップ](../deployment/bootstrap.md)の前提に列挙する。望む状態を宣言し、実際の状態をそれに合わせ続ける形にするため（[宣言とリコンシリエーション](../philosophy/system-design/declarative-and-reconciliation.md)）。
 
-- Terraform（Cloudflare provider）が持つもの：DNS（Worker のカスタムドメインが作るレコードを除く）と fail closed の設定。ゾーンのルールセット（WAF のカスタムルール、レート制限ルール、シングルリダイレクト）は持たない（[ドメインの置き場所](domain-placement.md)の決定 ③）。管理用のホスト名への mTLS の割り当てと、CSR から発行するクライアント証明書は、管理者の認証を署名だけにする決定で外す（[ホスティングのモード](hosting-modes.md)の実装の順番の 7 まで、今の `infra/` が持つ）。`workers_dev` のモードでは、Terraform はゾーンの data source を使わない。
+- Terraform（Cloudflare provider）が持つもの：DNS（Worker のカスタムドメインが作るレコードを除く）と fail closed の設定。ゾーンのルールセット（WAF のカスタムルール、レート制限ルール、シングルリダイレクト）は持たない（[ドメインの置き場所](domain-placement.md)の決定 ③）。管理用のホスト名への mTLS の割り当てと、CSR から発行するクライアント証明書は、管理者の認証を署名だけにする決定で外した（[ホスティングのモード](hosting-modes.md)の実装の順番の 7）。今の `infra/` は、ゾーンを引く data source と設定ファイルの検証だけを持ち、ゾーンに資源を置かない。`workers_dev` のモードでは、Terraform はゾーンの data source を使わない。
 - Worker のカスタムドメインは、それぞれの Worker の `cloudflare.config.ts`（`worker.domains`）が持ち、`cf deploy` が Worker と一緒に付ける（Cloudflare「Cloudflare config」）。`workers.dev` とプレビューの URL の有効と無効（`workersDev`、`previewUrls`）も同じファイルで宣言し、値はモードから導く（`custom_domain` は `domains` が 1 つで `workersDev` が偽、`workers_dev` は `domains` がなく `workersDev` が真。プレビューの URL はどちらも無効。[ホスティングのモード](hosting-modes.md)の 1.2）。Terraform と `cf` の両方がカスタムドメインを持つと、片方の変更をもう片方が戻しうる。また、Terraform に持たせると、最初の apply がまだない Worker にドメインを付けることになる。カスタムドメインは、Cloudflare が DNS のレコードと証明書を作るので、Terraform はそのホスト名の DNS のレコードを持たない。ホスト名の値はデプロイの設定ファイルから渡し、`cloudflare.config.ts` に書かない。
 - `cf` のシェルスクリプトが持つもの：D1 のデータベースの作成、D1 のマイグレーション、Worker のデプロイ、Worker Secret の登録、D1 が production バックエンドにあることの確認、鍵の生成、Terraform の state を置く R2 のバケットの作成。
 - D1 のデータベースを Terraform に置かないのは、plan の認証情報に D1 の権限を一切持たせないため（下の PR の `terraform plan` の認証情報を参照）。provider の `cloudflare_d1_database` は `D1 Read` か `D1 Write` の権限を要し（Terraform Cloudflare provider「cloudflare_d1_database」の Accepted Permissions）、`terraform plan` は既定で既存のリソースの現状を読む（HashiCorp「terraform plan」の Introduction）。Terraform に D1 のデータベースがあると、plan のトークンに D1 の権限が要る。D1 のデータベースは作った後に変えるものがほとんどなく、宣言で持つ利点も小さい。
@@ -85,11 +85,11 @@
 - state はデプロイごとに分け、アカウントをまたいで共有しない。backend のブロックには変数を使えないので、バケットの名前と endpoint（アカウント ID から組み立てる）は、`terraform init` の `-backend-config` で、デプロイの入力から渡す。backend のブロックに値を書かない。
 - Terraform のコードは、上の「デプロイごとの入力」を変数として受け取り、アカウント ID、ゾーン ID、ホスト名を `.tf` のファイルに書かない。ゾーン ID は data source でゾーンの名前から引く。
 - provider がどのリソースに対応しているか（fail closed の設定など）は、実装の前に確かめる（[未決事項](open-questions.md)参照）。対応していないものは、`cf` か Cloudflare API のスクリプトにし、wrangler では補わない。
-- 実装（`infra/`、provider 5.28.1）で確かめた結果：mTLS のホスト名の割り当て（`cloudflare_certificate_authorities_hostname_associations`）と CSR からのクライアント証明書（`cloudflare_client_certificate`）は provider で持てた（撤去の予定）。ゾーンのルールセット（`cloudflare_ruleset`）も持てるが、エントリポイントのルールセットのルールの一覧を丸ごと持つ資源で、一部のルールだけを持つことはできないので、使わない。fail closed の設定は、provider の Workers のルート（`cloudflare_workers_route`）に属性がなく、2 つの Worker はルートではなくカスタムドメインを使うので、Terraform には置かない。カスタムドメインで設定できるかは[未決事項](open-questions.md)の項目のまま残す。
+- 実装（`infra/`、provider 5.28.1）で確かめた結果：mTLS のホスト名の割り当て（`cloudflare_certificate_authorities_hostname_associations`）と CSR からのクライアント証明書（`cloudflare_client_certificate`）は provider で持てた（実装の順番の 7 で撤去した。どのデプロイでも適用されなかったので、state にも Cloudflare にも残っておらず、Terraform の `removed` のブロックは置かずにそのまま消した）。ゾーンのルールセット（`cloudflare_ruleset`）も持てるが、エントリポイントのルールセットのルールの一覧を丸ごと持つ資源で、一部のルールだけを持つことはできないので、使わない。fail closed の設定は、provider の Workers のルート（`cloudflare_workers_route`）に属性がなく、2 つの Worker はルートではなくカスタムドメインを使うので、Terraform には置かない。カスタムドメインで設定できるかは[未決事項](open-questions.md)の項目のまま残す。
 - ゾーン全体に効く設定（Always Use HTTPS と TLS の最小バージョン。`cloudflare_zone_setting`）は持たない。ゾーンの持ち主が決めるもので、IdP のデプロイがサービスのほかのホスト名の動きを変えないため。代わりに、Worker の中のリダイレクトと TLS のバージョンの確認を置く（上の設定値）。ゾーンの TLS の最小バージョンが 1.2 以上であることは、ブートストラップの前提でゾーンの持ち主に確かめる（[ドメインの置き場所](domain-placement.md)の共存の設計の 3）。
 - 管理用のホスト名は、設定ファイルで小文字のホスト名だけを受け付ける。管理用の Worker は、要求の URL のホスト名（常に小文字に正規化される）と完全に一致することで確かめるため。
 - 今の構成では、Terraform が持つ DNS のレコードはない。IdP の Worker と管理用の Worker のホスト名のレコードは、どちらもカスタムドメインが作るため。カスタムドメイン以外のレコードが要るようになったら、Terraform に足す。
-- mTLS の撤去の後、IdP はゾーンに単一資源（ゾーンに 1 つしかなく、ゾーンの持ち主と取り合うもの）を何も置かない。置くのは Worker のカスタムドメインだけになる（[ドメインの置き場所](domain-placement.md)の共存の設計の 2）。撤去までの間、今の `infra/` は管理用のホスト名の mTLS の割り当て（ゾーンの managed CA に割り当てたホスト名の一覧を丸ごと持つ資源）を持つ。
+- IdP はゾーンに単一資源（ゾーンに 1 つしかなく、ゾーンの持ち主と取り合うもの）を何も置かない。置くのは Worker のカスタムドメインだけである（[ドメインの置き場所](domain-placement.md)の共存の設計の 2）。最後の単一資源だった管理用のホスト名の mTLS の割り当て（ゾーンの managed CA に割り当てたホスト名の一覧を丸ごと持つ資源）は、mTLS の撤去で外した。
 - IdP の Worker の Rate Limiting のバインディングのしきい値（10 秒あたりの件数）は、実測の前の仮の値として 10 にする。静的なページは数えないので、正規のサインイン 1 回でバインディングに数えられるリクエストは 4〜5 件の見込みで、10 秒の間に 1 回やり直せる数にした。実測したら置き換える（[無料枠](free-tier.md)と[未決事項](open-questions.md)参照）。
 - 管理用の Worker の Rate Limiting のバインディングのしきい値も、仮の値で 10 秒あたり 10 件にする。名前空間は IdP の Worker と分ける（[ホスティングのモード](hosting-modes.md)の 6.2）。
 - IdP の Worker の名前と、Ed25519 の current の署名鍵の Worker Secret の名前は、デプロイごとの入力ではなくコードの定数で、スクリプト（`scripts/lib.sh`）と IdP の Worker の設定で同じ値を使う。
@@ -107,7 +107,7 @@
 - 秘密を AI のコンテキストに入れてはいけない、という規則は変わらない。スクリプトは秘密を標準出力に出さない。
 - 生成スクリプトは `op` を必須にし、生成した鍵を 1Password のアイテムと Worker Secret に直接パイプで渡す。平文をディスクに書かない。
 - `kid`（RFC 7638）と管理者の鍵の `keyid`（SPKI の DER の SHA-256）はスクリプトが自分で計算する。
-- 出力するのは秘密でない値（`kid`、`keyid`、公開鍵）だけにする。管理者の鍵の生成スクリプトは、デプロイの設定ファイルの `admin_signing_keys` に、`keyid`、`name`、`public_key` の行を書く。mTLS の撤去（[ホスティングのモード](hosting-modes.md)の実装の順番の 7）までは、今の管理用の Worker がクライアント証明書を確かめるので、新しく作った鍵の CSR も `admin_client_certificates` に書く。既存のアイテムの鍵には、アイテムの `public_key` と `public_key_sha256` だけを読んで行を書くモード（`--from-existing`）を使い、秘密鍵のフィールドは読まない。
+- 出力するのは秘密でない値（`kid`、`keyid`、公開鍵）だけにする。管理者の鍵の生成スクリプトは、デプロイの設定ファイルの `admin_signing_keys` に、`keyid`、`name`、`public_key` の行を書く。CSR は作らない（[ホスティングのモード](hosting-modes.md)の 3.10。実装の順番の 7 で外した）。既存のアイテムの鍵には、アイテムの `public_key` と `public_key_sha256` だけを読んで行を書くモード（`--from-existing`）を使い、秘密鍵のフィールドは読まない。
 
 **デプロイのパイプライン**
 
@@ -136,7 +136,7 @@
 
 - 役割ごとに分ける。どれもデプロイ先のアカウントに限り、アカウントごとに別のトークンを作る。アカウントを IdP が仕えるサービスと共有するときも、サービスのトークンを IdP に使わず、IdP の役割ごとに IdP のためだけのトークンを作る。
 - ゾーンの権限は、すべて IdP のホスト名を持つゾーン 1 つに絞る（Cloudflare「Create API token」）。ホスト名には絞れない。`workers_dev` のモードでは、どのトークンにもゾーンの権限を持たせない（ゾーンがない）。D1 と Workers のスクリプトの権限はアカウント単位で、特定のデータベースや Worker に絞れない（Cloudflare「API token permissions」。[ドメインの置き場所](domain-placement.md)の共存の設計の 6）。
-  - Terraform 用：ゾーンの読み取り（data source でゾーン ID を引く）。SSL と証明書の権限は、mTLS の撤去（[ホスティングのモード](hosting-modes.md)の実装の順番の 7）の後は持たせない。撤去までは、今の `infra/` が持つクライアント証明書と mTLS の割り当てのために要る。WAF とシングルリダイレクトの権限は持たせない（IdP はゾーンのルールセットを持たない）。fail closed の設定に要る Workers のルートの権限と DNS の権限は、Terraform がそれらを持つようになったときに足す。D1 の権限は持たせない。
+  - Terraform 用：ゾーンの読み取り（data source でゾーン ID を引く）。SSL と証明書の権限は持たせない（`infra/` はクライアント証明書も mTLS の割り当ても持たない。[ホスティングのモード](hosting-modes.md)の実装の順番の 7 で外した）。WAF とシングルリダイレクトの権限は持たせない（IdP はゾーンのルールセットを持たない）。fail closed の設定に要る Workers のルートの権限と DNS の権限は、Terraform がそれらを持つようになったときに足す。D1 の権限は持たせない。
   - デプロイ用：Workers の編集、マイグレーションのための D1 の編集。`custom_domain` では、Worker のカスタムドメインを付けるためのゾーンの Workers のルートの編集と DNS の編集も要る。`workers_dev` では、デプロイのスクリプトがアカウントの `workers.dev` のサブドメインを Cloudflare API の「Get a Workers Subdomain」で読むので、`Workers Scripts Read` か `Workers Scripts Write` が要る（Workers の編集に含まれる見込み）。必要な権限の正確な名前は、実装で `cf deploy` が成功する最小の組み合わせを確かめて記録する。ゾーンの DNS の編集はホスト名に絞れないので、ゾーンをサービスと共有すると、サービスのほかのレコードも変えられる（受け入れるリスク）。
   - plan 用（上の例外）：Terraform 用と同じ範囲の読み取りだけ。D1 の権限は読み取りも持たせない。
 - D1 のデータベースの作成は、最初の構築のときだけ、運用者の手元の `cf` のセッションで行う（[ブートストラップ](../deployment/bootstrap.md)の段階 1）。CI のトークンには D1 の作成の権限を持たせない。
@@ -174,7 +174,7 @@
 - 管理者は、要求ごとの RFC 9421 の署名を、許可リストの公開鍵で検証して確かめる。両方のモードで同じ（[管理 CLI と管理用の Worker](idpctl.md)、[ホスティングのモード](hosting-modes.md)の 3）。エッジでは何も止めず、管理用の Worker のゲートが拒否する。プレビューの URL は無効にし、カスタムドメインのモードでは `workers.dev` も無効にする。
 - 管理者の署名鍵の許可リスト（`admin_signing_keys`）は、デプロイの設定ファイル（上の「デプロイごとの入力」）に置き、管理用の Worker の設定 `ADMIN_SIGNING_KEYS` として CI のデプロイでだけ変える。D1 には置かない。
 - 管理用の Worker も、接続元の IP ごとの Rate Limiting バインディングを持つ。名前空間の ID は `admin_rate_limit_namespace_id` で、IdP の Worker と分ける。
-- 移行の間：管理用の Worker は[ホスティングのモード](hosting-modes.md)の実装の順番の 6 で署名だけで管理者を確かめるようになった。mTLS の撤去（実装の順番の 7）までは、Terraform が管理用のホスト名の mTLS の割り当てとクライアント証明書を持ち、その発行と失効には「SSL and Certificates Write」の権限が要るので、基盤の権限として扱う。
+- 経緯：管理用の Worker は[ホスティングのモード](hosting-modes.md)の実装の順番の 6 で署名だけで管理者を確かめるようになり、実装の順番の 7 で Terraform の mTLS の割り当てとクライアント証明書を外した。そのため、「SSL and Certificates Write」の権限はどのトークンにも要らない。
 
 **D1 の API トークン（break-glass）**
 

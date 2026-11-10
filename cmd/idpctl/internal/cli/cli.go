@@ -1,7 +1,7 @@
 // Package cli implements idpctl's subcommands: one per admin API operation,
 // named exactly as the operation. It parses arguments, calls the admin API
-// through the generated client with every request signed (RFC 9421) and, until
-// mTLS is removed, over mTLS, prints the JSON result, writes
+// through the generated client with every request signed (RFC 9421, the only
+// admin authentication), prints the JSON result, writes
 // IdP-issued secrets to a new 0600 file instead of the terminal, and turns
 // RFC 9457 problems into exit codes. It evaluates no domain rule: the admin
 // Worker is the only judge, and idpctl shows what it answers.
@@ -20,7 +20,6 @@ import (
 	"mime"
 	"net"
 	"net/url"
-	"os"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -30,11 +29,11 @@ import (
 	"github.com/OJILab-dev/idp/cmd/idpctl/internal/transport"
 )
 
-// Environment variables that supply defaults for --host and --cert.
-const (
-	EnvHost = "IDPCTL_HOST"
-	EnvCert = "IDPCTL_CERT"
-)
+// EnvHost is the environment variable that supplies the default for --host.
+// The admin host is idpctl's only setting: the private key comes from stdin,
+// and there is no client certificate since mTLS was removed (hosting-modes.md
+// plan step 7).
+const EnvHost = "IDPCTL_HOST"
 
 // maxKeyBytes bounds what is read from stdin; a PEM private key is far
 // smaller, and anything larger is not one.
@@ -51,7 +50,7 @@ type Options struct {
 	Stdin io.Reader
 	// Stdout receives the JSON result; Stderr receives logs and problems.
 	Stdout, Stderr io.Writer
-	// Getenv looks up IDPCTL_HOST and IDPCTL_CERT.
+	// Getenv looks up IDPCTL_HOST.
 	Getenv func(string) string
 	// BaseURL replaces https://<host> as the API base. Tests only: it lets
 	// them reach an httptest server, which listens on an IP and a port that
@@ -64,15 +63,14 @@ type Options struct {
 }
 
 type globals struct {
-	host, cert string
-	retries    int
-	timeout    time.Duration
-	verbose    bool
+	host    string
+	retries int
+	timeout time.Duration
+	verbose bool
 }
 
 func (g *globals) register(fs *flag.FlagSet) {
 	fs.StringVar(&g.host, "host", g.host, "admin API host name (default $"+EnvHost+")")
-	fs.StringVar(&g.cert, "cert", g.cert, "path of the admin client certificate PEM (default $"+EnvCert+")")
 	fs.IntVar(&g.retries, "retries", g.retries, "retries after a lost or edge-unavailable response; writes reuse their Idempotency-Key")
 	fs.DurationVar(&g.timeout, "timeout", g.timeout, "timeout of each attempt")
 	fs.BoolVar(&g.verbose, "v", g.verbose, "log debug messages")
@@ -121,7 +119,7 @@ func Run(ctx context.Context, args []string, opts Options) int {
 }
 
 func run(ctx context.Context, args []string, opts Options, logger *slog.Logger, level *slog.LevelVar) error {
-	g := globals{host: opts.Getenv(EnvHost), cert: opts.Getenv(EnvCert), retries: 2, timeout: 30 * time.Second}
+	g := globals{host: opts.Getenv(EnvHost), retries: 2, timeout: 30 * time.Second}
 	top := flag.NewFlagSet("idpctl", flag.ContinueOnError)
 	top.SetOutput(io.Discard)
 	g.register(top)
@@ -286,7 +284,7 @@ func findSecret(value any, pointer string) string {
 }
 
 // connect validates the local configuration, reads the key from stdin, and
-// builds the generated client on top of the signing mTLS transport. It also
+// builds the generated client on top of the signing transport. It also
 // returns the keyid of the signing key, which is public, for diagnostics.
 func connect(g *globals, opts Options, logger *slog.Logger) (*adminapi.ClientWithResponses, string, error) {
 	if g.host == "" {
@@ -294,13 +292,6 @@ func connect(g *globals, opts Options, logger *slog.Logger) (*adminapi.ClientWit
 	}
 	if err := checkHost(g.host); err != nil {
 		return nil, "", err
-	}
-	if g.cert == "" {
-		return nil, "", usagef("no client certificate: pass --cert or set %s", EnvCert)
-	}
-	certPEM, err := os.ReadFile(g.cert)
-	if err != nil {
-		return nil, "", fmt.Errorf("read the client certificate: %w", err)
 	}
 	keyPEM, err := io.ReadAll(io.LimitReader(opts.Stdin, maxKeyBytes+1))
 	if err != nil {
@@ -314,13 +305,11 @@ func connect(g *globals, opts Options, logger *slog.Logger) (*adminapi.ClientWit
 	if len(keyPEM) > maxKeyBytes {
 		return nil, "", usagef("stdin holds more than %d bytes, which is not a private key PEM", maxKeyBytes)
 	}
-	cert, err := transport.LoadClientCertificate(certPEM, keyPEM)
+	key, err := transport.ParsePrivateKey(keyPEM)
 	if err != nil {
 		return nil, "", usagef("%v", err)
 	}
-	// The same key signs every request (RFC 9421) and, until plan step 7 of hosting-modes.md removes mTLS,
-	// also authenticates the TLS connection: the admin Worker before step 6 ignores the signature headers.
-	signer, err := transport.NewSigner(cert.PrivateKey)
+	signer, err := transport.NewSigner(key)
 	if err != nil {
 		return nil, "", usagef("%v", err)
 	}
@@ -333,7 +322,7 @@ func connect(g *globals, opts Options, logger *slog.Logger) (*adminapi.ClientWit
 	// keep the Idempotency-Key and the body.
 	doer := &transport.RetryingDoer{
 		Doer: &transport.SigningDoer{
-			Doer:      transport.NewHTTPClient(transport.Config{Certificate: cert, RootCAs: opts.RootCAs, Timeout: g.timeout}),
+			Doer:      transport.NewHTTPClient(transport.Config{RootCAs: opts.RootCAs, Timeout: g.timeout}),
 			Signer:    signer,
 			UserAgent: userAgent(),
 		},
@@ -362,7 +351,7 @@ func userAgent() string {
 // checkHost accepts a bare, lower-case DNS host name. idpctl.md keeps the
 // admin host as the only setting and requires its canonical form without a
 // port; a scheme, path, port, or IP address here is a configuration mistake
-// that would send the client certificate somewhere unintended.
+// that would send a signed request somewhere unintended.
 func checkHost(host string) error {
 	u, err := url.Parse("https://" + host)
 	if err != nil || u.Host != host || u.Hostname() != host || u.User != nil || u.Path != "" || u.RawQuery != "" || u.Fragment != "" {
@@ -439,7 +428,7 @@ func printJSON(w io.Writer, body []byte) error {
 }
 
 func printOverview(w io.Writer) {
-	fmt.Fprintln(w, "usage: idpctl [--host HOST] [--cert PATH] [--retries N] [--timeout D] [-v] <operation> [arguments] < admin-key.pem")
+	fmt.Fprintln(w, "usage: idpctl [--host HOST] [--retries N] [--timeout D] [-v] <operation> [arguments] < admin-key.pem")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "The admin private key PEM is read from stdin only. Run idpctl <operation> -h for its flags.")
 	fmt.Fprintln(w)

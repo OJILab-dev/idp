@@ -23,7 +23,7 @@ readonly OP_FIELD_R2_SECRET_ACCESS_KEY="r2_secret_access_key"
 IDP_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly IDP_REPO_ROOT
 
-# Same rule as the admin names of ADMIN_ALLOWLIST and ADMIN_SIGNING_KEYS (docs/design/idpctl.md).
+# Same rule as the admin names of ADMIN_SIGNING_KEYS (docs/design/idpctl.md).
 readonly ADMIN_NAME_PATTERN='^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$'
 
 # The DER of every P-384 SubjectPublicKeyInfo with an uncompressed point starts with these 24 bytes (the
@@ -56,7 +56,21 @@ deployment_config_path() {
   [[ "${deployment}" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || fail "invalid deployment name: ${deployment}"
   local path="${IDP_REPO_ROOT}/deployments/${deployment}.tfvars.json"
   [[ -f "${path}" ]] || fail "deployment file not found: ${path}"
+  reject_removed_inputs "${path}"
   printf '%s\n' "${path}"
+}
+
+# Stops if the deployment file still holds an input that was removed: admin_allowlist and admin_client_certificates
+# went with mTLS (docs/design/hosting-modes.md 1.1 and plan step 7). A stale key stops every script, whatever its
+# value, so that no one reads a deployment as still using mTLS (fail-closed against stale configs). Terraform's
+# variables refuse the same keys. Every script reaches this through deployment_config_path.
+reject_removed_inputs() {
+  local path="${1}"
+  local removed
+  removed="$(jq -er '[keys[] | select(. == "admin_allowlist" or . == "admin_client_certificates")] | join(" ")' "${path}")" ||
+    fail "deployment file is not a JSON object: ${path}"
+  [[ -z "${removed}" ]] ||
+    fail "deployment file holds inputs removed with mTLS (${removed}); delete them, admin_signing_keys replaces them: ${path}"
 }
 
 # Prints a required string input. A missing or empty value stops the script: no input has a default

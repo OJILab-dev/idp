@@ -8,9 +8,8 @@
 #
 # The private key exists only in a shell variable and pipes and goes straight into 1Password. The row (keyid,
 # name, public_key) is not a secret: it is written into the deployment file, which the admin Worker reads as
-# ADMIN_SIGNING_KEYS (docs/design/hosting-modes.md 3.7 and 3.10). Until mTLS is removed (step 7 of the
-# implementation order there), the admin Worker still checks client certificates, so a generated key also gets a
-# CSR in admin_client_certificates; without it, a new admin could not use the API before the switch to signatures.
+# ADMIN_SIGNING_KEYS (docs/design/hosting-modes.md 3.7 and 3.10). The script outputs only the public key and the
+# keyid: the admin is authenticated by RFC 9421 signatures alone, so no certificate is involved.
 #
 # --from-existing reads only the non-secret fields public_key and public_key_sha256 of an existing item, with
 # `op read` of each field. It never reads the private_key field and never runs `op item get`, whose JSON would
@@ -26,33 +25,15 @@ usage() {
     "" \
     "Generates an ECDSA P-384 private key (docs/design/idpctl.md) and stores it in the 1Password item" \
     "<onepassword_admin_key_item_prefix><admin-name>. Adds the row {keyid, name, public_key} to admin_signing_keys" \
-    "and the CSR to admin_client_certificates in deployments/<deployment>.tfvars.json, and prints the CSR and the" \
-    "row on stdout. keyid is the SHA-256 of the public key's SPKI DER, the item's public_key_sha256." \
-    "The admin name follows the ADMIN_ALLOWLIST rule: lowercase letters, digits, and hyphens, 1 to 64 characters." \
+    "in deployments/<deployment>.tfvars.json and prints the row on stdout: the public key and its keyid, nothing" \
+    "else. keyid is the SHA-256 of the public key's SPKI DER, the item's public_key_sha256." \
+    "The admin name follows the ADMIN_SIGNING_KEYS rule: lowercase letters, digits, and hyphens, 1 to 64 characters." \
     "" \
     "  --replace        Archive an existing item first and remove the admin's other admin_signing_keys rows." \
     "                   Without it, an existing item stops the script." \
     "  --from-existing  Generate nothing: read only public_key and public_key_sha256 of the existing item," \
     "                   add its admin_signing_keys row, and print the row. The private key is never read." \
     "  -h, --help       Show this help."
-}
-
-# Replaces admin_client_certificates[<name>] in the deployment file. The file is rewritten through a temporary
-# file in the same directory so that a failure never leaves it half written.
-write_csr_to_config() {
-  local config="${1}"
-  local name="${2}"
-  local csr="${3}"
-  local temporary
-  temporary="$(mktemp "${config}.XXXXXX")"
-  if jq --indent 2 --arg name "${name}" --arg csr "${csr}" \
-    '.admin_client_certificates = ((.admin_client_certificates // {}) + {($name): $csr})' \
-    "${config}" >"${temporary}"; then
-    mv "${temporary}" "${config}"
-  else
-    rm -f "${temporary}"
-    fail "cannot update admin_client_certificates in ${config}"
-  fi
 }
 
 # Writes the row of the key already in the item. The keyid computed from public_key must equal the item's
@@ -93,13 +74,9 @@ generate_key() {
   fi
 
   local key_pem
-  local csr
   local public_pem
   key_pem="$(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-384 -pkeyopt ec_param_enc:named_curve)"
-  # openssl reads the key from /dev/stdin, so it is never a file on disk or a process argument.
-  # The subject is informational only: the admin Worker authorises by fingerprint, never by subject
-  # (docs/design/idpctl.md "証明書の主体名で認可しない").
-  csr="$(printf '%s\n' "${key_pem}" | openssl req -new -key /dev/stdin -subj "/CN=${admin}" -sha384)"
+  # openssl reads the key from stdin, so it is never a file on disk or a process argument.
   public_pem="$(printf '%s\n' "${key_pem}" | openssl pkey -pubout)"
   # The row is built before the item is created, so a key the admin Worker would refuse never reaches 1Password.
   local row
@@ -108,13 +85,12 @@ generate_key() {
   # The keyid, a single-line identifier of the key pair, also confirms that op stored this template.
   public_key_sha256="$(printf '%s' "${row}" | jq -r .keyid)"
 
-  printf '%s\n' "${key_pem}" | jq -Rsc --arg title "${item}" --arg csr "${csr}" --arg public "${public_pem}" \
+  printf '%s\n' "${key_pem}" | jq -Rsc --arg title "${item}" --arg public "${public_pem}" \
     --arg public_sha256 "${public_key_sha256}" '{
     title: $title,
     category: "SECURE_NOTE",
     fields: [
       {id: "private_key", label: "private_key", type: "CONCEALED", value: .},
-      {id: "csr", label: "csr", type: "STRING", value: $csr},
       {id: "public_key", label: "public_key", type: "STRING", value: $public},
       {id: "public_key_sha256", label: "public_key_sha256", type: "STRING", value: $public_sha256}
     ]
@@ -123,10 +99,9 @@ generate_key() {
 
   op_verify_field "${vault}" "${item}" public_key_sha256 "${public_key_sha256}"
   write_admin_signing_key_row "${config}" "${row}" "${replace}"
-  write_csr_to_config "${config}" "${admin}" "${csr}"$'\n'
-  note "stored the private key in the 1Password item ${item}, and the admin_signing_keys row and the CSR in ${config}"
-  note "next: open a PR with the deployment file, then apply Terraform to issue the client certificate"
-  printf '%s\n%s\n' "${csr}" "${row}"
+  note "stored the private key in the 1Password item ${item}, and the admin_signing_keys row in ${config}"
+  note "next: open a PR with the deployment file; the key works after the admin Worker is deployed with it"
+  printf '%s\n' "${row}"
 }
 
 main() {

@@ -21,7 +21,6 @@ readonly P384_KEYID
 ED25519_SPKI="$(jq -er '.admin_signature.keyid.valid[1].spki' "${REPO_ROOT}/contract/testdata/vectors.json")"
 readonly ED25519_SPKI
 readonly RFC6979_P384_SPKI="MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAE7DpOQVtOGaRWhhgCn0J/pdqai8SukuAuBqrlKGswDGTe+PDqkFWGYGSiVFFUgLwTgBXZty19VyROqO+awMYhiWcIpZNn+d+59UyoSz8cnbEoiyMcOuDU/nNE/SUzJkcg"
-readonly CSR_PLACEHOLDER=$'-----BEGIN CERTIFICATE REQUEST-----\nMIIB\n-----END CERTIFICATE REQUEST-----\n'
 
 failures=0
 
@@ -52,10 +51,10 @@ make_tree() {
   mkdir -p "${tree}/scripts" "${tree}/deployments" "${tree}/bin" "${tree}/op/fields"
   cp "${REPO_ROOT}/scripts/lib.sh" "${REPO_ROOT}/scripts/generate-admin-key.sh" "${tree}/scripts/"
   : >"${tree}/op/calls"
-  jq -n --arg csr "${CSR_PLACEHOLDER}" '{
+  jq -n '{
+    zone: "example.com",
     onepassword_vault: "idp-test",
     onepassword_admin_key_item_prefix: "admin-key-",
-    admin_client_certificates: {carol: $csr},
     admin_signing_keys: []
   }' >"${tree}/deployments/test.tfvars.json"
   cp "${TEST_DIR}/stubs/op" "${TEST_DIR}/stubs/openssl" "${tree}/bin/"
@@ -112,8 +111,10 @@ test_existing_item_writes_the_row() {
   assert_equal "existing item: exit code" "0" "$(status_of "${tree}")"
   assert_equal "existing item: the row is written" "${expected}" "$(keys_of "${tree}")"
   assert_equal "existing item: stdout is the row" "$(printf '%s' "${expected}" | jq -c '.[0]')" "$(jq -c . "${tree}/out")"
-  assert_equal "existing item: the CSRs are untouched" "carol" \
-    "$(jq -r '.admin_client_certificates | keys | join(",")' "${tree}/deployments/test.tfvars.json")"
+  assert_equal "existing item: the other inputs are untouched" "example.com" \
+    "$(jq -r '.zone' "${tree}/deployments/test.tfvars.json")"
+  assert_equal "existing item: no CSR input is written" "false" \
+    "$(jq 'has("admin_client_certificates")' "${tree}/deployments/test.tfvars.json")"
   assert_only_public_fields_read "existing item: reads only the public fields" "${tree}"
 
   run_script "${tree}" --from-existing test alice
@@ -209,6 +210,32 @@ test_invalid_deployment_file_stops_before_op() {
   rm -rf "${tree}"
 }
 
+# A deployment file that still holds an input removed with mTLS stops the script before 1Password is touched
+# (docs/design/hosting-modes.md 1.1 and plan step 7).
+test_removed_inputs_stop_before_op() {
+  local tree
+  local input
+  for input in admin_allowlist admin_client_certificates; do
+    tree="$(make_tree)"
+    set_item_public_key "${tree}" "${P384_SPKI}" "${P384_KEYID}"
+    jq --arg input "${input}" '.[$input] = {}' "${tree}/deployments/test.tfvars.json" >"${tree}/config"
+    mv "${tree}/config" "${tree}/deployments/test.tfvars.json"
+    assert_refused "${input} stops the script (existing item)" "${tree}" "removed with mTLS" --from-existing test alice
+    assert_refused "${input} stops the script (generation)" "${tree}" "removed with mTLS" test alice
+    assert_equal "${input} stops before op and openssl genpkey" "" "$(cat "${tree}/op/calls")"
+    rm -rf "${tree}"
+  done
+}
+
+# The script no longer makes a CSR: neither its help nor its code may mention one (hosting-modes.md 3.10).
+test_no_csr() {
+  if grep -qi 'csr\|certificate request\|openssl req' "${REPO_ROOT}/scripts/generate-admin-key.sh"; then
+    failure "generate-admin-key.sh still mentions a CSR"
+  else
+    pass "generate-admin-key.sh makes no CSR"
+  fi
+}
+
 test_generation_refuses_an_existing_item_before_generating() {
   local tree
   tree="$(make_tree)"
@@ -239,6 +266,8 @@ test_existing_item_writes_the_row
 test_existing_item_appends_to_other_admins
 test_existing_item_refusals
 test_invalid_deployment_file_stops_before_op
+test_removed_inputs_stop_before_op
+test_no_csr
 test_generation_refuses_an_existing_item_before_generating
 test_usage
 

@@ -82,6 +82,24 @@ test_deployment_config_path_rejects_unsafe_names() {
   assert_fails "rejects a missing file" deployment_config_path "no-such-deployment"
 }
 
+# The inputs removed with mTLS stop a stale deployment file even when their value is empty
+# (docs/design/hosting-modes.md 1.1 and plan step 7).
+test_reject_removed_inputs() {
+  local config
+  config="$(mktemp)"
+  printf '%s' '{"zone":"example.com","admin_signing_keys":[]}' >"${config}"
+  assert_equal "accepts a file without the removed inputs" "ok" "$(reject_removed_inputs "${config}" && printf ok)"
+  printf '%s' '{"zone":"example.com","admin_allowlist":[]}' >"${config}"
+  assert_fails "rejects admin_allowlist" reject_removed_inputs "${config}"
+  printf '%s' '{"zone":"example.com","admin_client_certificates":{}}' >"${config}"
+  assert_fails "rejects admin_client_certificates" reject_removed_inputs "${config}"
+  printf '%s' '{"zone":"example.com","admin_client_certificates":null}' >"${config}"
+  assert_fails "rejects a removed input set to null" reject_removed_inputs "${config}"
+  printf '%s' 'not json' >"${config}"
+  assert_fails "rejects a file that is not JSON" reject_removed_inputs "${config}"
+  rm -f "${config}"
+}
+
 test_config_string_fails_closed() {
   local config
   config="$(mktemp)"
@@ -234,6 +252,7 @@ test_public_jwk_has_no_private_member
 test_rejects_malformed_pkcs8
 test_base64url_has_no_padding_or_unsafe_characters
 test_deployment_config_path_rejects_unsafe_names
+test_reject_removed_inputs
 test_config_string_fails_closed
 test_p384_keyid_matches_the_contract_vector
 test_p384_keyid_rejects_other_keys_and_encodings

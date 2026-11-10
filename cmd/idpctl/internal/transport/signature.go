@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/sha512"
@@ -80,12 +79,9 @@ type Signer struct {
 //	}
 //	fmt.Println(signer.Keyid()) // 64 lower-case hex characters
 func NewSigner(key crypto.PrivateKey) (*Signer, error) {
-	private, ok := key.(*ecdsa.PrivateKey)
-	if !ok || private == nil {
-		return nil, fmt.Errorf("the admin key must be ECDSA, got %T", key)
-	}
-	if private.Curve != elliptic.P384() {
-		return nil, fmt.Errorf("the admin key must be on P-384, got %s", private.Curve.Params().Name)
+	private, err := adminKey(key)
+	if err != nil {
+		return nil, err
 	}
 	keyid, err := Keyid(&private.PublicKey)
 	if err != nil {

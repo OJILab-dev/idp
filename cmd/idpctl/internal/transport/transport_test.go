@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto/elliptic"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"io"
 	"log/slog"
@@ -25,48 +27,50 @@ func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-func TestLoadClientCertificateAcceptsECDSAP384(t *testing.T) {
-	ca := testpki.NewCA(t)
-	certPEM, keyPEM := ca.IssueClient(t, testpki.NewECDSAKey(t, elliptic.P384()))
-	if _, err := transport.LoadClientCertificate(certPEM, keyPEM); err != nil {
+func TestParsePrivateKeyAcceptsECDSAP384(t *testing.T) {
+	key := testpki.NewECDSAKey(t, elliptic.P384())
+	sec1DER, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
 		t.Fatal(err)
 	}
+	for name, keyPEM := range map[string][]byte{
+		"PKCS #8": testpki.EncodePKCS8(t, key),
+		"SEC 1":   pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: sec1DER}),
+	} {
+		got, err := transport.ParsePrivateKey(keyPEM)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if !got.Equal(key) {
+			t.Fatalf("%s: a different key was parsed", name)
+		}
+	}
 }
 
-func TestLoadClientCertificateRejectsOtherKeys(t *testing.T) {
-	ca := testpki.NewCA(t)
-
+func TestParsePrivateKeyRejectsOtherKeys(t *testing.T) {
+	publicDER, err := x509.MarshalPKIXPublicKey(&testpki.NewECDSAKey(t, elliptic.P384()).PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// P-256 was the managed CA fallback; it cannot sign ecdsa-p384-sha384.
-	certPEM, keyPEM := ca.IssueClient(t, testpki.NewECDSAKey(t, elliptic.P256()))
-	if _, err := transport.LoadClientCertificate(certPEM, keyPEM); err == nil {
-		t.Error("P-256 key accepted")
-	}
-
-	certPEM, keyPEM = ca.IssueClient(t, testpki.NewEd25519Key(t))
-	if _, err := transport.LoadClientCertificate(certPEM, keyPEM); err == nil {
-		t.Error("Ed25519 key accepted")
-	}
-
-	certPEM, keyPEM = ca.IssueClient(t, testpki.NewECDSAKey(t, elliptic.P521()))
-	if _, err := transport.LoadClientCertificate(certPEM, keyPEM); err == nil {
-		t.Error("P-521 key accepted")
-	}
-
-	otherCert, _ := ca.IssueClient(t, testpki.NewECDSAKey(t, elliptic.P384()))
-	if _, err := transport.LoadClientCertificate(otherCert, keyPEM); err == nil {
-		t.Error("mismatched certificate and key accepted")
-	}
-
-	if _, err := transport.LoadClientCertificate(certPEM, nil); err == nil {
-		t.Error("empty key accepted")
+	for name, keyPEM := range map[string][]byte{
+		"P-256":      testpki.EncodePKCS8(t, testpki.NewECDSAKey(t, elliptic.P256())),
+		"P-521":      testpki.EncodePKCS8(t, testpki.NewECDSAKey(t, elliptic.P521())),
+		"Ed25519":    testpki.EncodePKCS8(t, testpki.NewEd25519Key(t)),
+		"empty":      nil,
+		"not PEM":    []byte("not a key"),
+		"public key": pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: publicDER}),
+	} {
+		if _, err := transport.ParsePrivateKey(keyPEM); err == nil {
+			t.Errorf("%s accepted", name)
+		}
 	}
 }
 
-func TestLoadClientCertificateErrorNeverEchoesTheKey(t *testing.T) {
-	ca := testpki.NewCA(t)
-	certPEM, keyPEM := ca.IssueClient(t, testpki.NewECDSAKey(t, elliptic.P384()))
+func TestParsePrivateKeyErrorNeverEchoesTheKey(t *testing.T) {
+	keyPEM := testpki.EncodePKCS8(t, testpki.NewECDSAKey(t, elliptic.P384()))
 	broken := bytes.Replace(keyPEM, []byte("PRIVATE KEY-----\n"), []byte("PRIVATE KEY-----\nAAAA"), 1)
-	_, err := transport.LoadClientCertificate(certPEM, broken)
+	_, err := transport.ParsePrivateKey(broken)
 	if err == nil {
 		t.Fatal("broken key accepted")
 	}
@@ -76,32 +80,24 @@ func TestLoadClientCertificateErrorNeverEchoesTheKey(t *testing.T) {
 	}
 }
 
-func TestNewHTTPClientPresentsTheCertificateAndVerifiesTheServer(t *testing.T) {
-	ca := testpki.NewCA(t)
-	server := ca.NewMTLSServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.TLS == nil || len(r.TLS.PeerCertificates) != 1 {
-			t.Error("no client certificate")
+func TestNewHTTPClientVerifiesTheServerAndPresentsNoCertificate(t *testing.T) {
+	server := testpki.NewTLSServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.TLS == nil || len(r.TLS.PeerCertificates) != 0 {
+			t.Error("a client certificate was presented")
+			return
 		}
 		if r.TLS.Version < tls.VersionTLS12 {
 			t.Errorf("TLS version %x", r.TLS.Version)
 		}
 	}))
-	certPEM, keyPEM := ca.IssueClient(t, testpki.NewECDSAKey(t, elliptic.P384()))
-	cert, err := transport.LoadClientCertificate(certPEM, keyPEM)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	trusted := transport.NewHTTPClient(transport.Config{Certificate: cert, RootCAs: testpki.RootCAs(server)})
+	trusted := transport.NewHTTPClient(transport.Config{RootCAs: testpki.RootCAs(server)})
 	resp, err := trusted.Get(server.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
 	resp.Body.Close()
 
-	// Without the test server in RootCAs the system roots apply, and the
-	// handshake must fail: verification is never skipped.
-	untrusted := transport.NewHTTPClient(transport.Config{Certificate: cert})
+	untrusted := transport.NewHTTPClient(transport.Config{})
 	if resp, err := untrusted.Get(server.URL); err == nil {
 		resp.Body.Close()
 		t.Fatal("server with an untrusted certificate accepted")
@@ -109,17 +105,11 @@ func TestNewHTTPClientPresentsTheCertificateAndVerifiesTheServer(t *testing.T) {
 }
 
 func TestNewHTTPClientRefusesTLS11(t *testing.T) {
-	ca := testpki.NewCA(t)
 	server := httptest.NewUnstartedServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	server.TLS = &tls.Config{MaxVersion: tls.VersionTLS11, MinVersion: tls.VersionTLS10}
 	server.StartTLS()
 	defer server.Close()
-	certPEM, keyPEM := ca.IssueClient(t, testpki.NewECDSAKey(t, elliptic.P384()))
-	cert, err := transport.LoadClientCertificate(certPEM, keyPEM)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client := transport.NewHTTPClient(transport.Config{Certificate: cert, RootCAs: testpki.RootCAs(server)})
+	client := transport.NewHTTPClient(transport.Config{RootCAs: testpki.RootCAs(server)})
 	if resp, err := client.Get(server.URL); err == nil {
 		resp.Body.Close()
 		t.Fatal("TLS 1.1 accepted")
@@ -127,21 +117,15 @@ func TestNewHTTPClientRefusesTLS11(t *testing.T) {
 }
 
 func TestNewHTTPClientDoesNotFollowRedirects(t *testing.T) {
-	ca := testpki.NewCA(t)
 	var followed atomic.Bool
-	server := ca.NewMTLSServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := testpki.NewTLSServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/elsewhere" {
 			followed.Store(true)
 			return
 		}
 		http.Redirect(w, r, "/elsewhere", http.StatusFound)
 	}))
-	certPEM, keyPEM := ca.IssueClient(t, testpki.NewECDSAKey(t, elliptic.P384()))
-	cert, err := transport.LoadClientCertificate(certPEM, keyPEM)
-	if err != nil {
-		t.Fatal(err)
-	}
-	client := transport.NewHTTPClient(transport.Config{Certificate: cert, RootCAs: testpki.RootCAs(server)})
+	client := transport.NewHTTPClient(transport.Config{RootCAs: testpki.RootCAs(server)})
 	resp, err := client.Get(server.URL)
 	if err != nil {
 		t.Fatal(err)
