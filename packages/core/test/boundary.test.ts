@@ -16,6 +16,8 @@ describe("user-facing code cannot import the admin modules", () => {
     ["apps/worker/src/probe.ts", 'import "@idp/core/admin/users";'],
     ["packages/core/src/user/probe.ts", 'import "../admin/index.js";'],
     ["packages/core/src/shared/probe.ts", 'import "../admin/index.js";'],
+    ["apps/worker/src/probe.ts", 'import "@idp/d1-adapter/admin";'],
+    ["apps/worker/src/probe.ts", 'import "../../../packages/d1-adapter/src/admin.js";'],
   ])("%s rejects %s", async (file, code) => {
     expect(await lintAs(file, code)).toContain("no-restricted-imports");
   });
