@@ -2,10 +2,10 @@
 // IdP Worker runs before its static pages, so it alone redirects a page to https and refuses /token over http; the
 // admin Worker redirects nothing and refuses what reaches it without a signature.
 import { expect, test } from "../support/fixtures.js";
-import { ADMIN_HOST, ISSUER } from "../support/idp.js";
+import { ADMIN_HOST, IDP_HOST, ISSUER } from "../support/idp.js";
 
 test("a page requested over plain http is redirected to the same path on the https issuer, and then served", async ({ idp }) => {
-  const plain = await idp.dispatch("http://idp.test/signin?lang=ja");
+  const plain = await idp.dispatch(`http://${IDP_HOST}/signin?lang=ja`);
   expect(plain.status).toBe(308);
   expect(plain.headers.get("location")).toBe(`${ISSUER}/signin?lang=ja`);
   // The redirect is the Worker's, so the static page itself never went out over http.
@@ -17,7 +17,7 @@ test("a page requested over plain http is redirected to the same path on the htt
 });
 
 test("a plain http page visit carrying the service's parent-domain cookies is still redirected", async ({ idp }) => {
-  const plain = await idp.dispatch("http://idp.test/signin", { headers: { cookie: "theme=dark; _ga=GA1.2.3" } });
+  const plain = await idp.dispatch(`http://${IDP_HOST}/signin`, { headers: { cookie: "theme=dark; _ga=GA1.2.3" } });
   expect(plain.status).toBe(308);
   expect(plain.headers.get("location")).toBe(`${ISSUER}/signin`);
 });
@@ -40,7 +40,7 @@ test("the page is no-store while its hashed scripts and stylesheet may be cached
 });
 
 test("/token over plain http is refused without processing and without a redirect", async ({ idp }) => {
-  const response = await idp.dispatch("http://idp.test/token", {
+  const response = await idp.dispatch(`http://${IDP_HOST}/token`, {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded", authorization: `Basic ${btoa("app:secret")}` },
     body: "grant_type=authorization_code&code=x",

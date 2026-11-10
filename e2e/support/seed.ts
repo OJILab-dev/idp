@@ -22,7 +22,7 @@ export type SeededClient = {
 /** A user with one live enroll link. */
 export type SeededUser = {
   readonly userId: string;
-  /** `https://idp.test/enroll#<token>`, exactly as idpctl would print it. */
+  /** `<issuer>/enroll#<token>`, exactly as idpctl would print it. */
   readonly enrollLink: string;
 };
 

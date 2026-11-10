@@ -11,10 +11,14 @@ import { workerConfig } from "../../apps/worker/cloudflare.config.js";
 import { migrationNames, readMigration, splitStatements } from "../../contract/test/d1.js";
 import { generateEd25519Jwk } from "../../packages/core/test/keys.js";
 import { ADMIN_WORKER_DIR, ASSETS_DIR, WORKER_DIR } from "./build.js";
+import { HOSTING } from "./hosting.js";
 import type { TestCertificate } from "./tls.js";
 
-/** The issuer host; Chromium resolves it to the local server, so the RP ID and origin are the production shape. */
-export const IDP_HOST = "idp.test";
+/**
+ * The issuer host of the run's hosting mode (support/hosting.ts); Chromium resolves it to the local server, so the
+ * RP ID and origin are the production shape.
+ */
+export const IDP_HOST = HOSTING.idpHost;
 export const ISSUER = `https://${IDP_HOST}`;
 
 /** A running local IdP. */
@@ -49,8 +53,8 @@ export type LocalIdp = {
 /** A request to the admin Worker. */
 export type AdminRequestInit = { readonly method?: string; readonly body?: string; readonly headers?: Headers };
 
-/** The admin Worker's host; only {@link LocalIdp.dispatchAdmin} reaches it. */
-export const ADMIN_HOST = "admin.idp.test";
+/** The admin Worker's host of the run's hosting mode; only {@link LocalIdp.dispatchAdmin} reaches it. */
+export const ADMIN_HOST = HOSTING.adminHost;
 
 /** The local D1 both Workers bind, as the deployment's two Workers bind one database. */
 const E2E_D1_ID = "idp-e2e";
@@ -78,7 +82,7 @@ export async function startIdp(certificate: TestCertificate): Promise<LocalIdp> 
   // The deployment's configuration, so the asset handling under test is the one that ships; only what a local run
   // must replace is replaced (the module, the asset directory, the signing key Secret, the D1 placeholder ID).
   const deployed = workerConfig({
-    IDP_HOSTING_MODE: "custom_domain",
+    IDP_HOSTING_MODE: HOSTING.mode,
     IDP_ISSUER: ISSUER,
     IDP_D1_DATABASE_ID: "00000000-0000-4000-8000-000000000000",
     IDP_RATE_LIMIT_NAMESPACE_ID: "1",
@@ -86,7 +90,7 @@ export async function startIdp(certificate: TestCertificate): Promise<LocalIdp> 
   const signingKey = JSON.stringify(await generateEd25519Jwk());
   const adminKey = await generateTestAdminKey();
   const admin = adminWorkerConfig({
-    IDP_HOSTING_MODE: "custom_domain",
+    IDP_HOSTING_MODE: HOSTING.mode,
     IDP_ISSUER: ISSUER,
     IDP_ADMIN_HOST: ADMIN_HOST,
     IDP_D1_DATABASE_ID: "00000000-0000-4000-8000-000000000000",
