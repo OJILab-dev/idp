@@ -17,7 +17,7 @@
    - `account_id`：Cloudflare のアカウント ID
    - `terraform_api_token`：Terraform 用の API トークン
    - `r2_access_key_id` と `r2_secret_access_key`：state のバケットの R2 の認証情報
-5. CI 用の 1Password Environment と GitHub Actions の destination を作る（[1Password Environments と GitHub Actions](secret.md)参照）。これは段階 5 の前までに済ませればよい。
+5. CI 用の 1Password Environment と GitHub Actions の destination を作る（下の「CI のデプロイの一度だけの準備」と[1Password Environments と GitHub Actions](secret.md)参照）。これは段階 5 の前までに済ませればよい。
 
 ## 手元の準備
 
@@ -35,8 +35,8 @@
 | 3 | `scripts/generate-signing-key.sh` を実行する | 出力が公開鍵の JWK（`kid` を含む）だけであること。1Password のアイテムに `jwk`、`kid`、`public_jwk` があること |
 | 4a | 管理者ごとに `scripts/generate-admin-key.sh <デプロイの名前> <管理者の名前>` を実行する。スクリプトは秘密鍵を 1Password に入れ、`keyid`、`name`、`public_key` の行を設定ファイルの `admin_signing_keys` に書く。CSR は作らない。前の設計で作った鍵があれば、新しく作らず、`--from-existing` を付けて、既存のアイテムの `public_key` と `public_key_sha256` だけを読んで行を書く（秘密鍵のフィールドは読まない。前の設計のアイテムに残る `csr` のフィールドは使わない）。設定ファイルの変更を PR でレビューしてマージする | 出力が公開鍵と `keyid` の行だけであること。秘密鍵が 1Password のアイテムにだけあること。`keyid` がアイテムの `public_key_sha256` と一致すること |
 | 4b | `scripts/terraform.sh` で `init`、`plan`、`apply` の順に実行する。`apply` は Terraform が承認を求めるので、plan の内容を読んでから承認する。`workers.dev` のモードでは、`plan` と `apply` が Terraform を動かす前に、アカウントの `workers.dev` のサブドメインを Cloudflare API で読み、`workers_dev_subdomain` と違えば止まる | plan が資源を何も作らず、変えないこと（今の `infra/` は、カスタムドメインのモードではゾーンを引く data source と入力の検証だけを、`workers.dev` のモードでは入力の検証だけを持つ）。ゾーンのルールセット、ゾーンの設定、D1、DNS のレコード、mTLS の割り当て、クライアント証明書を含まないこと |
-| 5 | 2 つの Worker の最初のデプロイを CI で行う（デプロイの workflow は別の作業） | ブートストラップの段階 5 の確認 |
-| 5b | `scripts/upload-signing-key.sh` を実行する | 出力が `kid` だけで、段階 3 の `kid` と一致すること。JWKS にその `kid` が載ること |
+| 5 | 下の「CI のデプロイの一度だけの準備」を済ませ、Actions の **Deploy** を main から手動で起動する。デプロイの名前を選び、「署名鍵の前」（`before_signing_key`）を有効にする | Terraform の apply、マイグレーション、IdP の Worker、管理用の Worker の順に成功し、最後の確認が通ること（IdP の Worker は署名鍵がないので discovery に 500 を返し、管理用の Worker は署名のない要求に `forbidden` を返す）。ブートストラップの段階 5 の確認 |
+| 5b | `scripts/upload-signing-key.sh` を実行する。その後、**Deploy** を「署名鍵の前」なしでもう一度手動で起動する | 出力が `kid` だけで、段階 3 の `kid` と一致すること。JWKS にその `kid` が載ること。2 回目のデプロイの最後の確認（discovery と JWKS、平文の HTTP の 308 と 404、管理用の Worker の `forbidden`）がすべて通ること |
 
 - 段階 3、4a、5b のスクリプトは秘密を扱うので xtrace を付けずに動く。実行中の表示や出力に秘密が出たら、その鍵は漏れたものとして作り直す（[ブートストラップ](bootstrap.md)の失敗したとき）。
 - 段階 3 と 4a のスクリプトは、同じ名前の 1Password のアイテムがあれば止まる。作り直すときだけ `--replace` を付け、古いアイテムをアーカイブさせる（削除はしない）。段階 4a の `--replace` は、その管理者のほかの `admin_signing_keys` の行も消すので、デプロイの後は古い鍵が使えなくなる。
@@ -47,12 +47,37 @@
 - mTLS の撤去（実装の順番の 7）は、どのデプロイも mTLS の割り当てとクライアント証明書を apply する前に入ったので、証明書を消す apply はない。Terraform の `removed` のブロックも置いていない。万一、撤去の前のコミットで apply した state があれば、次の apply が管理用のホスト名の mTLS の割り当てとクライアント証明書を削除する。そのときは運用者が apply し、plan で削除されるのがそれらだけであることを確かめる。
 - 段階 2 の `scripts/d1-migrate.sh` は `0004` も適用する。`0004` は、署名に切り替えた管理用の Worker と同じデプロイ（段階 5）の前にだけ適用し、署名の前の管理用の Worker が動いているデプロイに先に適用しない。段階 2 と段階 5 の間に管理用の Worker はまだないか、管理操作を送らないので、間が空いても害はない。
 - 管理者が締め出されたら、管理用の Worker を戻さず、許可リストの行か鍵を PR で直してデプロイし直す。`0004` の後に署名の前の管理用の Worker へ戻すと、管理操作の書き込みがすべて失敗する。`0004` より前からあるデプロイで戻すことがどうしても避けられないときは、先に break-glass で `0004` のトリガーを外す（[ブートストラップ](bootstrap.md)の失敗したとき）。
-- `workers.dev` のモードでは、デプロイの前に（段階 5 と、その後の `workers.dev` のデプロイのたびに）運用者が `scripts/check-workers-dev-subdomain.sh <デプロイの名前>` を実行し、アカウントの `workers.dev` のサブドメインが `workers_dev_subdomain` と一致することを確かめる。この確認は CI では動かない。読むのは Vault のアイテムの Terraform 用のトークンで、`workers.dev` のモードでは、このトークンにゾーンの権限を持たせず、アカウントの `Workers Scripts Read` を持たせる（[デプロイと設定](../design/deployment.md)の API トークン）。アカウントにサブドメインがなければ止まるので、前提のとおりダッシュボードで先に作る。`curl` は 8.3 以降を使う（トークンを引数に出さずに環境変数から読むため）。
+- `workers.dev` のモードでは、アカウントの `workers.dev` のサブドメインが `workers_dev_subdomain` と一致することを、CI のデプロイが毎回、何かを変える前に確かめる（`scripts/terraform.sh --ci` は Terraform 用のトークンで apply の前に、`scripts/deploy.sh --ci` はデプロイ用のトークンで `cf deploy` の前に）。違えば何も変えずに止まる。手元では、運用者が `scripts/check-workers-dev-subdomain.sh <デプロイの名前>` で同じ確認をできる。手元で読むのは Vault のアイテムの Terraform 用のトークンで、`workers.dev` のモードでは、このトークンにゾーンの権限を持たせず、アカウントの `Workers Scripts Read` を持たせる（[デプロイと設定](../design/deployment.md)の API トークン）。アカウントにサブドメインがなければ止まるので、前提のとおりダッシュボードで先に作る。`curl` は 8.3 以降を使う（トークンを引数に出さずに環境変数から読むため）。
 - 2 回目以降の Terraform の apply は CI で行う（[ブートストラップ](bootstrap.md)の実行する場所と認証情報）。
 
 - 段階 6 の管理者の確認は、[ブートストラップ](bootstrap.md)の段階 6 のとおり署名で行う（署名のない要求が `forbidden` になり、許可リストの鍵で署名した `idpctl` の要求が通る）。`idpctl` にクライアント証明書は渡さない（`--cert` は使い方の誤りになる）。
 - 前の設計で作った P-384 の鍵は、署名でもそのまま使える。最初のデプロイの前に、`scripts/generate-admin-key.sh --from-existing <デプロイの名前> <管理者の名前>` で、まだ行のない鍵の行を `admin_signing_keys` に足しておく。行がないと、そのデプロイの後にその管理者は締め出される。リストが空なら、Terraform の変数と管理用の Worker の設定の組み立てが止まる。
 - `scripts/terraform.sh` の `output` は外した。Terraform に秘密でない出力も含めて出力がなくなったため（以前は証明書とフィンガープリントを表示していた）。
+
+## CI のデプロイ（段階 5 以降）
+
+段階 5 以降の Terraform の apply、マイグレーション、2 つの Worker のデプロイは、すべて `.github/workflows/deploy.yml` が行う。流れと確かめることの設計は[デプロイと設定](../design/deployment.md)の「デプロイのパイプライン」に置く。
+
+- main への push で、`IDP_DEPLOYMENT` にあるすべてのデプロイが、その 1 つのコミットから動く。手動の起動（main からだけ）は、そのうちの 1 つだけを動かし、段階 5 では「署名鍵の前」を付ける。
+- 順番は、Terraform の `init` と `apply`（`scripts/terraform.sh --ci`）、入力の検証、2 つの Worker のビルド、D1 のマイグレーション（`0004` を含む）、IdP の Worker、管理用の Worker、外からの確認で、最初の失敗で止まる。
+- 外からの確認が失敗したときは、2 つの Worker はすでにデプロイされている。どちらの Worker も、確かめた振る舞いが崩れても、要求を処理せずに拒否する側に倒れる。原因を直して main にもう一度マージする。
+- `custom_domain` で、平文の HTTP に 301 が返って確認が失敗したときは、ゾーンの「Always Use HTTPS」かリダイレクトのルールが IdP の Worker より先に答えている。IdP はゾーンの設定を持たないので、ゾーンの持ち主と相談する（そのルールは、資格情報を持つ平文の要求も https へ送り直させる）。
+- `IDP_DEPLOYMENT` を空にすると、workflow は認証情報を使う job を含めて何も動かさない。デプロイを止めたいときも、こうする。
+
+### CI のデプロイの一度だけの準備
+
+デプロイごとに次を行う。値（アカウント ID、トークン、ID）はリポジトリにも、この手順の外のファイルにも書かない。
+
+1. デプロイの設定ファイル（`deployments/<デプロイの名前>.tfvars.json`）が段階 0 と 4a のとおり main にあること。`github_deploy_environment` は英数字、`_`、`-` だけにする。
+2. GitHub のリポジトリの設定で、`github_deploy_environment` の名前の GitHub Environment を作り、デプロイできるブランチを `main` だけにする。
+3. 1Password に、`onepassword_deploy_environment` の名前の Environment を作り、次の変数を置く。
+   - `CLOUDFLARE_ACCOUNT_ID`：デプロイ先のアカウント ID（1Password のアイテムの `account_id` と同じ値）
+   - `DEPLOY_CLOUDFLARE_API_TOKEN`：デプロイ用の API トークン（[デプロイと設定](../design/deployment.md)の API トークン。`workers_dev` では、アカウントの `workers.dev` のサブドメインを読める権限も要る）
+   - `TERRAFORM_CLOUDFLARE_API_TOKEN`：Terraform 用の API トークン
+   - `R2_ACCESS_KEY_ID` と `R2_SECRET_ACCESS_KEY`：state のバケットの R2 の認証情報
+4. その Environment に GitHub Actions の destination を作り、このリポジトリ、workflow のパス `.github/workflows/deploy.yml`、ブランチ `main`、手順 2 の GitHub Environment に限る（OIDC の信頼の条件。[1Password Environments と GitHub Actions](secret.md)）。
+5. デプロイが 1 つなら、`setup-1password-integration.sh` で `OP_WORKLOAD_ID`、`OP_ENVIRONMENT_ID`、`OP_INTEGRATION_KEY` をリポジトリに登録する。デプロイが 2 つ以上なら、デプロイごとの値を、手順 2 の GitHub Environment の変数と secret として同じ名前で置く（GitHub Environment のものがリポジトリのものより優先される）。
+6. 段階 5 の直前に、リポジトリの変数 `IDP_DEPLOYMENT` にデプロイの名前を足す（空白で区切って並べる）。手動の起動も `IDP_DEPLOYMENT` にあるデプロイしか選べない。足した後の main への push からは、そのデプロイも動く。段階 5 と 5b の間に main へマージすると、署名鍵がないので外からの確認で失敗する（デプロイそのものは済み、Worker は要求を拒否するだけ）ので、その間はマージしない。
 
 ## 未確認のこと
 
@@ -62,3 +87,12 @@
 - `cf d1 migrations apply` が、非対話の実行で確認を求めずに適用すること（段階 2）
 - `cf accounts get` と `cf d1 get` が、`CLOUDFLARE_ACCOUNT_ID` のアカウントを対象にすること（[デプロイと設定](../design/deployment.md)の直書きの禁止）
 - `op item create` が、標準入力から JSON のテンプレートを受け取ること（段階 3 と 4a。スクリプトは作った後に秘密でないフィールドを読み返して確かめる）
+- `cf build` と `cf deploy --prebuilt --message` が、それぞれの Worker のディレクトリで、宣言した Vite plugin でビルドし、ビルドの成果物と静的なページをそのまま上げること（段階 5。手元では Vite plugin 自身のビルドで、2 つの Worker の成果物と設定が期待どおりになることだけを確かめた）
+- `cf workers get <Worker の名前>` の応答の `subdomain.enabled` と `subdomain.previews_enabled` が、`workers.dev` とプレビューの URL の有効と無効を表すこと（段階 5 の外からの確認）
+- `IDP` の Service Binding の `exportName` が、名前付きのエントリーポイントへのバインディングとして API に届き、IdP の Worker の最初のデプロイの直後から解決すること（段階 5）
+- デプロイ用のトークン（Workers の編集の権限）で、Cloudflare API の「Get a Workers Subdomain」を読めること（`workers.dev` のモードの CI のデプロイ）
+- `workers.dev` が平文の HTTP の要求を Worker に届けるか、自分で https へリダイレクトするか（`workers.dev` のモードの外からの確認は、どちらも受け付けて、どちらが答えたかを記録する）
+- 1Password の `load-secrets-action` が書き出した変数を、後の step の `env` で `${{ env.<名前> }}` として読めること（Terraform とデプロイの step が、役割の名前のトークンを道具の読む名前に写す）
+- GitHub Environment の変数と secret（`OP_WORKLOAD_ID`、`OP_ENVIRONMENT_ID`、`OP_INTEGRATION_KEY`）が、デプロイが 2 つ以上のときに、リポジトリのものより優先されること
+- Takumi Runner に、`curl` 8.3 以降、`git`、`openssl` があること（`jq` と Terraform は mise が入れる）
+- Worker Secret（署名鍵）が、`cf deploy --prebuilt` の後も残ること（段階 5b の後のデプロイ）

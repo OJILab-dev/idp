@@ -1,0 +1,100 @@
+#!/usr/bin/env bash
+# A fake curl for the deploy tests. It never reaches the network.
+#
+# The Cloudflare API call ("Get a Workers Subdomain") appends "curl subdomain" to ${STUB_DIR}/calls, fails unless
+# CLOUDFLARE_API_TOKEN holds the token in ${STUB_DIR}/api_token (so a call that missed the environment shows up), and
+# prints ${STUB_DIR}/subdomain_response.
+#
+# Every other call is a post-deploy probe answered by a model of the two Workers. Its arguments are appended to
+# ${STUB_DIR}/probes, one call per line. The model follows the files in ${STUB_DIR}:
+# - issuer_host and admin_host name the two hosts.
+# - idp_state: "ok" serves discovery and JWKS; "before_key" refuses everything with the configuration 500.
+# - http_state: "worker" is the IdP Worker's own answer (308 to https without credentials, 404 with an Authorization
+#   header or a __Host- cookie); "edge301" is a 301 to https for every plain http request; "answer" serves it.
+# - admin_state: "forbidden" is the gate's one refusal body; "leaky" adds a reason to it.
+set -euxo pipefail
+
+url=""
+output=""
+write_out=""
+user_agent=""
+credentials="false"
+while [[ "$#" -gt 0 ]]; do
+  case "${1}" in
+    --output) output="${2}" && shift ;;
+    --write-out) write_out="${2}" && shift ;;
+    --user-agent) user_agent="${2}" && shift ;;
+    -H | --header)
+      [[ "${2}" == [Aa]uthorization:* ]] && credentials="true"
+      shift
+      ;;
+    --cookie)
+      [[ "${2}" == *__Host-* ]] && credentials="true"
+      shift
+      ;;
+    --proto | --max-time | --variable | --expand-header) shift ;;
+    http://* | https://*) url="${1}" ;;
+  esac
+  shift
+done
+
+if [[ "${url}" == https://api.cloudflare.com/* ]]; then
+  printf 'curl subdomain\n' >>"${STUB_DIR}/calls"
+  [[ "${CLOUDFLARE_API_TOKEN-}" == "$(cat "${STUB_DIR}/api_token")" ]] || exit 2
+  cat "${STUB_DIR}/subdomain_response"
+  exit 0
+fi
+
+printf '%s user_agent=%s credentials=%s\n' "${url}" "${user_agent}" "${credentials}" >>"${STUB_DIR}/probes"
+scheme="${url%%://*}"
+rest="${url#*://}"
+host="${rest%%/*}"
+path="/${rest#*/}"
+status=""
+location=""
+content_type=""
+body=""
+
+if [[ "${host}" == "$(cat "${STUB_DIR}/issuer_host")" ]]; then
+  if [[ "${scheme}" == "http" && "$(cat "${STUB_DIR}/http_state")" == "edge301" ]]; then
+    status="301" && location="https://${rest}"
+  elif [[ "$(cat "${STUB_DIR}/idp_state")" == "before_key" ]]; then
+    status="500" && content_type="text/plain" && body="The identity provider is misconfigured."
+  elif [[ "${scheme}" == "http" ]]; then
+    case "$(cat "${STUB_DIR}/http_state")" in
+      worker)
+        if [[ "${credentials}" == "true" ]]; then
+          status="404" && content_type="text/plain" && body="Not Found"
+        else
+          status="308" && location="https://${rest}"
+        fi
+        ;;
+      answer) status="200" && content_type="application/json" && body="{}" ;;
+    esac
+  else
+    case "${path}" in
+      /.well-known/openid-configuration*)
+        status="200" && content_type="application/json"
+        body="$(jq -nc --arg issuer "https://${host}" '{issuer: $issuer, jwks_uri: ($issuer + "/jwks")}')"
+        ;;
+      /jwks) status="200" && content_type="application/json" && body='{"keys":[{"kid":"stub-kid"}]}' ;;
+      *) status="404" ;;
+    esac
+  fi
+elif [[ "${host}" == "$(cat "${STUB_DIR}/admin_host")" ]]; then
+  status="403" && content_type="application/problem+json"
+  body='{"type":"urn:ojilab:idp:problem:forbidden","title":"Forbidden","status":403,"detail":"Forbidden"}'
+  if [[ "$(cat "${STUB_DIR}/admin_state")" == "leaky" ]]; then
+    body='{"type":"urn:ojilab:idp:problem:forbidden","title":"Forbidden","status":403,"detail":"no Signature-Input"}'
+  fi
+else
+  exit 6
+fi
+
+[[ -z "${output}" ]] || printf '%s' "${body}" >"${output}"
+detail=""
+case "${write_out}" in
+  *redirect_url*) detail="${location}" ;;
+  *content_type*) detail="${content_type}" ;;
+esac
+printf '%s %s' "${status}" "${detail}"

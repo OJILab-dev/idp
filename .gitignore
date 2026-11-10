@@ -8,6 +8,8 @@
 node_modules/
 dist/
 target/
+# cf build output (Build Output Specification) and generated Worker types
+.cloudflare/
 
 # Editor and OS files
 .DS_Store

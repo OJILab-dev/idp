@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# A fake git for the deploy tests: `-C <repo>` followed by `status --porcelain` (prints ${STUB_DIR}/git_status),
+# `fetch` (succeeds), `rev-parse HEAD` (prints ${STUB_DIR}/git_head), or `rev-parse refs/remotes/origin/main`
+# (prints ${STUB_DIR}/git_main). Anything else fails. The real git behaviour of the checkout check is covered by
+# scripts/test/lib.test.sh against a throwaway repository.
+set -euxo pipefail
+
+[[ "${1-}" == "-C" ]] || exit 1
+shift 2
+case "${1-} ${2-}" in
+  "status --porcelain") cat "${STUB_DIR}/git_status" ;;
+  "fetch --quiet") ;;
+  "rev-parse HEAD") cat "${STUB_DIR}/git_head" ;;
+  "rev-parse refs/remotes/origin/main") cat "${STUB_DIR}/git_main" ;;
+  *) exit 1 ;;
+esac

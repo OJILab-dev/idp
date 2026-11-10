@@ -168,10 +168,28 @@ read_workers_dev_subdomain() {
   local vault="${1}"
   local item="${2}"
   local account_id="${3}"
+  request_workers_dev_subdomain "${account_id}" \
+    env "CLOUDFLARE_API_TOKEN=op://${vault}/${item}/${OP_FIELD_TERRAFORM_API_TOKEN}" op run --
+}
+
+# Like read_workers_dev_subdomain, but with the token already in CLOUDFLARE_API_TOKEN: the CI deploy, where the
+# 1Password Environment has loaded the deploy token into the job's environment and there is no op session. curl
+# still reads the token from its environment only, so it never appears in an argument or in xtrace.
+read_workers_dev_subdomain_from_env() {
+  local account_id="${1}"
+  # Checked by name only: printenv's output is discarded, so xtrace never shows the token.
+  printenv CLOUDFLARE_API_TOKEN >/dev/null || fail "CLOUDFLARE_API_TOKEN is not set; load the deployment's 1Password Environment"
+  request_workers_dev_subdomain "${account_id}"
+}
+
+# Prints the subdomain label from "Get a Workers Subdomain". The arguments after the account ID are a command prefix
+# that puts the token into curl's environment (op run), or nothing when the environment already holds it.
+request_workers_dev_subdomain() {
+  local account_id="${1}"
+  shift
   [[ "${account_id}" =~ ^[0-9a-f]{32}$ ]] || fail "not a Cloudflare account ID: ${account_id}"
   local response
-  response="$(env "CLOUDFLARE_API_TOKEN=op://${vault}/${item}/${OP_FIELD_TERRAFORM_API_TOKEN}" op run -- \
-    curl --fail --silent --show-error --proto '=https' --max-time 30 \
+  response="$("$@" curl --fail --silent --show-error --proto '=https' --max-time 30 \
     --variable '%CLOUDFLARE_API_TOKEN' --expand-header 'Authorization: Bearer {{CLOUDFLARE_API_TOKEN}}' \
     "https://api.cloudflare.com/client/v4/accounts/${account_id}/workers/subdomain")" || return 1
   # Checked on the raw JSON string, so a value with a trailing newline cannot pass after $(...) strips it.
@@ -188,14 +206,39 @@ verify_workers_dev_subdomain() {
   local vault="${2}"
   local item="${3}"
   local account_id="${4}"
-  local mode
   local expected
   local actual
-  mode="$(hosting_mode "${config}")" || exit 1
-  [[ "${mode}" == "workers_dev" ]] || fail "the workers.dev subdomain is checked only in the workers_dev mode"
-  expected="$(config_string "${config}" workers_dev_subdomain)" || exit 1
+  expected="$(expected_workers_dev_subdomain "${config}")" || exit 1
   actual="$(read_workers_dev_subdomain "${vault}" "${item}" "${account_id}")" ||
     fail "cannot read the account's workers.dev subdomain; the account needs one, and the Terraform token needs Workers Scripts Read"
+  compare_workers_dev_subdomain "${expected}" "${actual}"
+}
+
+# The same check as verify_workers_dev_subdomain with the token from CLOUDFLARE_API_TOKEN (the CI deploy and the CI
+# Terraform run; see read_workers_dev_subdomain_from_env).
+verify_workers_dev_subdomain_from_env() {
+  local config="${1}"
+  local account_id="${2}"
+  local expected
+  local actual
+  expected="$(expected_workers_dev_subdomain "${config}")" || exit 1
+  actual="$(read_workers_dev_subdomain_from_env "${account_id}")" ||
+    fail "cannot read the account's workers.dev subdomain; the account needs one, and the token needs Workers Scripts Read"
+  compare_workers_dev_subdomain "${expected}" "${actual}"
+}
+
+# Prints workers_dev_subdomain, stopping first unless the deployment is in the workers_dev mode.
+expected_workers_dev_subdomain() {
+  local config="${1}"
+  local mode
+  mode="$(hosting_mode "${config}")" || exit 1
+  [[ "${mode}" == "workers_dev" ]] || fail "the workers.dev subdomain is checked only in the workers_dev mode"
+  config_string "${config}" workers_dev_subdomain || exit 1
+}
+
+compare_workers_dev_subdomain() {
+  local expected="${1}"
+  local actual="${2}"
   [[ "${actual}" == "${expected}" ]] ||
     fail "the account's workers.dev subdomain is ${actual}, not workers_dev_subdomain ${expected}; nothing was changed"
 }
@@ -254,6 +297,114 @@ d1_database_id() {
   cf_cli d1 list --name "${name}" | jq -er --arg name "${name}" '
     [(.result // .)[] | select(.name == $name)]
     | if length == 1 then .[0].uuid else error("expected exactly one D1 database named \($name)") end'
+}
+
+# Like cf_cli, but runs cf in a Worker's project directory (apps/<name>), where cf build and cf deploy look for
+# cloudflare.config.ts, vite.config.ts, and the build output. pnpm still runs the repository's pinned cf.
+cf_cli_in() {
+  local project="${1}"
+  shift
+  CLOUDFLARE_ACCOUNT_ID="${IDP_ACCOUNT_ID:?IDP_ACCOUNT_ID is not set}" pnpm --dir "${IDP_REPO_ROOT}/${project}" exec cf "$@"
+}
+
+# Stops unless the checkout is exactly the reviewed main: no uncommitted or untracked change, and HEAD equal to the
+# remote's main just fetched. A local deploy labels the version with HEAD, so without this the label could name a
+# commit that is not what was built, or one that never went through review (the main ruleset is the only gate for
+# infrastructure and admin changes; docs/design/deployment.md, デプロイのパイプライン).
+require_reviewed_checkout() {
+  local repo="${1}"
+  local remote="${2:-origin}"
+  local status
+  status="$(git -C "${repo}" status --porcelain)" || fail "cannot read the git status of ${repo}"
+  [[ -z "${status}" ]] || fail "the checkout has uncommitted or untracked changes; deploy only a clean checkout of the reviewed main"
+  git -C "${repo}" fetch --quiet "${remote}" main || fail "cannot fetch main from ${remote}"
+  local head
+  local reviewed
+  head="$(git -C "${repo}" rev-parse HEAD)"
+  reviewed="$(git -C "${repo}" rev-parse "refs/remotes/${remote}/main")"
+  [[ "${head}" == "${reviewed}" ]] ||
+    fail "HEAD (${head}) is not ${remote}/main (${reviewed}); check out the reviewed main before a local deploy"
+}
+
+# Judges one plain-http answer on the issuer host after a deploy, and prints who gave it ("worker" or "edge").
+# expectation is "redirect" for a GET without credentials and "refuse" for one with an Authorization header or a
+# __Host- cookie. The IdP Worker redirects the first with 308 to exactly the https URL and refuses the second with 404
+# (docs/design/deployment.md, 直書きの禁止). In the custom_domain mode nothing else may answer: a 301 would be a zone
+# rule (Always Use HTTPS or a redirect rule), which the IdP does not own and which would also redirect requests that
+# carry credentials. In the workers_dev mode Cloudflare's workers.dev may answer plain http itself before the Worker
+# (docs/design/hosting-modes.md 7.2, unverified), so a redirect to exactly the https URL is accepted there for both. Anything
+# answered over plain http fails in both modes.
+plain_http_verdict() {
+  local mode="${1}"
+  local expectation="${2}"
+  local status="${3}"
+  local location="${4}"
+  local expected="${5}"
+  local redirected="false"
+  case "${status}" in
+    301 | 302 | 307 | 308) [[ "${location}" == "${expected}" ]] && redirected="true" ;;
+  esac
+  case "${mode}:${expectation}" in
+    custom_domain:redirect | workers_dev:redirect)
+      if [[ "${redirected}" == "true" && "${status}" == "308" ]]; then
+        printf 'worker\n'
+      elif [[ "${redirected}" == "true" && "${mode}" == "workers_dev" ]]; then
+        printf 'edge\n'
+      else
+        return 1
+      fi
+      ;;
+    custom_domain:refuse | workers_dev:refuse)
+      if [[ "${status}" == "404" ]]; then
+        printf 'worker\n'
+      elif [[ "${redirected}" == "true" && "${mode}" == "workers_dev" ]]; then
+        printf 'edge\n'
+      else
+        return 1
+      fi
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+# Succeeds when a response is the admin Worker's gate refusal: 403 problem details with exactly the members and
+# values of the one forbidden body, so no reason leaks (docs/design/hosting-modes.md 3.8). An unsigned request must
+# get it in both modes.
+is_admin_forbidden() {
+  local status="${1}"
+  local content_type="${2}"
+  local body="${3}"
+  [[ "${status}" == "403" && "${content_type}" == application/problem+json* ]] || return 1
+  jq -e '. == {type: "urn:ojilab:idp:problem:forbidden", title: "Forbidden", status: 403, detail: "Forbidden"}' \
+    "${body}" >/dev/null 2>&1
+}
+
+# Prints the deploy workflow's matrix for a list of deployment names separated by whitespace (the repository
+# variable IDP_DEPLOYMENT): a JSON array of {deployment, environment}, environment being github_deploy_environment.
+# Every file goes through deployment_config_path, so a missing, mixed, or stale file stops the workflow before any
+# job gets credentials. The Environment name becomes a job output and a GitHub Environment, so it is limited to
+# characters that cannot inject another output.
+ci_deploy_matrix() {
+  local names="${1}"
+  local matrix="[]"
+  local name
+  # Word splitting is the point: the variable is a list. Globbing is off so that a "*" stays a (refused) name.
+  set -f
+  # shellcheck disable=SC2086
+  set -- ${names}
+  set +f
+  for name in "$@"; do
+    local config
+    local environment
+    config="$(deployment_config_path "${name}")" || exit 1
+    environment="$(config_string "${config}" github_deploy_environment)" || exit 1
+    [[ "${environment}" =~ ^[A-Za-z0-9_-]+$ ]] || fail "github_deploy_environment of ${name} must match ^[A-Za-z0-9_-]+$"
+    printf '%s' "${matrix}" | jq -e --arg name "${name}" 'all(.deployment != $name)' >/dev/null ||
+      fail "deployment ${name} is listed twice"
+    matrix="$(printf '%s' "${matrix}" | jq -c --arg name "${name}" --arg environment "${environment}" \
+      '. + [{deployment: $name, environment: $environment}]')"
+  done
+  printf '%s\n' "${matrix}"
 }
 
 # base64url without padding (RFC 4648 §5), reading bytes on stdin.

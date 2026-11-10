@@ -1,5 +1,7 @@
+import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { ADMIN_RATE_LIMIT, adminWorkerConfig } from "../cloudflare.config.js";
+import { workerConfig as idpWorkerConfig } from "../../worker/cloudflare.config.js";
 
 const D1_ID = "0f6b6c3e-5d0a-4a7e-9a35-6f1f4f6c2b11";
 // A public, published P-384 key (RFC 6979 Appendix A.2.6) and a keyid of the right form; the build only checks the
@@ -49,6 +51,28 @@ describe("the admin Worker's cloudflare.config.ts", () => {
       IDP: { type: "worker", worker: "idp", exportName: "IdpInternal" },
     });
     expect(worker.observability?.logs).toMatchObject({ enabled: true, invocationLogs: false });
+  });
+
+  // The deploy script deploys the IdP Worker first, so the binding's target must be an entrypoint that the IdP
+  // Worker's own configuration exports; a renamed export would otherwise only fail at `cf deploy`.
+  it("binds an entrypoint that the IdP Worker's configuration exports", () => {
+    const idp = idpWorkerConfig({
+      IDP_HOSTING_MODE: DEPLOY.IDP_HOSTING_MODE,
+      IDP_ISSUER: DEPLOY.IDP_ISSUER,
+      IDP_D1_DATABASE_ID: D1_ID,
+      IDP_RATE_LIMIT_NAMESPACE_ID: "1001",
+    });
+    const binding = adminWorkerConfig(DEPLOY).env?.["IDP"];
+    expect(binding).toMatchObject({ type: "worker", worker: idp.name, exportName: "IdpInternal" });
+    expect(Object.keys(idp.exports ?? {})).toContain("IdpInternal");
+  });
+
+  // cf evaluates this file with Node's own loader, which does not map a `.js` specifier to the `.ts` file.
+  it("loads under Node's own module loader, which cf uses", () => {
+    const configUrl = new URL("../cloudflare.config.ts", import.meta.url).href;
+    const script = `const m = await import(${JSON.stringify(configUrl)}); if (m.adminWorkerConfig(process.env).name !== "idp-admin") process.exit(1);`;
+    const env = { ...process.env, ...DEPLOY };
+    expect(() => execFileSync(process.execPath, ["--input-type=module", "-e", script], { env, stdio: "pipe" })).not.toThrow();
   });
 
   it("binds its own Rate Limiting namespace from the deployment, with the provisional period and limit", () => {

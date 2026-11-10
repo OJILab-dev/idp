@@ -23,7 +23,7 @@ export const adminImportBan = {
 };
 
 export default tseslint.config(
-  { ignores: ["**/node_modules/**", "**/dist/**"] },
+  { ignores: ["**/node_modules/**", "**/dist/**", "**/.cloudflare/**"] },
   js.configs.recommended,
   ...tseslint.configs.strict,
   {

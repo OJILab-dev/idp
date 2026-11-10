@@ -409,6 +409,171 @@ test_write_admin_signing_key_row() {
   rm -f "${config}"
 }
 
+assert_succeeds() {
+  local name="${1}"
+  shift
+  if ("$@") >/dev/null 2>&1; then
+    printf 'ok   %s\n' "${name}"
+  else
+    printf 'FAIL %s: expected a success\n' "${name}" >&2
+    failures=$((failures + 1))
+  fi
+}
+
+# The CI deploy runs with the deploy token already in its environment (1Password Environments), so the check reads
+# it from there instead of through op run. The stub curl accepts only the stub token, and op is never called.
+run_subdomain_check_from_env() {
+  local stub_dir="${1}"
+  local config="${2}"
+  PATH="$(dirname "${BASH_SOURCE[0]}")/stubs:${PATH}" OP_STUB_DIR="${stub_dir}" CLOUDFLARE_API_TOKEN="stub-api-token" \
+    verify_workers_dev_subdomain_from_env "${config}" 0123456789abcdef0123456789abcdef
+}
+
+# assert_fails runs these in a subshell, so the unset does not reach the other tests.
+subdomain_check_without_token() {
+  unset CLOUDFLARE_API_TOKEN
+  PATH="$(dirname "${BASH_SOURCE[0]}")/stubs:${PATH}" OP_STUB_DIR="${1}" \
+    verify_workers_dev_subdomain_from_env "${2}" 0123456789abcdef0123456789abcdef
+}
+
+subdomain_check_with_bad_account() {
+  PATH="$(dirname "${BASH_SOURCE[0]}")/stubs:${PATH}" OP_STUB_DIR="${1}" CLOUDFLARE_API_TOKEN="stub-api-token" \
+    verify_workers_dev_subdomain_from_env "${2}" not-an-account
+}
+
+test_verify_workers_dev_subdomain_from_env() {
+  local stub_dir
+  local config
+  stub_dir="$(mktemp -d)"
+  config="$(mktemp)"
+  : >"${stub_dir}/calls"
+  write_config "${config}" "${WORKERS_DEV_CONFIG}"
+
+  printf '%s' '{"success":true,"errors":[],"result":{"subdomain":"team-1"}}' >"${stub_dir}/curl_response"
+  assert_equal "env token: accepts the account's subdomain" "ok" "$(run_subdomain_check_from_env "${stub_dir}" "${config}" && printf ok)"
+  assert_equal "env token: curl gets no token argument" "0" "$(grep -c 'stub-api-token' "${stub_dir}/curl_args" || true)"
+  assert_equal "env token: op is never called" "" "$(cat "${stub_dir}/calls")"
+  assert_equal "env token: curl reads the account's subdomain" "1" \
+    "$(grep -c '^https://api.cloudflare.com/client/v4/accounts/0123456789abcdef0123456789abcdef/workers/subdomain$' "${stub_dir}/curl_args" || true)"
+
+  printf '%s' '{"success":true,"errors":[],"result":{"subdomain":"other"}}' >"${stub_dir}/curl_response"
+  assert_fails "env token: rejects another subdomain" run_subdomain_check_from_env "${stub_dir}" "${config}"
+  printf '%s' '{"success":false,"errors":[{"code":10007}],"result":null}' >"${stub_dir}/curl_response"
+  assert_fails "env token: rejects an account without a subdomain" run_subdomain_check_from_env "${stub_dir}" "${config}"
+  printf '%s' '{"success":true,"errors":[],"result":{"subdomain":"team-1"}}' >"${stub_dir}/curl_response"
+  assert_fails "env token: stops without a token" subdomain_check_without_token "${stub_dir}" "${config}"
+  assert_fails "env token: rejects a malformed account ID" subdomain_check_with_bad_account "${stub_dir}" "${config}"
+  write_config "${config}" "${CUSTOM_DOMAIN_CONFIG}"
+  assert_fails "env token: is not for the custom_domain mode" run_subdomain_check_from_env "${stub_dir}" "${config}"
+  rm -rf "${stub_dir}" "${config}"
+}
+
+# The IdP Worker's own answer to plain http (docs/design/deployment.md, 直書きの禁止): a 308 to the issuer's same
+# path and query for a request without credentials, a 404 for one with them. In the custom_domain mode the Worker is
+# the only thing that may answer; in the workers_dev mode workers.dev may answer first (hosting-modes.md 7.2, unverified).
+test_plain_http_verdict() {
+  local expected="https://id.example.com/.well-known/openid-configuration?smoke=1"
+  assert_equal "custom_domain: the Worker's 308" "worker" "$(plain_http_verdict custom_domain redirect 308 "${expected}" "${expected}")"
+  assert_fails "custom_domain: a 301 is a zone rule, not the Worker" plain_http_verdict custom_domain redirect 301 "${expected}" "${expected}"
+  assert_fails "custom_domain: a 308 elsewhere" plain_http_verdict custom_domain redirect 308 "https://id.example.com/" "${expected}"
+  assert_fails "custom_domain: a 308 that drops the query" plain_http_verdict custom_domain redirect 308 \
+    "https://id.example.com/.well-known/openid-configuration" "${expected}"
+  assert_fails "custom_domain: an answer over http" plain_http_verdict custom_domain redirect 200 "" "${expected}"
+  assert_equal "custom_domain: credentials get the Worker's 404" "worker" "$(plain_http_verdict custom_domain refuse 404 "" "${expected}")"
+  assert_fails "custom_domain: credentials must not be redirected" plain_http_verdict custom_domain refuse 308 "${expected}" "${expected}"
+  assert_fails "custom_domain: credentials must not be answered" plain_http_verdict custom_domain refuse 200 "" "${expected}"
+
+  assert_equal "workers_dev: the Worker's 308" "worker" "$(plain_http_verdict workers_dev redirect 308 "${expected}" "${expected}")"
+  assert_equal "workers_dev: workers.dev's own redirect" "edge" "$(plain_http_verdict workers_dev redirect 301 "${expected}" "${expected}")"
+  assert_fails "workers_dev: a redirect elsewhere" plain_http_verdict workers_dev redirect 301 "https://example.com/" "${expected}"
+  assert_fails "workers_dev: an answer over http" plain_http_verdict workers_dev redirect 200 "" "${expected}"
+  assert_equal "workers_dev: credentials get the Worker's 404" "worker" "$(plain_http_verdict workers_dev refuse 404 "" "${expected}")"
+  assert_equal "workers_dev: workers.dev redirects before the Worker" "edge" "$(plain_http_verdict workers_dev refuse 301 "${expected}" "${expected}")"
+  assert_fails "workers_dev: credentials must not be answered" plain_http_verdict workers_dev refuse 200 "" "${expected}"
+  assert_fails "an unknown mode" plain_http_verdict zone redirect 308 "${expected}" "${expected}"
+  assert_fails "an unknown expectation" plain_http_verdict custom_domain answer 308 "${expected}" "${expected}"
+}
+
+# The admin Worker's gate answers every refusal with the same forbidden body and no reason (hosting-modes.md 3.8).
+test_is_admin_forbidden() {
+  local body
+  body="$(mktemp)"
+  printf '%s' '{"type":"urn:ojilab:idp:problem:forbidden","title":"Forbidden","status":403,"detail":"Forbidden"}' >"${body}"
+  assert_succeeds "the gate's forbidden" is_admin_forbidden 403 "application/problem+json" "${body}"
+  assert_fails "another status" is_admin_forbidden 401 "application/problem+json" "${body}"
+  assert_fails "not problem details" is_admin_forbidden 403 "text/html" "${body}"
+  printf '%s' '{"type":"urn:ojilab:idp:problem:forbidden","title":"Forbidden","status":403,"detail":"signature expired"}' >"${body}"
+  assert_fails "a forbidden that tells the reason" is_admin_forbidden 403 "application/problem+json" "${body}"
+  printf '%s' '{"type":"urn:ojilab:idp:problem:forbidden","title":"Forbidden","status":403,"detail":"Forbidden","reason":"x"}' >"${body}"
+  assert_fails "a forbidden with another member" is_admin_forbidden 403 "application/problem+json" "${body}"
+  printf '%s' '<html>403</html>' >"${body}"
+  assert_fails "an edge page" is_admin_forbidden 403 "application/problem+json" "${body}"
+  rm -f "${body}"
+}
+
+# A throwaway origin (bare) and a clone of its main, so require_reviewed_checkout runs against real git offline.
+make_reviewed_clone() {
+  local root="${1}"
+  git init --quiet --bare --initial-branch=main "${root}/origin.git"
+  git clone --quiet "${root}/origin.git" "${root}/work" 2>/dev/null
+  git -C "${root}/work" checkout --quiet -b main
+  printf 'reviewed\n' >"${root}/work/file"
+  git -C "${root}/work" add file
+  git -C "${root}/work" -c user.name=test -c user.email=test@example.invalid commit --quiet -m reviewed
+  git -C "${root}/work" push --quiet origin main
+}
+
+test_require_reviewed_checkout() {
+  local root
+  root="$(mktemp -d)"
+  make_reviewed_clone "${root}"
+  assert_succeeds "a clean checkout of origin/main is reviewed" require_reviewed_checkout "${root}/work"
+  printf 'x\n' >"${root}/work/untracked"
+  assert_fails "an untracked file is refused" require_reviewed_checkout "${root}/work"
+  rm -f "${root}/work/untracked"
+  printf 'edit\n' >>"${root}/work/file"
+  assert_fails "an uncommitted change is refused" require_reviewed_checkout "${root}/work"
+  git -C "${root}/work" checkout --quiet -- file
+  printf 'local\n' >>"${root}/work/file"
+  git -C "${root}/work" -c user.name=test -c user.email=test@example.invalid commit --quiet -am local
+  assert_fails "a local commit not on origin/main is refused" require_reviewed_checkout "${root}/work"
+  git -C "${root}/work" reset --quiet --hard origin/main
+  git clone --quiet "${root}/origin.git" "${root}/other" 2>/dev/null
+  printf 'merged\n' >>"${root}/other/file"
+  git -C "${root}/other" -c user.name=test -c user.email=test@example.invalid commit --quiet -am merged
+  git -C "${root}/other" push --quiet origin main
+  # The stale remote-tracking ref still equals HEAD; only the fetch inside the check reveals the newer main.
+  assert_fails "a checkout behind the freshly fetched main is refused" require_reviewed_checkout "${root}/work"
+  rm -rf "${root}"
+}
+
+# The deploy workflow's config job turns IDP_DEPLOYMENT into one matrix entry per deployment.
+test_ci_deploy_matrix() {
+  local first="lib-test-$$-a"
+  local second="lib-test-$$-b"
+  local first_config="${IDP_REPO_ROOT}/deployments/${first}.tfvars.json"
+  local second_config="${IDP_REPO_ROOT}/deployments/${second}.tfvars.json"
+  write_config "${first_config}" "${CUSTOM_DOMAIN_CONFIG}" '.github_deploy_environment = "verification"'
+  write_config "${second_config}" "${WORKERS_DEV_CONFIG}" '.github_deploy_environment = "workers-dev"'
+  assert_equal "one entry per deployment, in order" \
+    "[{\"deployment\":\"${first}\",\"environment\":\"verification\"},{\"deployment\":\"${second}\",\"environment\":\"workers-dev\"}]" \
+    "$(ci_deploy_matrix "${first} ${second}")"
+  assert_equal "newlines separate names too" "2" "$(ci_deploy_matrix "${first}
+${second}" | jq length)"
+  assert_equal "no deployment is an empty matrix" "[]" "$(ci_deploy_matrix "")"
+  assert_fails "a name listed twice" ci_deploy_matrix "${first} ${first}"
+  assert_fails "a deployment without a file" ci_deploy_matrix "${first} lib-test-missing-$$"
+  assert_fails "an unsafe name" ci_deploy_matrix "../etc"
+  # The value becomes a job output and an Environment name; a newline or "=" could inject another output.
+  write_config "${second_config}" "${WORKERS_DEV_CONFIG}" '.github_deploy_environment = "a=b"'
+  assert_fails "an Environment name outside ^[A-Za-z0-9_-]+$" ci_deploy_matrix "${second}"
+  write_config "${second_config}" "${WORKERS_DEV_CONFIG}"
+  assert_fails "a deployment without github_deploy_environment" ci_deploy_matrix "${second}"
+  write_config "${second_config}" "${WORKERS_DEV_CONFIG}" '.github_deploy_environment = "workers-dev" | .zone = "example.com"'
+  assert_fails "a deployment that mixes the modes" ci_deploy_matrix "${second}"
+  rm -f "${first_config}" "${second_config}"
+}
+
 test_kid_matches_rfc8037
 test_private_jwk_from_pkcs8
 test_public_jwk_has_no_private_member
@@ -429,6 +594,11 @@ test_spki_base64_from_public_pem
 test_admin_signing_key_row
 test_check_admin_signing_keys
 test_write_admin_signing_key_row
+test_verify_workers_dev_subdomain_from_env
+test_plain_http_verdict
+test_is_admin_forbidden
+test_require_reviewed_checkout
+test_ci_deploy_matrix
 
 if [[ "${failures}" -ne 0 ]]; then
   printf '%s test(s) failed\n' "${failures}" >&2
