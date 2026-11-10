@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# A wrapper around the real openssl (${REAL_OPENSSL}) for scripts/test/generate-admin-key.test.sh. It refuses
+# genpkey and logs the attempt to ${OP_STUB_DIR}/calls, so that no test can generate a key.
+set -euxo pipefail
+
+if [[ "${1}" == "genpkey" ]]; then
+  printf 'genpkey\n' >>"${OP_STUB_DIR}/calls"
+  exit 1
+fi
+exec "${REAL_OPENSSL}" "$@"

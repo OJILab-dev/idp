@@ -23,8 +23,15 @@ readonly OP_FIELD_R2_SECRET_ACCESS_KEY="r2_secret_access_key"
 IDP_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly IDP_REPO_ROOT
 
-# Same rule as the admin names of ADMIN_ALLOWLIST (docs/design/idpctl.md).
+# Same rule as the admin names of ADMIN_ALLOWLIST and ADMIN_SIGNING_KEYS (docs/design/idpctl.md).
 readonly ADMIN_NAME_PATTERN='^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$'
+
+# The DER of every P-384 SubjectPublicKeyInfo with an uncompressed point starts with these 24 bytes (the
+# id-ecPublicKey and secp384r1 OIDs of RFC 5480 §2.1.1, the BIT STRING header, and the 0x04 point prefix of
+# SEC 1 §2.3.3) and is 120 bytes long. The admin Worker reads public_key as exactly this form
+# (docs/design/hosting-modes.md 3.7).
+readonly P384_SPKI_DER_PREFIX_HEX="3076301006072a8648ce3d020106052b8104002203620004"
+readonly P384_SPKI_DER_LENGTH=120
 
 fail() {
   printf 'error: %s\n' "$*" >&2
@@ -156,6 +163,111 @@ ed25519_private_jwk_from_pkcs8() {
 # Prints the public members of a private JWK read on stdin, exactly the members the JWKS carries.
 public_jwk() {
   jq -c '{kty, crv, x, kid, alg, use}'
+}
+
+# Reads a PEM public key on stdin and prints its SPKI DER as padded base64 on one line, the public_key form of
+# admin_signing_keys. Only a public key is accepted: -pubin makes openssl refuse a private key.
+spki_base64_from_public_pem() {
+  openssl pkey -pubin -outform DER | openssl base64 -A
+}
+
+# Prints the keyid of a P-384 public key given as padded one-line base64 SPKI DER: the SHA-256 of the DER in
+# lowercase hex (docs/design/hosting-modes.md 3.7). Returns non-zero unless the value is exactly the form the
+# admin Worker accepts: canonical base64, the P-384 SPKI prefix and length, and a point openssl can load (on the
+# curve). The base64 and the DER must round-trip unchanged, so the keyid covers exactly what is written.
+p384_spki_keyid() {
+  local spki="${1}"
+  [[ "${spki}" =~ ^[A-Za-z0-9+/]+={0,2}$ && $((${#spki} % 4)) -eq 0 ]] || return 1
+  local der_hex
+  der_hex="$(printf '%s' "${spki}" | openssl base64 -d -A | od -An -tx1 | tr -d ' \n')" || return 1
+  [[ "${#der_hex}" -eq $((P384_SPKI_DER_LENGTH * 2)) && "${der_hex}" == "${P384_SPKI_DER_PREFIX_HEX}"* ]] || return 1
+  local reencoded
+  reencoded="$(printf '%s' "${spki}" | openssl base64 -d -A | openssl pkey -pubin -inform DER -outform DER 2>/dev/null |
+    openssl base64 -A)" || return 1
+  [[ "${reencoded}" == "${spki}" ]] || return 1
+  printf '%s' "${spki}" | openssl base64 -d -A | openssl dgst -sha256 -r | cut -d ' ' -f 1
+}
+
+# Prints one admin_signing_keys row, {keyid, name, public_key}, for a P-384 public key given as base64 SPKI DER.
+admin_signing_key_row() {
+  local name="${1}"
+  local spki="${2}"
+  [[ "${name}" =~ ${ADMIN_NAME_PATTERN} ]] || fail "invalid admin name: ${name}"
+  local keyid
+  keyid="$(p384_spki_keyid "${spki}")" || fail "the public key of ${name} is not an ECDSA P-384 key"
+  jq -nc --arg keyid "${keyid}" --arg name "${name}" --arg public_key "${spki}" \
+    '{keyid: $keyid, name: $name, public_key: $public_key}'
+}
+
+# Stops unless admin_signing_keys of the deployment file is a list the admin Worker accepts row by row: exactly the
+# members keyid, name, and public_key, all strings; a lowercase 64-hex keyid equal to the SHA-256 of a P-384
+# public_key; a valid admin name; and no repeated keyid (docs/design/hosting-modes.md 3.7). An empty list passes
+# here, because a new deployment starts with no admin (docs/deployment/runbook.md, stage 0); the admin Worker
+# refuses every request while the list is empty.
+check_admin_signing_keys() {
+  local config="${1}"
+  jq -e '.admin_signing_keys | type == "array"' "${config}" >/dev/null 2>&1 ||
+    fail "deployment file lacks the list \"admin_signing_keys\": ${config}"
+  jq -e '.admin_signing_keys | all(type == "object" and keys == ["keyid", "name", "public_key"] and all(.[]; type == "string"))' \
+    "${config}" >/dev/null || fail "every admin_signing_keys row must have exactly the strings keyid, name, and public_key: ${config}"
+  # The forms are checked on the raw JSON strings inside jq, not after $(...): command substitution strips trailing
+  # newlines, so "<keyid>\n" would otherwise pass the shell checks while the admin Worker reads a different value.
+  # After these checks no value can hold a newline, so reading them through $(...) below is exact. The patterns
+  # are anchored with \A and \z: in jq's regex library (Oniguruma), $ also matches before a final newline.
+  jq -e --arg name_pattern "${ADMIN_NAME_PATTERN}" '
+    def whole($p): "\\A" + ($p | ltrimstr("^") | rtrimstr("$")) + "\\z";
+    .admin_signing_keys | all(
+      (.keyid | test(whole("^[0-9a-f]{64}$")))
+      and (.name | test(whole($name_pattern)))
+      and (.public_key | test(whole("^[A-Za-z0-9+/]+={0,2}$"))))' "${config}" >/dev/null ||
+    fail "every admin_signing_keys row must have a 64 lowercase hex keyid, an admin name, and a one-line base64 public_key: ${config}"
+  jq -e '.admin_signing_keys | (map(.keyid) | unique | length) == length' "${config}" >/dev/null ||
+    fail "admin_signing_keys repeats a keyid: ${config}"
+  local rows
+  local count
+  local index=0
+  rows="$(jq -c '.admin_signing_keys' "${config}")"
+  count="$(printf '%s' "${rows}" | jq 'length')"
+  while [[ "${index}" -lt "${count}" ]]; do
+    local keyid
+    local name
+    local public_key
+    keyid="$(printf '%s' "${rows}" | jq -r --argjson i "${index}" '.[$i].keyid')"
+    name="$(printf '%s' "${rows}" | jq -r --argjson i "${index}" '.[$i].name')"
+    public_key="$(printf '%s' "${rows}" | jq -r --argjson i "${index}" '.[$i].public_key')"
+    [[ "${name}" =~ ${ADMIN_NAME_PATTERN} ]] || fail "admin_signing_keys row ${index} has an invalid name: ${config}"
+    [[ "${keyid}" =~ ^[0-9a-f]{64}$ ]] || fail "admin_signing_keys row ${index} has a keyid that is not 64 lowercase hex: ${config}"
+    local actual
+    actual="$(p384_spki_keyid "${public_key}")" ||
+      fail "admin_signing_keys row ${index} has a public_key that is not a base64 P-384 SPKI: ${config}"
+    [[ "${actual}" == "${keyid}" ]] || fail "admin_signing_keys row ${index} has a keyid that is not the SHA-256 of its public_key: ${config}"
+    index=$((index + 1))
+  done
+}
+
+# Adds a row to admin_signing_keys of the deployment file. A row with the same keyid and name is kept as it is, so
+# a second run changes nothing; the same keyid under another name stops the script. With replace=true, the admin's
+# other rows are removed, so a replaced key stops working after the next deploy. Other admins' rows and the other
+# inputs are kept. The result is checked before it replaces the file, through a temporary file in the same
+# directory, so that a failure never leaves the file half written or invalid.
+write_admin_signing_key_row() {
+  local config="${1}"
+  local row="${2}"
+  local replace="${3}"
+  local temporary
+  temporary="$(mktemp "${config}.XXXXXX")"
+  if jq --indent 2 --argjson row "${row}" --arg replace "${replace}" '
+    if any(.admin_signing_keys[]; .keyid == $row.keyid and .name != $row.name)
+    then error("the keyid already belongs to another admin") else . end
+    | .admin_signing_keys |= (
+        map(select($replace != "true" or .name != $row.name or .keyid == $row.keyid))
+        | if any(.[]; .keyid == $row.keyid) then . else . + [$row] end)' \
+    "${config}" >"${temporary}" && (check_admin_signing_keys "${temporary}"); then
+    mv "${temporary}" "${config}"
+  else
+    rm -f "${temporary}"
+    fail "cannot update admin_signing_keys in ${config}"
+  fi
 }
 
 op_item_exists() {
