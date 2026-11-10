@@ -83,7 +83,7 @@
 - [ ] IdP の Worker と管理用の Worker は、`request.cf.tlsVersion` が `TLSv1.2` か `TLSv1.3` でないリクエスト（値がない、知らない値を含む）を、何も処理せずに拒否する。IdP の Worker では静的なページにも効く。ゾーンの TLS の最小バージョンは IdP が持たないので、エッジで TLS 1.0 と 1.1 の接続そのものは成立しうることを、RFC 8996 の例外として記録している（[ドメインの置き場所](domain-placement.md)の共存の設計の 3）
 - [ ] 管理用の Worker の `IDP` の Service Binding は IdP の Worker の内部のエントリポイント `IdpInternal` に向け、公開の経路の TLS とレート制限の確認を、ヘッダーやパスで外す仕組みを持たない。RSA の鍵があるときは、管理用の Worker が RS256 を有効と判断できる
 - [ ] IdP の Worker は、自分で答えるパス（静的なページ以外）で、接続元の IP ごとの Rate Limiting バインディング（管理用の Worker とは別の名前空間）の上限を超えたリクエストを 429 で拒否する。バインディングがない、呼び出しが失敗した、接続元の IP が取れない場合も、処理せずに拒否する（fail-closed）。IP をログにも D1 にも書かない
-- [ ] IdP の Terraform は、ゾーンのルールセット（WAF のカスタムルール、レート制限ルール、シングルリダイレクト）、ゾーン全体の設定、ゾーンの単一資源を持たない（[ドメインの置き場所](domain-placement.md)の決定 ③ と共存の設計の 2）。mTLS の撤去（[ホスティングのモード](hosting-modes.md)の実装の順番の 7）の後は、管理用のホスト名の mTLS の割り当ても管理者のクライアント証明書も持たない
+- [ ] IdP の Terraform は、ゾーンのルールセット（WAF のカスタムルール、レート制限ルール、シングルリダイレクト）、ゾーン全体の設定、ゾーンの単一資源を持たない（[ドメインの置き場所](domain-placement.md)の決定 ③ と共存の設計の 2）。管理用のホスト名の mTLS の割り当ても管理者のクライアント証明書も持たない（[ホスティングのモード](hosting-modes.md)の実装の順番の 7 で外した）。デプロイの設定ファイルに廃止した入力（`admin_allowlist`、`admin_client_certificates`）が残っていれば、Terraform とスクリプトが処理を始める前に止まる（`infra/tests/main.tftest.hcl`、`scripts/test/lib.test.sh`、`scripts/test/generate-admin-key.test.sh`）
 - [ ] 2 つの Worker は、設定のホスティングのモード（`HOSTING_MODE`）と issuer と管理用のホスト名の形が合わなければ、すべての要求を拒否する（[ホスティングのモード](hosting-modes.md)の 1.4）
 - [ ] IdP の Worker は `/.well-known/webauthn` に応答しない（関連する origin の要求で、ほかの origin にこの RP ID のパスキーを使わせないため。[ホスティングのモード](hosting-modes.md)の 2.2）
 - [ ] `workers_dev` のモードで、バージョン、プレビュー、デプロイメントの URL のホスト名への要求を、2 つの Worker が処理しない。`workers_dev` のモードの RP ID は issuer のホスト名そのもので、アカウントのサブドメインに広げない
@@ -104,7 +104,7 @@
 
 **管理用の Worker（署名）**
 
-両方のホスティングのモードで同じ項目を確かめる。署名の形と検証の手順は[ホスティングのモード](hosting-modes.md)の 3 にある。管理用の Worker は、[ホスティングのモード](hosting-modes.md)の実装の順番の 6 で mTLS の再確認を外し、署名だけで管理者を確かめる。否定のケースは `apps/admin-worker/test/gate.test.ts` と、ビルドしたバンドルを workerd で動かす e2e の `e2e/tests/11-admin-signature.spec.ts` で確かめる。
+両方のホスティングのモードで同じ項目を確かめる。署名の形と検証の手順は[ホスティングのモード](hosting-modes.md)の 3 にある。管理用の Worker は、[ホスティングのモード](hosting-modes.md)の実装の順番の 6 で mTLS の再確認を外し、署名だけで管理者を確かめる。実装の順番の 7 で、`idpctl` のクライアント証明書と Terraform の mTLS も外した。否定のケースは `apps/admin-worker/test/gate.test.ts` と、ビルドしたバンドルを workerd で動かす e2e の `e2e/tests/11-admin-signature.spec.ts` で確かめる。
 
 - [ ] 管理用の Worker のゲートが、管理者の認証の唯一の強制の箇所になる。エッジでは何も止めず、ゲートは D1 にも IdP の Worker にも触れる前に動く（fail-closed）
 - [ ] 署名のない要求、署名が 2 つ以上の要求、`Signature-Input` か `Signature` が繰り返されたかトレイラーで送られた要求、対象のコンポーネントが決めた並びと 1 つでも違う要求、`alg` か `expires` か知らないパラメーターを持つ要求、`tag` が `idp-admin` でない要求を、すべて `forbidden` で拒否する
@@ -119,6 +119,7 @@
 - [ ] 許可リスト（`ADMIN_SIGNING_KEYS`）が空、形が違う、`keyid` と公開鍵の SHA-256 が食い違う、`keyid` が重複する、P-384 の公開鍵として読めない、のどれかなら、すべての要求を `internal` で拒否する。許可リストから消した鍵の署名は、そのデプロイの後は拒否する
 - [ ] 管理用の Worker は、署名を解析する前に、接続元の IP ごとの Rate Limiting バインディングで数え、上限を超えた要求を本文のない 429 で拒否する。バインディングがない、呼び出しが失敗した、接続元の IP が取れない要求も拒否する。IP をログにも D1 にも書かない
 - [ ] 管理用の Worker は、平文の HTTP のリクエストをリダイレクトせず、`forbidden` で拒否する
+- [ ] `idpctl` は TLS のクライアント証明書を出さず、ECDSA の P-384 以外の秘密鍵を何も送らずに拒否する。廃止した `--cert` は、何も送らずに使い方の誤りにする（`cmd/idpctl/internal/cli/behavior_test.go`）
 - [ ] 管理 API に、許可リストと監査ログを変える操作がない。許可リストは管理用の Worker の設定で、CI のデプロイでだけ変わる
 - [ ] 管理用の Worker は、設定された管理用のホスト名以外へのリクエストを拒否する。プレビューの URL は無効にし、カスタムドメインのモードでは `workers.dev` も無効にする
 - [ ] 管理操作の監査ログの行は、許可リストで確定した管理者の名前、署名を検証した鍵の `keyid`、`admin_credential`（`signing-key`）を持つ。D1 のトリガーが、`admin` の行の `signing-key` 以外と、ほかの行の値を拒否する。署名の検証や許可リストで拒否したリクエストは、監査ログに行を書かない

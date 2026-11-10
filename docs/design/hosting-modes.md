@@ -20,7 +20,7 @@ IdP の 2 つの Worker を、どこで公開するかをデプロイごとに�
 3. **管理用の Worker にも Workers の Rate Limiting バインディングを置く**：名前空間の ID は、デプロイごとの新しい入力 `admin_rate_limit_namespace_id` にする（6.2）。実装の順番の 6 で入れた。
 4. **P-384 が workerd で検証できなければ Ed25519 に切り替え、管理者の鍵を作り直す**：確かめるのは実装の順番の 2（契約のテストベクタ）で、ベクタをローカルの workerd（`cf` が同梱する miniflare）で検証して決める。結果は 3.3 に書く。→ 2026-11-10 に、ローカルの workerd で P-384 の署名を検証できたので、ECDSA P-384 のままにする（3.3）。
 
-移行の間の注意：実装の順番の 6 で、管理用の Worker は署名だけで管理者を確かめるようになった（mTLS の再確認と `ADMIN_ALLOWLIST` は外した）。mTLS の撤去（実装の順番の 7）までは、Terraform の mTLS のホスト名の割り当てとクライアント証明書、`admin_allowlist` と `admin_client_certificates` の入力、`idpctl` の `--cert` が残るが、管理用の Worker はどれも使わない。それまでの運用（ブートストラップの段階 4 など）は[実行手順](../deployment/runbook.md)の「移行の間の手順」に従う。
+移行の経緯：実装の順番の 6 で、管理用の Worker は署名だけで管理者を確かめるようになった（mTLS の再確認と `ADMIN_ALLOWLIST` は外した）。実装の順番の 7 で、Terraform の mTLS のホスト名の割り当てとクライアント証明書、`admin_allowlist` と `admin_client_certificates` の入力、`idpctl` の `--cert` も外し、mTLS は残っていない。どのデプロイも mTLS を使わないうちに外したので、移行の間の運用の手順はなくした。
 
 ## 決定の要約
 
@@ -47,7 +47,7 @@ IdP の 2 つの Worker を、どこで公開するかをデプロイごとに�
 | アカウントのサブドメイン（`workers_dev_subdomain`、新設） | 禁止 | 必須 |
 | 管理者の署名鍵の許可リスト（`admin_signing_keys`、新設） | 必須 | 必須 |
 | 管理用の Worker の Rate Limiting の名前空間の ID（`admin_rate_limit_namespace_id`、新設） | 必須 | 必須 |
-| 管理者の証明書の許可リストと CSR（今の `admin_allowlist`、`admin_client_certificates`） | 廃止（実装の順番の 7 で外す。それまでは今のまま） | 禁止 |
+| 管理者の証明書の許可リストと CSR（前の `admin_allowlist`、`admin_client_certificates`） | 廃止（実装の順番の 7 で外した。書かれていれば、値が空でも止める） | 禁止 |
 | ゾーンの単一資源の持ち主（`zone_singletons_owner`） | ③（#52）で廃止済み | 禁止 |
 | D1、IdP の Worker の Rate Limiting の名前空間、R2、1Password、GitHub Environment の入力 | 必須 | 必須（同じ意味） |
 
@@ -62,7 +62,7 @@ IdP の 2 つの Worker を、どこで公開するかをデプロイごとに�
 | `cloudflare.config.ts` の `domains` | そのホスト名の 1 つ | なし |
 | `cloudflare.config.ts` の `workersDev` | `false` | `true` |
 | `cloudflare.config.ts` の `previewUrls` | `false` | `false` |
-| mTLS のホスト名の割り当てとクライアント証明書（Terraform） | 置かない（実装の順番の 7 で外す） | 置かない（ゾーンがない） |
+| mTLS のホスト名の割り当てとクライアント証明書（Terraform） | 置かない（実装の順番の 7 で外した） | 置かない（ゾーンがない） |
 | 管理者の許可リストの種類 | 署名鍵 | 署名鍵 |
 | Terraform のゾーンの data source | 使う | 使わない |
 | HTTPS へのリダイレクト、TLS のバージョンの確認、Rate Limiting バインディング | Worker（③） | Worker（③。同じコード） |
@@ -140,7 +140,7 @@ issuer が変わると、[デプロイと設定](deployment.md)の「ホスト�
 ### 3.1 なぜ RFC 9421 か
 
 - `workers.dev` にはゾーンがないので、エッジの mTLS（managed CA とホスト名の割り当て）も WAF も使えない。Cloudflare Access の mTLS は Free にない（[管理 CLI と管理用の Worker](idpctl.md)）。Access のサービストークンは持参人の秘密で、盗まれた値がそのまま使えるので採らない（[ドメインの置き場所](domain-placement.md)の C）。
-- RFC 9421 の非対称の署名は、秘密鍵を管理者の手元から出さずに要求ごとの証明を作れる。検証する側は公開鍵だけを持つ [R1 §7.3.3]。今の mTLS と同じく、管理者の秘密鍵は IdP にも Cloudflare にも渡らない。
+- RFC 9421 の非対称の署名は、秘密鍵を管理者の手元から出さずに要求ごとの証明を作れる。検証する側は公開鍵だけを持つ [R1 §7.3.3]。前の設計の mTLS と同じく、管理者の秘密鍵は IdP にも Cloudflare にも渡らない。
 - 署名は要求の中身（メソッド、URI、本文のダイジェスト、`Idempotency-Key`）に結び付くので、TLS を終端する中継が要求を書き換えても検出できる。
 
 ### 3.2 署名の形
@@ -238,7 +238,7 @@ ECDSA の P-384 と SHA-384（`ecdsa-p384-sha384`）にする [R1 §3.3.5]。
 ### 3.10 鍵の生成と扱い
 
 - 管理者の秘密鍵は、今と同じく、リポジトリのレビュー済みの生成スクリプトで生成し、`op` で 1Password に直接入れる。平文はディスクにも標準出力にも出さない。AI のコンテキストには、秘密鍵の値が一度も入らない（AGENT.md のセキュリティの規則のまま）。
-- 生成スクリプトの変更点：CSR を作らず、デプロイの設定ファイルの `admin_signing_keys` に `keyid`、`name`、`public_key` の行を書く（今は `admin_client_certificates` に CSR を書いている）。出力は公開鍵と `keyid` だけにする。
+- 生成スクリプトの変更点：CSR を作らず、デプロイの設定ファイルの `admin_signing_keys` に `keyid`、`name`、`public_key` の行を書く（実装の順番の 7 の前は `admin_client_certificates` に CSR も書いていた）。出力は公開鍵と `keyid` だけにする。
 - 今ある鍵（1Password のアイテム）は、新しい鍵を作らずに使える。アイテムは `public_key` と `public_key_sha256` を秘密でないフィールドとして持っているので、生成スクリプトに、既存のアイテムからこの 2 つだけを読んで許可リストの行を書くモードを足す。秘密鍵のフィールドは読まない。
 - `idpctl` は秘密鍵の PEM を標準入力からだけ読む（今のまま）。管理者は `op read` の出力を渡すかどうかを自分で決める。
 
@@ -322,8 +322,8 @@ C で受け入れること：
 
 ### 5.1 設定と鍵
 
-- `idpctl` はモードを知らない。どちらのモードでも、管理 API のホスト名（`--host` か `IDPCTL_HOST`）と、標準入力の秘密鍵だけで動く。`--cert` と `IDPCTL_CERT` は廃止する（実装の順番の 7）。
-- 秘密鍵は、今と同じく標準入力からだけ読み、ECDSA の P-384 だけを受け付ける（今は P-256 も受け付けるが、P-256 は managed CA が P-384 の CSR を受け付けないときの代わりだったので外す）。秘密鍵のパスを受け取るフラグと環境変数は置かない。
+- `idpctl` はモードを知らない。どちらのモードでも、管理 API のホスト名（`--host` か `IDPCTL_HOST`）と、標準入力の秘密鍵だけで動く。`--cert` と `IDPCTL_CERT` は実装の順番の 7 で廃止した。
+- 秘密鍵は、今と同じく標準入力からだけ読み、ECDSA の P-384 だけを受け付ける（前は P-256 も受け付けていたが、P-256 は managed CA が P-384 の CSR を受け付けないときの代わりだったので、実装の順番の 4 で外した）。秘密鍵のパスを受け取るフラグと環境変数は置かない。
 - `keyid` は、読み込んだ秘密鍵の公開鍵から計算する。フラグでは受け取らない。手で書いた `keyid` と鍵が食い違う余地をなくすため。
 - ホスト名の検証（英小文字の DNS 名だけ、スキーム、ポート、パス、IP アドレスを拒否する）は今のまま。`workers.dev` のホスト名もこの規則で受け付ける。
 
@@ -366,7 +366,7 @@ C で受け入れること：
 ### 7.1 署名による管理者の認証のリスク
 
 - 検証のコードの欠陥：上の 4.2 で受け入れたとおり。否定のテストベクタを、署名の基底のすべての要素について持つ。
-- 鍵の盗難：今の mTLS の秘密鍵と同じ。1Password で管理し、許可リストから消せば次のデプロイで使えなくなる [R1 §7.3.2]。
+- 鍵の盗難：前の設計の mTLS の秘密鍵と同じ。1Password で管理し、許可リストから消せば次のデプロイで使えなくなる [R1 §7.3.2]。
 - 時計への依存：管理者の時計が 60 秒以上ずれると管理 API を使えない。管理用の Worker の時計は Cloudflare のもの。
 - 署名の盗聴とリプレイ：TLS が署名を守り [R1 §7.1.2]、窓と `nonce` がリプレイを止める。窓の中の同じ `nonce` は D1 の一意制約で 1 回だけ通る。
 - D1 の可用性：管理 API はもともと D1 に依存するので、新しい依存ではない。
@@ -428,7 +428,7 @@ PR は積み重ねず、それぞれ main から作り、前の PR が main に�
 4. **`idpctl` の署名**（3 と並べて進められる）：すべての要求に署名と `Content-Digest` と `User-Agent` を付け、再試行のたびに署名し直す。今の管理用の Worker は知らないヘッダーを無視するので、mTLS のまま動き続ける。Go のテストで同じテストベクタを検証する。（済み）
 5. **生成スクリプトと入力**（3、4 と並べて進められる）：`generate-admin-key.sh` が `admin_signing_keys` の行を書くようにし、既存の 1Password のアイテムから公開鍵だけを読んで行を書くモードを足す。デプロイの設定ファイルの検証と Terraform の変数に `admin_signing_keys` と `admin_rate_limit_namespace_id` を足す（まだ Worker には渡さない）。マージの後、運用者がスクリプトを実行し、検証用のデプロイの許可リストの行を PR で足す。（済み。許可リストの行を足す運用者の作業は、最初のデプロイの前に行う）
 6. **管理用の Worker の切り替え**：3 から 5 が main に入り、許可リストの行がデプロイの設定ファイルにあることが前提。`gate.ts` を署名の検証に置き換え、`ADMIN_SIGNING_KEYS` を設定にし、`nonce` の保存、`0004` のマイグレーションと監査ログの `keyid` と `admin_credential`、`admin_rate_limit_namespace_id` を名前空間にした Rate Limiting バインディング、`HOSTING_MODE` の確認を足す。mTLS の再確認と `ADMIN_ALLOWLIST` を外す。5 では、新しいデプロイの段階 0 のために、デプロイの前の検証（生成スクリプトと Terraform の変数）が空の `admin_signing_keys` を受け付ける。1.1 と 1.4 の必須に合わせ、6 で、デプロイの前の検証と Terraform の変数でも空のリストを拒否する（Worker が読むのは 6 からなので、それまでは受け付けても管理者の境界は変わらない）。マージのデプロイの後、ブートストラップの段階 6 の確認を署名で行う。締め出されたら、この PR は戻さず、許可リストの行か鍵を PR で直して、もう一度デプロイする。`0004` のトリガーは `admin_credential` のない `admin` の行を拒否し、D1 のマイグレーションは戻らないので、この PR を戻して前の管理用の Worker に戻すと、管理操作の書き込みがすべて失敗し、管理 API は読み取りだけになる。`0004` より前からあるデプロイで戻すことがどうしても避けられないときは、先に break-glass（[管理 CLI と管理用の Worker](idpctl.md)）で `0004` のトリガーを外してから戻す。`0004` は、この管理用の Worker と同じデプロイで適用し、先に適用しない（[デプロイと設定](deployment.md)のデプロイのパイプライン）。（済み。管理用の Worker の `cloudflare.config.ts` を足し、モードからカスタムドメインと `workersDev` を導いて `HOSTING_MODE` を渡す。ホスト名とモードの規則は、8 で IdP の Worker も使えるよう共有コアに置いた。`HOSTING_MODE` は、8 で `hosting_mode` の入力ができるまで、デプロイのスクリプトが `custom_domain` を渡す。`0004` の後も IdP の Worker の挿入は `admin_credential` を名指ししないので、マイグレーションと 2 つの Worker のデプロイの順番に依らない。本物の Workers での確認は最初のデプロイで行う）
-7. **mTLS の撤去**（6 のデプロイの確認の後）：`idpctl` の `--cert` と `IDPCTL_CERT`、Terraform の mTLS のホスト名の割り当てとクライアント証明書、`admin_allowlist`、`admin_client_certificates` の入力を外す（`zone_singletons_owner` は ③ で外れた）。Terraform の apply は運用者が行う（クライアント証明書の削除を含む）。
+7. **mTLS の撤去**（6 のデプロイの確認の後）：`idpctl` の `--cert` と `IDPCTL_CERT`、Terraform の mTLS のホスト名の割り当てとクライアント証明書、`admin_allowlist`、`admin_client_certificates` の入力を外す（`zone_singletons_owner` は ③ で外れた）。Terraform の apply は運用者が行う（クライアント証明書の削除を含む）。（済み。どのデプロイも一度もデプロイされておらず、mTLS を使うデプロイがなかったので、前提の「6 のデプロイの確認の後」は意味を持たず、運用者が本物の証明書を消す apply もない。そのため Terraform の `removed` のブロックは置かず、資源と `moved` のブロックをそのまま消した。`idpctl` は `--cert` を知らないフラグとして拒否し、秘密鍵は 4 のとおり標準入力の PEM（PKCS #8 か SEC 1）の P-384 だけを受け付ける。`generate-admin-key.sh` は CSR を作らず、1Password のアイテムに `csr` のフィールドも置かず、出力は公開鍵と `keyid` の行だけにした。`scripts/terraform.sh` の `output` は、出力がなくなったので外した。廃止した 2 つの入力は、設定ファイルに残っていれば値が空でも、Terraform の変数（null だけを受け付ける廃止の印）と `scripts/lib.sh` の `deployment_config_path` が止める（1.1 の「廃止」と 1.4）。`custom_domain` は、8 まで今のままデプロイのスクリプトが渡す）
 8. **モードの入力と `workers.dev`**：`hosting_mode` と `workers_dev_subdomain` の入力、1.4 の 3 か所の検証、2 つの Worker の `cloudflare.config.ts` のモードによる組み立て、デプロイのスクリプトのサブドメインの確認、Terraform のモードによるゾーンの扱い。`custom_domain` の既存のデプロイは `hosting_mode` を足すだけで、ほかは変わらない。
 9. **`workers.dev` のモードの確かめ**：ブートストラップと実行手順に `workers_dev` の道筋を足し、Playwright の e2e を `workers.dev` の形の issuer でも流す。運用者が、ドメインを持たない 2 つ目のアカウントに、入力だけで段階 0 から 7 までを通す（[未決事項](open-questions.md)の移植性のテストの `workers_dev` 版）。
 

@@ -1,31 +1,33 @@
 // Package transport builds the HTTPS client idpctl uses to reach the admin
-// API: an RFC 9421 signature by the admin's ECDSA P-384 key on every request,
-// mTLS with the admin's certificate until hosting-modes.md plan step 7 removes
-// it, server verification always on, no redirects, and retries that resend
-// the same request, re-signed, so a retried write carries the same
-// Idempotency-Key and the admin Worker applies it at most once.
+// API: an RFC 9421 signature by the admin's ECDSA P-384 key on every request
+// (the only admin authentication, hosting-modes.md 4.2), server verification
+// always on, no redirects, and retries that resend the same request,
+// re-signed, so a retried write carries the same Idempotency-Key and the
+// admin Worker applies it at most once.
 package transport
 
 import (
+	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"mime"
 	"net/http"
+	"strings"
 	"time"
 )
 
-// Config describes the client side of the admin API connection.
+// Config describes the client side of the admin API connection. It holds no
+// client certificate: the admin is authenticated by the request signature.
 type Config struct {
-	// Certificate is the admin's client certificate and private key.
-	Certificate tls.Certificate
 	// RootCAs overrides the system roots. Only tests set it; production
 	// verifies the admin host against the system roots.
 	RootCAs *x509.CertPool
@@ -33,32 +35,70 @@ type Config struct {
 	Timeout time.Duration
 }
 
-// LoadClientCertificate pairs the certificate PEM with the private key PEM
-// and accepts only ECDSA P-384 keys: the same key signs every request with
-// ecdsa-p384-sha384 (hosting-modes.md 5.1), so the former P-256 fallback for
-// the managed CA could no longer be used. Errors never include the key bytes.
-func LoadClientCertificate(certPEM, keyPEM []byte) (tls.Certificate, error) {
-	pair, err := tls.X509KeyPair(certPEM, keyPEM)
-	if err != nil {
-		// tls.X509KeyPair errors describe the PEM structure, not its
-		// content, but the message is rebuilt anyway so a future change in
-		// the standard library cannot start echoing key material.
-		return tls.Certificate{}, errors.New("the certificate and the private key from stdin do not form a valid pair")
+// errUnreadableKey is the one message for a key PEM that does not parse. The
+// parsers' own errors describe the structure, not the content, but they are
+// replaced anyway so a future change in the standard library cannot start
+// echoing key material.
+var errUnreadableKey = errors.New("stdin does not hold a PEM private key (PKCS #8 or SEC 1)")
+
+// ParsePrivateKey reads the admin private key PEM that idpctl takes on stdin
+// and accepts only an ECDSA P-384 key, the one key type that can make the
+// ecdsa-p384-sha384 signatures the admin Worker verifies (hosting-modes.md
+// 3.3 and 5.1). It takes the first PEM block whose type ends in
+// "PRIVATE KEY" and reads it as PKCS #8 (what scripts/generate-admin-key.sh
+// stores) or SEC 1, the encodings idpctl has accepted since plan step 4.
+// Errors name the key type or curve, never key material.
+//
+// Example:
+//
+//	key, err := transport.ParsePrivateKey(keyPEM)
+//	if err != nil {
+//		return err
+//	}
+//	signer, err := transport.NewSigner(key)
+func ParsePrivateKey(keyPEM []byte) (*ecdsa.PrivateKey, error) {
+	rest := keyPEM
+	for {
+		var block *pem.Block
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			return nil, errUnreadableKey
+		}
+		if block.Type != "PRIVATE KEY" && !strings.HasSuffix(block.Type, " PRIVATE KEY") {
+			continue
+		}
+		key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			if key, err = x509.ParseECPrivateKey(block.Bytes); err != nil {
+				return nil, errUnreadableKey
+			}
+		}
+		return adminKey(key)
 	}
-	public, ok := pair.Leaf.PublicKey.(*ecdsa.PublicKey)
-	if !ok {
-		return tls.Certificate{}, fmt.Errorf("the admin key must be ECDSA, got %T", pair.Leaf.PublicKey)
-	}
-	if public.Curve != elliptic.P384() {
-		return tls.Certificate{}, fmt.Errorf("the admin key must be on P-384, got %s", public.Curve.Params().Name)
-	}
-	return pair, nil
 }
 
-// NewHTTPClient returns an HTTP client that presents cfg.Certificate,
+// adminKey returns key as an *ecdsa.PrivateKey on P-384, or an error naming
+// what it is instead. ParsePrivateKey and NewSigner share it so the two
+// cannot disagree about which keys are admin keys.
+func adminKey(key crypto.PrivateKey) (*ecdsa.PrivateKey, error) {
+	private, ok := key.(*ecdsa.PrivateKey)
+	if !ok || private == nil {
+		return nil, fmt.Errorf("the admin key must be ECDSA, got %T", key)
+	}
+	if private.Curve != elliptic.P384() {
+		return nil, fmt.Errorf("the admin key must be on P-384, got %s", private.Curve.Params().Name)
+	}
+	return private, nil
+}
+
+// NewHTTPClient returns an HTTP client that presents no client certificate,
 // requires TLS 1.2 or later, verifies the server, and returns redirects as
 // responses instead of following them: the admin API never redirects, and
-// following one would offer the client certificate to another host.
+// following one would send a signed request to another URL.
+//
+// Example:
+//
+//	client := transport.NewHTTPClient(transport.Config{Timeout: 10 * time.Second})
 func NewHTTPClient(cfg Config) *http.Client {
 	timeout := cfg.Timeout
 	if timeout == 0 {
@@ -69,9 +109,8 @@ func NewHTTPClient(cfg Config) *http.Client {
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			TLSClientConfig: &tls.Config{
-				Certificates: []tls.Certificate{cfg.Certificate},
-				RootCAs:      cfg.RootCAs,
-				MinVersion:   tls.VersionTLS12,
+				RootCAs:    cfg.RootCAs,
+				MinVersion: tls.VersionTLS12,
 			},
 			ForceAttemptHTTP2: true,
 		},

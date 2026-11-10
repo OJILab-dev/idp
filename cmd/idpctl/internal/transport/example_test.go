@@ -11,36 +11,31 @@ import (
 	"github.com/OJILab-dev/idp/cmd/idpctl/internal/transport"
 )
 
-// ExampleLoadClientCertificate pairs a certificate with its ECDSA key and
-// rejects a key type the design excludes.
-func ExampleLoadClientCertificate() {
+// ExampleParsePrivateKey reads the admin key PEM and rejects a key type the
+// design excludes.
+func ExampleParsePrivateKey() {
 	t := &testing.T{}
-	ca := testpki.NewCA(t)
 
-	certPEM, keyPEM := ca.IssueClient(t, testpki.NewECDSAKey(t, elliptic.P384()))
-	_, err := transport.LoadClientCertificate(certPEM, keyPEM)
-	fmt.Println(err)
+	key, err := transport.ParsePrivateKey(testpki.EncodePKCS8(t, testpki.NewECDSAKey(t, elliptic.P384())))
+	fmt.Println(err, key.Curve.Params().Name)
 
-	certPEM, keyPEM = ca.IssueClient(t, testpki.NewEd25519Key(t))
-	_, err = transport.LoadClientCertificate(certPEM, keyPEM)
+	_, err = transport.ParsePrivateKey(testpki.EncodePKCS8(t, testpki.NewEd25519Key(t)))
 	fmt.Println(err)
 	// Output:
-	// <nil>
-	// the admin key must be ECDSA, got ed25519.PublicKey
+	// <nil> P-384
+	// the admin key must be ECDSA, got ed25519.PrivateKey
 }
 
-// ExampleNewHTTPClient calls an mTLS server with the admin certificate.
+// ExampleNewHTTPClient calls an HTTPS server, verifying it against the test
+// root and presenting no client certificate.
 func ExampleNewHTTPClient() {
 	t := &testing.T{}
-	ca := testpki.NewCA(t)
-	server := ca.NewMTLSServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	server := testpki.NewTLSServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	defer server.Close()
-	certPEM, keyPEM := ca.IssueClient(t, testpki.NewECDSAKey(t, elliptic.P384()))
-	cert, _ := transport.LoadClientCertificate(certPEM, keyPEM)
 
-	client := transport.NewHTTPClient(transport.Config{Certificate: cert, RootCAs: testpki.RootCAs(server)})
+	client := transport.NewHTTPClient(transport.Config{RootCAs: testpki.RootCAs(server)})
 	resp, err := client.Get(server.URL)
 	if err != nil {
 		fmt.Println(err)

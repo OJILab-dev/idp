@@ -11,12 +11,11 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 usage() {
   printf '%s\n' \
-    "Usage: scripts/terraform.sh <deployment> <init|plan|apply|output>" \
+    "Usage: scripts/terraform.sh <deployment> <init|plan|apply>" \
     "" \
     "  init    terraform init with the state bucket of the deployment (R2 S3-compatible backend)" \
     "  plan    terraform plan with deployments/<deployment>.tfvars.json" \
     "  apply   terraform apply with deployments/<deployment>.tfvars.json; Terraform asks for approval" \
-    "  output  print every output as JSON (non-secret): admin_client_certificates (certificates and fingerprints)" \
     "" \
     "Credentials come from the 1Password item onepassword_cloudflare_item at run time and are never written down." \
     "" \
@@ -74,10 +73,6 @@ main() {
     apply)
       # No -auto-approve: the operator reads the plan and approves it. CI applies on main later (stage 5).
       "${terraform_command[@]}" apply "-var-file=${config}"
-      ;;
-    output)
-      # Every output at once, as JSON, so that the certificates and fingerprints can be read by a script.
-      "${terraform_command[@]}" output -json
       ;;
     *)
       usage >&2

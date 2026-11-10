@@ -1,7 +1,7 @@
 # Runs offline: the mock provider answers every resource and data source, so no credential or network is used.
-# These tests pin what the IdP owns in the zone (the client certificates and the admin host's mTLS association,
-# nothing else) and the fail-closed input checks (docs/design/domain-placement.md, 2, and the admin_signing_keys
-# and admin_rate_limit_namespace_id inputs of docs/design/hosting-modes.md 3.7 and 6.2).
+# These tests pin the fail-closed input checks (docs/design/deployment.md, the admin_signing_keys and
+# admin_rate_limit_namespace_id inputs of docs/design/hosting-modes.md 3.7 and 6.2, and the refusal of the inputs
+# removed with mTLS in plan step 7). Terraform owns no zone resource any more (docs/design/domain-placement.md, 2).
 
 mock_provider "cloudflare" {
   # The provider checks the shape of zone_id even at plan time, so the mock must return a well-formed one.
@@ -17,12 +17,6 @@ variables {
   zone        = "example.com"
   issuer_host = "id.example.com"
   admin_host  = "admin.id.example.com"
-  admin_client_certificates = {
-    alice = "-----BEGIN CERTIFICATE REQUEST-----\nMIIB\n-----END CERTIFICATE REQUEST-----\n"
-  }
-  admin_allowlist = [
-    { sha256 = "0000000000000000000000000000000000000000000000000000000000000000", name = "alice" },
-  ]
   # The P-384 keyid vector of contract/testdata/vectors.json (a public key only).
   admin_signing_keys = [
     {
@@ -45,52 +39,37 @@ variables {
   github_plan_environment           = "test-plan"
 }
 
-run "mtls_is_enabled_on_the_admin_hostname_only_with_the_managed_ca" {
-  command = plan
-
-  # The association holds the zone's complete list, so the issuer host (and any of the service's hosts) must not be
-  # in it: a browser on the issuer would otherwise be asked for a client certificate.
-  assert {
-    condition     = cloudflare_certificate_authorities_hostname_associations.admin.hostnames == tolist(["admin.id.example.com"])
-    error_message = "mTLS must be enabled on the admin hostname only."
-  }
-
-  assert {
-    condition     = cloudflare_certificate_authorities_hostname_associations.admin.mtls_certificate_id == null
-    error_message = "mTLS must use the Cloudflare managed CA."
-  }
-
-  assert {
-    condition     = cloudflare_certificate_authorities_hostname_associations.admin.zone_id == "fedcba9876543210fedcba9876543210"
-    error_message = "The association must be made in the deployment's zone."
-  }
-}
-
-run "client_certificates_are_issued_from_the_configured_csrs" {
+run "a_valid_deployment_file_plans_and_looks_the_zone_up" {
   command = plan
 
   assert {
-    condition     = keys(cloudflare_client_certificate.admin) == ["alice"]
-    error_message = "One client certificate per configured admin CSR."
-  }
-
-  assert {
-    condition     = cloudflare_client_certificate.admin["alice"].validity_days == 365
-    error_message = "An admin certificate is valid for one year."
+    condition     = data.cloudflare_zone.this.zone_id == "fedcba9876543210fedcba9876543210"
+    error_message = "The zone must be looked up from the deployment's zone name."
   }
 }
 
-run "no_admin_certificate_still_keeps_the_admin_host_under_mtls" {
+# The inputs removed with mTLS (docs/design/hosting-modes.md plan step 7) stop a stale deployment file, even when
+# empty: their presence alone would make a reviewer read the deployment as still using mTLS.
+run "rejects_the_removed_admin_allowlist" {
   command = plan
 
   variables {
-    admin_client_certificates = {}
+    admin_allowlist = []
   }
 
-  assert {
-    condition     = length(cloudflare_client_certificate.admin) == 0 && cloudflare_certificate_authorities_hostname_associations.admin.hostnames == tolist(["admin.id.example.com"])
-    error_message = "The mTLS association does not depend on how many certificates are issued."
+  expect_failures = [var.admin_allowlist]
+}
+
+run "rejects_the_removed_admin_client_certificates" {
+  command = plan
+
+  variables {
+    admin_client_certificates = {
+      alice = "-----BEGIN CERTIFICATE REQUEST-----\nMIIB\n-----END CERTIFICATE REQUEST-----\n"
+    }
   }
+
+  expect_failures = [var.admin_client_certificates]
 }
 
 run "rejects_a_rate_limit_namespace_id_that_is_not_a_positive_integer" {
@@ -152,43 +131,6 @@ run "rejects_an_issuer_host_outside_the_zone" {
   }
 
   expect_failures = [var.issuer_host]
-}
-
-run "rejects_an_uppercase_or_separated_allowlist_fingerprint" {
-  command = plan
-
-  variables {
-    admin_allowlist = [
-      { sha256 = "AA:BB", name = "alice" },
-    ]
-  }
-
-  expect_failures = [var.admin_allowlist]
-}
-
-run "rejects_a_repeated_allowlist_fingerprint" {
-  command = plan
-
-  variables {
-    admin_allowlist = [
-      { sha256 = "0000000000000000000000000000000000000000000000000000000000000000", name = "alice" },
-      { sha256 = "0000000000000000000000000000000000000000000000000000000000000000", name = "bob" },
-    ]
-  }
-
-  expect_failures = [var.admin_allowlist]
-}
-
-run "rejects_a_csr_that_is_not_pem" {
-  command = plan
-
-  variables {
-    admin_client_certificates = {
-      alice = "not a csr"
-    }
-  }
-
-  expect_failures = [var.admin_client_certificates]
 }
 
 # The admin Worker reads the list and refuses every request while it is empty (docs/design/hosting-modes.md 1.4).

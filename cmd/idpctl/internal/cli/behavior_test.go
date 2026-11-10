@@ -373,12 +373,7 @@ func TestForbiddenListsWhatToCheck(t *testing.T) {
 
 func TestOnlyAP384KeyCanSign(t *testing.T) {
 	h := newHarness(t, fixed(200, emptyPage))
-	ca := testpki.NewCA(t)
-	certPEM, keyPEM := ca.IssueClient(t, testpki.NewECDSAKey(t, elliptic.P256()))
-	if err := os.WriteFile(h.certPath, certPEM, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	h.keyPEM = keyPEM
+	h.keyPEM = testpki.EncodePKCS8(t, testpki.NewECDSAKey(t, elliptic.P256()))
 	if got := h.run("users_list"); got.code != cli.ExitUsage || !strings.Contains(got.stderr, "P-384") {
 		t.Fatalf("P-256 key: exit %d, stderr:\n%s", got.code, got.stderr)
 	}
@@ -389,23 +384,33 @@ func TestOnlyAP384KeyCanSign(t *testing.T) {
 
 func TestConfigurationComesFromFlagsOrEnvironment(t *testing.T) {
 	h := newHarness(t, fixed(200, emptyPage))
-	env := map[string]string{"IDPCTL_HOST": "admin.example.test", "IDPCTL_CERT": h.certPath}
+	env := map[string]string{"IDPCTL_HOST": "admin.example.test"}
 	if got := h.runWith(env, "users_list"); got.code != 0 {
 		t.Fatalf("environment: exit %d: %s", got.code, got.stderr)
 	}
 	if got := h.runWith(map[string]string{}, "users_list"); got.code != cli.ExitUsage || !strings.Contains(got.stderr, "IDPCTL_HOST") {
 		t.Errorf("missing host: exit %d, stderr:\n%s", got.code, got.stderr)
 	}
-	if got := h.runWith(map[string]string{"IDPCTL_HOST": "admin.example.test"}, "users_list"); got.code != cli.ExitUsage || !strings.Contains(got.stderr, "IDPCTL_CERT") {
-		t.Errorf("missing cert: exit %d, stderr:\n%s", got.code, got.stderr)
-	}
 	for _, host := range []string{"https://admin.example.test", "admin.example.test:443", "admin.example.test/v1", "192.0.2.1", "Admin.Example.Test", "user@admin.example.test"} {
-		if got := h.runWith(map[string]string{}, "--host", host, "--cert", h.certPath, "users_list"); got.code != cli.ExitUsage {
+		if got := h.runWith(map[string]string{}, "--host", host, "users_list"); got.code != cli.ExitUsage {
 			t.Errorf("host %q accepted: exit %d", host, got.code)
 		}
 	}
 	if n := len(h.seen()); n != 1 {
 		t.Fatalf("%d requests, want only the valid one", n)
+	}
+}
+
+// mTLS is gone (hosting-modes.md plan step 7): a script that still passes --cert stops with a usage error
+// instead of running with a flag that no longer means anything.
+func TestTheRemovedCertFlagIsRefused(t *testing.T) {
+	h := newHarness(t, fixed(200, emptyPage))
+	got := h.run("--cert", "/tmp/admin.crt", "users_list")
+	if got.code != cli.ExitUsage || !strings.Contains(got.stderr, "cert") {
+		t.Fatalf("exit %d, stderr:\n%s", got.code, got.stderr)
+	}
+	if n := len(h.seen()); n != 0 {
+		t.Fatalf("%d requests with --cert", n)
 	}
 }
 

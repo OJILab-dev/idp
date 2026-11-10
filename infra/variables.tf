@@ -1,5 +1,6 @@
 # Every value that differs between deployments is a variable here, with no default: a missing input must stop
-# Terraform before it changes anything (fail-closed, docs/design/deployment.md "デプロイごとの入力").
+# Terraform before it changes anything (fail-closed, docs/design/deployment.md "デプロイごとの入力"). The removed
+# inputs at the end are the exception: they default to null so that only their absence passes.
 #
 # All variables except account_id come from deployments/<deployment>.tfvars.json via -var-file. The scripts and
 # CI read the same file, so Terraform declares every key in it, including the ones only they use; an
@@ -39,7 +40,7 @@ variable "issuer_host" {
 }
 
 variable "admin_host" {
-  description = "Hostname of the admin Worker. Terraform enables mTLS on it; the admin Worker's gate enforces it."
+  description = "Hostname of the admin Worker. Terraform only checks it; the admin Worker's custom domain owns its DNS record."
   type        = string
   nullable    = false
 
@@ -52,41 +53,6 @@ variable "admin_host" {
   validation {
     condition     = endswith(var.admin_host, ".${var.zone}") && var.admin_host != var.issuer_host
     error_message = "admin_host must be a name inside the zone and must differ from issuer_host (docs/design/idpctl.md)."
-  }
-}
-
-variable "admin_client_certificates" {
-  description = "Admin name to the PEM CSR made by scripts/generate-admin-key.sh. Terraform issues each client certificate from the managed CA."
-  type        = map(string)
-  nullable    = false
-
-  validation {
-    condition     = alltrue([for name in keys(var.admin_client_certificates) : can(regex("^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$", name))])
-    error_message = "admin_client_certificates keys must follow the admin name rule of ADMIN_ALLOWLIST (docs/design/idpctl.md)."
-  }
-
-  validation {
-    condition     = alltrue([for csr in values(var.admin_client_certificates) : startswith(csr, "-----BEGIN CERTIFICATE REQUEST-----\n")])
-    error_message = "admin_client_certificates values must be PEM certificate signing requests."
-  }
-}
-
-variable "admin_allowlist" {
-  description = "ADMIN_ALLOWLIST of the admin Worker. Terraform does not use it; it is declared so the shared deployment file is checked here too."
-  type = list(object({
-    sha256 = string
-    name   = string
-  }))
-  nullable = false
-
-  validation {
-    condition     = alltrue([for entry in var.admin_allowlist : can(regex("^[0-9a-f]{64}$", entry.sha256)) && can(regex("^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$", entry.name))])
-    error_message = "admin_allowlist entries must have a lowercase 64-hex sha256 and an admin name (docs/design/idpctl.md)."
-  }
-
-  validation {
-    condition     = length(distinct([for entry in var.admin_allowlist : entry.sha256])) == length(var.admin_allowlist)
-    error_message = "admin_allowlist must not repeat a fingerprint."
   }
 }
 
@@ -271,5 +237,32 @@ variable "github_plan_environment" {
   validation {
     condition     = length(var.github_plan_environment) > 0 && var.github_plan_environment != var.github_deploy_environment
     error_message = "github_plan_environment must not be empty and must differ from github_deploy_environment."
+  }
+}
+
+# Removed inputs. They are declared only to refuse them: an undeclared key in -var-file would only warn, and a
+# deployment file that still carries the mTLS inputs would then pass review as if the admin host were still behind
+# mTLS (docs/design/hosting-modes.md 1.1 and 1.4, fail-closed against stale configs). These are the only variables
+# with a default, and the default is null so that only their absence passes. scripts/lib.sh refuses the same keys.
+
+variable "admin_allowlist" {
+  description = "Removed with mTLS (docs/design/hosting-modes.md plan step 7). Must not be in the deployment file; admin_signing_keys replaces it."
+  type        = any
+  default     = null
+
+  validation {
+    condition     = var.admin_allowlist == null
+    error_message = "admin_allowlist was removed with mTLS; delete it from the deployment file (admin_signing_keys replaces it, docs/design/hosting-modes.md 3.7)."
+  }
+}
+
+variable "admin_client_certificates" {
+  description = "Removed with mTLS (docs/design/hosting-modes.md plan step 7). Must not be in the deployment file; no client certificate is issued any more."
+  type        = any
+  default     = null
+
+  validation {
+    condition     = var.admin_client_certificates == null
+    error_message = "admin_client_certificates was removed with mTLS; delete it from the deployment file (docs/design/hosting-modes.md 3.10)."
   }
 }
