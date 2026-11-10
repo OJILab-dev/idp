@@ -115,6 +115,8 @@
 - main へのマージ：その 1 つのコミットから、`terraform apply`、`cf` のスクリプトによる D1 のマイグレーション、IdP の Worker の `cf deploy`、管理用の Worker の `cf deploy` の順に流し、最初の失敗で止める。
 - 手動の承認は置かない。apply とデプロイは main へのマージで自動で走る。デプロイは管理者の署名鍵の許可リストも変えるので、main のブランチのルールセット（PR のレビューとマージの権限）が、管理者の権限と基盤の変更の唯一の関門になる（[操作とリスク](operations-and-risks.md)参照）。
 - 2 つの Worker は別々に切り替わるので、マイグレーションは expand / contract にする。新しいマイグレーションは、古いコードと新しいコードの両方で動く形にし、古い形を消すのは、両方の Worker が新しいコードになった後の別のマイグレーションで行う。
+- 例外：`0004`（監査ログの `admin_credential`）は、署名だけにする決定に合わせ、`admin_credential` のない `admin` の行を拒否するので、署名の前の管理用の Worker とは両立しない（IdP の Worker の挿入は列を名指ししないので影響しない）。そのため `0004` は、署名に切り替えた管理用の Worker（[ホスティングのモード](hosting-modes.md)の実装の順番の 6）と同じデプロイで適用し、それより前のデプロイで先に適用しない。上の流れでは同じデプロイの中でマイグレーションが管理用の Worker の `cf deploy` より先に走るので、その間だけ古い管理用の Worker と `0004` が並ぶが、その間に管理操作の書き込みは走らない（管理操作は `idpctl` から運用者が送るものだけで、デプロイの間には送らない）ので害はない。最初のデプロイがすでにこの管理用の Worker を含むので、署名の前の管理用の Worker が動いたデプロイは実際にはない。
+- 管理者が締め出されたときは、Worker を前のバージョンに戻さず、許可リストの行か鍵を PR で直してデプロイし直す。`0004` の後に署名の前の管理用の Worker へ戻すと、管理操作の書き込みがすべて `0004` のトリガーで失敗する。`0004` より前からあるデプロイで戻すことがどうしても避けられないときは、先に break-glass で `0004` のトリガーを外す。
 - ロールバック：Worker は前のバージョンに戻す。Cloudflare のドキュメントは、ロールバックをダッシュボードと Wrangler の `wrangler rollback` でしか説明していない（Cloudflare「Rollbacks」）。`cf` か Cloudflare API でできるかは実装の前に確かめる（[未決事項](open-questions.md)参照）。ロールバックはバインディング先の D1 を変えない（同じページの「Bindings」）。D1 は Time Travel で戻す。
 - 依存の取得は、Takumi Guard の下で、バージョンを固定した pnpm のセットアップの Action と `pnpm install --frozen-lockfile` で行う。Takumi Guard が pnpm に対応していることは利用者が確認済みで、セットアップの Action の実装で改めて確かめる。
 - `examples/github-actions/deploy.yml` は、今は npm の雛形のままで、pnpm、`cf`、Terraform の上の流れに作り直すのは実装の作業にする。
