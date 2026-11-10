@@ -172,6 +172,12 @@ test_check_admin_signing_keys() {
   assert_fails "rejects an uppercase keyid" check_keys "[$(printf '%s' "${alice}" | jq -c '.keyid |= ascii_upcase')]"
   assert_fails "rejects a keyid of another key" check_keys "[$(printf '%s' "${bob}" | jq -c --arg k "${P384_KEYID}" '.keyid = $k')]"
   assert_fails "rejects an invalid name" check_keys "[$(printf '%s' "${alice}" | jq -c '.name = "-alice"')]"
+  # $(...) strips trailing newlines, so these pass unless the forms are checked on the raw JSON strings.
+  assert_fails "rejects a keyid with a trailing newline" check_keys "[$(printf '%s' "${alice}" | jq -c '.keyid += "\n"')]"
+  assert_fails "rejects a name with a trailing newline" check_keys "[$(printf '%s' "${alice}" | jq -c '.name += "\n"')]"
+  assert_fails "rejects a public_key with a trailing newline" check_keys "[$(printf '%s' "${alice}" | jq -c '.public_key += "\n"')]"
+  assert_fails "rejects keyids that differ only by a trailing newline" \
+    check_keys "[${alice},$(printf '%s' "${alice}" | jq -c '.keyid += "\n" | .name = "carol"')]"
   assert_fails "rejects a non-P-384 key" check_keys "[$(admin_signing_key_row_unchecked carol "${ED25519_SPKI}")]"
 }
 

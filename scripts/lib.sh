@@ -210,6 +210,17 @@ check_admin_signing_keys() {
     fail "deployment file lacks the list \"admin_signing_keys\": ${config}"
   jq -e '.admin_signing_keys | all(type == "object" and keys == ["keyid", "name", "public_key"] and all(.[]; type == "string"))' \
     "${config}" >/dev/null || fail "every admin_signing_keys row must have exactly the strings keyid, name, and public_key: ${config}"
+  # The forms are checked on the raw JSON strings inside jq, not after $(...): command substitution strips trailing
+  # newlines, so "<keyid>\n" would otherwise pass the shell checks while the admin Worker reads a different value.
+  # After these checks no value can hold a newline, so reading them through $(...) below is exact. The patterns
+  # are anchored with \A and \z: in jq's regex library (Oniguruma), $ also matches before a final newline.
+  jq -e --arg name_pattern "${ADMIN_NAME_PATTERN}" '
+    def whole($p): "\\A" + ($p | ltrimstr("^") | rtrimstr("$")) + "\\z";
+    .admin_signing_keys | all(
+      (.keyid | test(whole("^[0-9a-f]{64}$")))
+      and (.name | test(whole($name_pattern)))
+      and (.public_key | test(whole("^[A-Za-z0-9+/]+={0,2}$"))))' "${config}" >/dev/null ||
+    fail "every admin_signing_keys row must have a 64 lowercase hex keyid, an admin name, and a one-line base64 public_key: ${config}"
   jq -e '.admin_signing_keys | (map(.keyid) | unique | length) == length' "${config}" >/dev/null ||
     fail "admin_signing_keys repeats a keyid: ${config}"
   local rows

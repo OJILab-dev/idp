@@ -35,7 +35,7 @@
 
 - 前の設計の入力の、管理者の証明書のフィンガープリントの許可リスト（`admin_allowlist`）とクライアント証明書の CSR（`admin_client_certificates`）は、管理者の認証を署名だけにする決定で廃止する。外すのは mTLS の撤去（[ホスティングのモード](hosting-modes.md)の実装の順番の 7）で、それまでは今のコードが使うので残す。`zone_singletons_owner` は ③ で外れた。
 - 新設の入力のうち、`admin_signing_keys` と `admin_rate_limit_namespace_id` は、[ホスティングのモード](hosting-modes.md)の実装の順番の 5 で、Terraform の変数（設定ファイルの検証）と生成スクリプトに足した。管理用の Worker に渡すのは実装の順番の 6 から。`hosting_mode` と `workers_dev_subdomain` は実装の順番の 8 で足し、それまでは設定ファイルに書かない。
-- Terraform は `admin_signing_keys` の形（3 つのメンバー、`keyid` の形、管理者の名前、P-384 の SPKI の base64 の形、`keyid` の重複）だけを確かめる。Terraform はバイト列の SHA-256 を計算できないので、`keyid` と `public_key` の一致と、公開鍵が曲線の上の点であることは、生成スクリプト（書くたびに設定ファイルのリスト全体を確かめる）と管理用の Worker が確かめる。空のリストは、新しいデプロイが管理者のいない状態から始まるので受け付ける（管理用の Worker は、空の間はすべての要求を拒否する）。
+- Terraform は `admin_signing_keys` の形（3 つのメンバー、`keyid` の形、管理者の名前、P-384 の SPKI の base64 の形、`keyid` の重複）だけを確かめる。Terraform はバイト列の SHA-256 を計算できないので、`keyid` と `public_key` の一致と、公開鍵が曲線の上の点であることは、生成スクリプト（書くたびに設定ファイルのリスト全体を確かめる）と管理用の Worker が確かめる。空のリストは、新しいデプロイが管理者のいない状態から始まるので、今は受け付ける（管理用の Worker は、空の間はすべての要求を拒否する）。これは[ホスティングのモード](hosting-modes.md)の 1.1 と 1.4 の必須からの一時的な例外で、実装の順番の 6 で、デプロイの前の検証と Terraform の変数でも空のリストを拒否する。
 
 - デプロイの設定ファイルは、デプロイごとに 1 つ、`deployments/<デプロイの名前>.tfvars.json` に置く。秘密を含まない値だけを書く。Terraform は `-var-file` で読み、`cf` のスクリプトと CI も同じファイルを読む。同じ値を 2 か所に持たないため。
 - アカウント ID だけは設定ファイルに書かず、1Password から実行時に環境変数で受け取る。公開リポジトリにアカウント ID を残さないため。ゾーン、ホスト名、`workers.dev` のサブドメインは DNS と discovery で外から見える値で、許可リストの公開鍵と `keyid` は秘密ではないので、設定ファイルに書いてよい。

@@ -317,6 +317,22 @@ run "rejects_a_public_key_split_over_lines" {
   expect_failures = [var.admin_signing_keys]
 }
 
+run "rejects_a_keyid_with_a_trailing_newline" {
+  command = plan
+
+  variables {
+    admin_signing_keys = [
+      {
+        keyid      = "5021275a9b968d7d198d5a7b402cee7ea30edd3e47811b1b2736ea7f8f185767\n"
+        name       = "alice"
+        public_key = "MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAEZ26eOyy4/KQpxMCdT6VmqrMErkGHgSxubfgw/6bNU5YWsJaYOmEAq08VjZEJLiCYGqnDBAMnb3jDkOgxpxX6KvnW5H7LYjsz4lsJrXx/VrZJwwjK12UjHtec+hf5HoLT"
+      },
+    ]
+  }
+
+  expect_failures = [var.admin_signing_keys]
+}
+
 run "rejects_a_repeated_keyid" {
   command = plan
 
