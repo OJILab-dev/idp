@@ -43,6 +43,18 @@ export {
   type WriteOperation,
   type WritePlan,
 } from "./operation.js";
+export { AdminNonceStoreError, adminNonceClaimStatements, type AdminNonceClaim, type AdminNonceStore } from "./nonces.js";
+export {
+  ADMIN_SIGNATURE_BYTES,
+  ADMIN_SIGNATURE_TAG,
+  ADMIN_SIGNATURE_WINDOW_SECONDS,
+  verifyAdminSignature,
+  type AdminSignatureRefusal,
+  type AdminSignatureRequest,
+  type AdminSignatureResult,
+  type AdminSigningKey,
+  type VerifiedAdminSignature,
+} from "./signature.js";
 export { decodeCursor, encodeCursor, type Cursor, type CursorKey, type Page } from "./paging.js";
 export { AdminProblem, PROBLEM_STATUS, problemType, type ProblemDetails } from "./problem.js";
 export { ADMIN_OPERATIONS, findOperation } from "./registry.js";

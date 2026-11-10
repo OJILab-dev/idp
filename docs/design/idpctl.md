@@ -38,7 +38,7 @@ D1 を手元から直接操作する形（D1 REST API）をやめ、管理 API �
 
 署名の形、検証の手順、リプレイの防止の正本は[ホスティングのモード](hosting-modes.md)の 3 で、言語をまたぐ取り決めは[実装に依存しない契約](cross-language-contract.md)にある。ここには管理用の Worker の振る舞いとして要点だけを書く。
 
-- `idpctl` は、要求ごとに管理者の秘密鍵で RFC 9421 の署名を作り、`Signature-Input`、`Signature`、`Content-Digest` のヘッダーで送る。対象のコンポーネントは `@method`、`@target-uri`、`@authority`、`content-digest`、本文を持つ要求の `content-type`、`Idempotency-Key` を持つ要求の `idempotency-key` に固定し、パラメーターは `created`、`nonce`、`keyid`、`tag`（`idp-admin`）の 4 つだけにする。アルゴリズムは ECDSA P-384 と SHA-384 で、要求の `alg` は受け付けない。管理者の秘密鍵は Cloudflare にも IdP にも渡らない。
+- `idpctl` は、要求ごとに管理者の秘密鍵で RFC 9421 の署名を作り、`Signature-Input`、`Signature`、`Content-Digest` のヘッダーで送る。対象のコンポーネントは `@method`、`@target-uri`、`@authority`、`content-digest`、本文が空でない要求の `content-type`、`Idempotency-Key` を持つ要求の `idempotency-key` に固定し、パラメーターは `created`、`nonce`、`keyid`、`tag`（`idp-admin`）の 4 つだけにする。アルゴリズムは ECDSA P-384 と SHA-384 で、要求の `alg` は受け付けない。管理者の秘密鍵は Cloudflare にも IdP にも渡らない。
 - 管理用の Worker のゲートが、管理者の認証の唯一の強制の箇所になり、fail-closed で確かめる。順番は、ホスト名、スキーム、TLS のバージョン、接続元の IP ごとの Rate Limiting バインディング、本文の大きさ、構造化フィールドの厳格な解析、コンポーネントとパラメーターの形、`keyid` が許可リストにあること、`created` が今の時刻の前後 60 秒にあること、許可リストの公開鍵による署名の検証、本文の SHA-256 と `Content-Digest` の一致、`nonce` の D1 への一意な挿入（[ホスティングのモード](hosting-modes.md)の 3.8）。D1 に書くのは最後の `nonce` だけで、署名の検証を通らない要求は D1 に 1 行も書かない。
 - Rate Limiting で上限を超えた要求は、本文のない 429 を返す。解析から `nonce` までのどこで拒否しても、同じ `forbidden` の本文を返し、理由は Worker のログにだけ書く。`nonce` の挿入が一意制約以外の理由で失敗したときは `internal` を返す。
 - 同じ `nonce` の 2 回目の要求は、署名が正しくてもリプレイとして拒否する。`nonce` は D1 の `admin_request_nonces` に `created` から 60 秒の有効期限で置き、期限切れの行は次の挿入と同じバッチで消す（[ホスティングのモード](hosting-modes.md)の 3.6）。

@@ -6,7 +6,17 @@ import tseslint from "typescript-eslint";
 export const adminImportBan = {
   patterns: [
     {
-      group: ["@idp/core/admin", "@idp/core/admin/*", "**/core/src/admin", "**/core/src/admin/*", "**/admin/*"],
+      group: [
+        "@idp/core/admin",
+        "@idp/core/admin/*",
+        "**/core/src/admin",
+        "**/core/src/admin/*",
+        "**/admin/*",
+        // The D1 adapters of the admin-only ports import the admin modules.
+        "@idp/d1-adapter/admin",
+        "**/d1-adapter/src/admin",
+        "**/d1-adapter/src/admin.js",
+      ],
       message: "User-facing code must not depend on the admin modules (docs/design/technology.md).",
     },
   ],

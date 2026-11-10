@@ -90,14 +90,15 @@ describe("the migrations", () => {
     expect(splitStatements(readMigration(name)).length).toBeGreaterThan(0);
   });
 
-  it("creates the 16 tables, audit_log, and the four views", async () => {
+  it("creates the 16 tables, audit_log, admin_request_nonces, and the four views", async () => {
     const { results } = await db
       .prepare("SELECT type, name FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE '\\_%' ESCAPE '\\' AND name NOT LIKE 'sqlite%'")
       .all<{ type: string; name: string }>();
     const tables = results.filter((r) => r.type === "table").map((r) => r.name);
     const views = results.filter((r) => r.type === "view").map((r) => r.name).sort();
-    expect(tables.filter((n) => n !== "audit_log")).toHaveLength(16);
+    expect(tables.filter((n) => n !== "audit_log" && n !== "admin_request_nonces")).toHaveLength(16);
     expect(tables).toContain("audit_log");
+    expect(tables).toContain("admin_request_nonces");
     expect(views).toEqual(["client_enablement", "effective_access", "group_enablement", "user_enablement"]);
   });
 });
@@ -208,6 +209,53 @@ describe("batches and single-use values", () => {
     const consume = db.prepare("DELETE FROM enroll_tokens WHERE token_hash = 'h' AND expires_at > ? RETURNING user_id").bind(NOW);
     expect((await consume.all()).results).toEqual([{ user_id: "u1" }]);
     expect((await consume.all()).results).toEqual([]);
+  });
+});
+
+// docs/design/hosting-modes.md 3.6: the nonce table of the RFC 9421 admin signatures.
+describe("admin_request_nonces (0003)", () => {
+  const NONCE = "xMqC-D22YekRFeQyPW_wJURp5-AaaeKbKCOYg7rClew";
+
+  function insertNonce(nonce: string, expiresAt: number | null): Promise<unknown> {
+    return db.prepare("INSERT INTO admin_request_nonces (nonce, expires_at) VALUES (?, ?)").bind(nonce, expiresAt).run();
+  }
+
+  it("only adds the nonce table and its index, so no current write is affected", () => {
+    const statements = splitStatements(readMigration("0003_admin_request_nonces.sql"));
+    expect(statements).toHaveLength(2);
+    expect(statements[0]).toMatch(/^CREATE TABLE admin_request_nonces \(/);
+    expect(statements[1]).toMatch(/^CREATE INDEX admin_request_nonces_expires_at ON admin_request_nonces \(expires_at\);$/);
+  });
+
+  it("has exactly the nonce and expires_at columns, no foreign keys, and no triggers", async () => {
+    const { results: columns } = await db.prepare("PRAGMA table_info(admin_request_nonces)").all<{ name: string; pk: number; notnull: number }>();
+    expect(columns.map((c) => [c.name, c.pk, c.notnull])).toEqual([
+      ["nonce", 1, 0],
+      ["expires_at", 0, 1],
+    ]);
+    expect((await db.prepare("PRAGMA foreign_key_list(admin_request_nonces)").all()).results).toEqual([]);
+    const triggers = await db.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND tbl_name = 'admin_request_nonces'").all();
+    expect(triggers.results).toEqual([]);
+  });
+
+  it("rejects the second insert of the same nonce with the unique constraint (the replay)", async () => {
+    await insertNonce(NONCE, NOW + 60);
+    await expect(insertNonce(NONCE, NOW + 61)).rejects.toThrow(/UNIQUE/);
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM admin_request_nonces").first("n")).toBe(1);
+  });
+
+  it("requires expires_at", async () => {
+    await expect(insertNonce(NONCE, null)).rejects.toThrow(/NOT NULL/);
+  });
+
+  it("deletes the expired rows through the expires_at index", async () => {
+    await insertNonce("a", NOW - 1);
+    await insertNonce("b", NOW);
+    const sweep = "DELETE FROM admin_request_nonces WHERE expires_at < ?";
+    const { results: plan } = await db.prepare(`EXPLAIN QUERY PLAN ${sweep}`).bind(NOW).all<{ detail: string }>();
+    expect(plan.map((p) => p.detail).join("\n")).toContain("admin_request_nonces_expires_at");
+    await db.prepare(sweep).bind(NOW).run();
+    expect((await db.prepare("SELECT nonce FROM admin_request_nonces").all()).results).toEqual([{ nonce: "b" }]);
   });
 });
 

@@ -1,6 +1,6 @@
 # データモデル
 
-状態はすべて D1 に置く。下の 16 テーブルと、管理操作と本人のパスキー操作を記録する監査ログのテーブル 1 つ（末尾を参照）からなる。アクセス可否の判定は `effective_access` ビュー 1 つに集約し、ユーザー、client、グループの今の有効・無効は、追記だけの出来事の表から導く 3 つのビュー（`user_enablement`、`client_enablement`、`group_enablement`）で読む。IdP の Worker と管理用の Worker は、共有コアの同じ SQL でこれらのビューを読むので、判定結果が食い違わない。
+状態はすべて D1 に置く。下の 16 テーブルと、管理操作と本人のパスキー操作を記録する監査ログのテーブル 1 つ（末尾を参照）と、管理者の署名の `nonce` を置くテーブル 1 つ（`0003`）からなる。アクセス可否の判定は `effective_access` ビュー 1 つに集約し、ユーザー、client、グループの今の有効・無効は、追記だけの出来事の表から導く 3 つのビュー（`user_enablement`、`client_enablement`、`group_enablement`）で読む。IdP の Worker と管理用の Worker は、共有コアの同じ SQL でこれらのビューを読むので、判定結果が食い違わない。
 
 ```sql
 -- 付与の主体。user と group の共通の親で、grant はどちらにも同じ形（principal × client）で付ける。
@@ -281,7 +281,7 @@ CREATE TRIGGER groups_no_delete BEFORE DELETE ON groups
 BEGIN SELECT RAISE(ABORT, 'groups are never deleted'); END;
 ```
 
-マイグレーションは `contract/migrations/` に番号順に置き、各ファイルはこのドキュメントの SQL のブロックと、出てくる順に 1 対 1 で同じ内容にする（ずれはテストで検出する）。適用済みのマイグレーションは書き換えず、変更は次の番号のファイルとして足す。上のブロックが `0001_init.sql`、下のブロックが `0002_audit_log_append_only.sql` である。
+マイグレーションは `contract/migrations/` に番号順に置き、各ファイルはこのドキュメントの SQL のブロックと、出てくる順に 1 対 1 で同じ内容にする（ずれはテストで検出する）。適用済みのマイグレーションは書き換えず、変更は次の番号のファイルとして足す。最初のブロックが `0001_init.sql`、2 つ目のブロックが `0002_audit_log_append_only.sql`、3 つ目のブロックが `0003_admin_request_nonces.sql` である。
 
 `0002_audit_log_append_only.sql` は、監査ログを出来事の表と同じく追記だけの表にする。`0001` の時点では監査ログの更新と削除を拒否するトリガーがなく、「行は削除しない」が共有コアの規律だけに頼っていた。本人による失効の条件のように、監査ログの行があることを前提にする書き込みもあるので、D1 の側で強制する。`REPLACE`（`INSERT OR REPLACE` を含む）は衝突した行を消すときに DELETE のトリガーを起こさない（SQLite「The ON CONFLICT Clause」の REPLACE の説明。DELETE のトリガーは recursive triggers が有効なときだけ起こる）ので、既にある `id` を名指しする挿入も拒否する。共有コアは `id` を名指しせず、D1 の採番に任せる。
 
@@ -300,9 +300,22 @@ WHEN NEW.id IS NOT NULL AND EXISTS (SELECT 1 FROM audit_log WHERE id = NEW.id)
 BEGIN SELECT RAISE(ABORT, 'audit_log is append-only'); END;
 ```
 
+`0003_admin_request_nonces.sql` は、管理者の RFC 9421 の署名の `nonce` を置く表を足す（[ホスティングのモード](hosting-modes.md)の 3.6）。管理用の Worker は、署名の検証と本文のダイジェストの確認がすべて通った要求の `nonce` だけを、管理操作の書き込みより前の別の文で挿入し、主キーの一意制約で 2 回目をリプレイとして拒否する。`expires_at` は `created` に 60 秒を足した UNIX 秒で、期限切れの行は挿入と同じバッチで消す（cron は置かない）。`expires_at` を過ぎた `nonce` を持つ要求は `created` の窓で必ず拒否されるので、行を消してもリプレイを通さない。管理者の名前は持たない（`nonce` はすべての管理者で一意であればよい）。この表は既存の表を参照も変更もしないので、管理用の Worker が使い始める前に適用しても、今の書き込みに影響しない。
+
+```sql
+-- 管理者の RFC 9421 の署名の nonce。署名の検証を通った要求の nonce だけを挿入し、主キーの一意制約で
+-- 2 回目の要求をリプレイとして拒否する（hosting-modes.md 3.6）。管理者の名前は持たない。
+-- expires_at は created に 60 秒を足した UNIX 秒。期限切れの行は挿入と同じバッチで消す
+CREATE TABLE admin_request_nonces (
+  nonce      TEXT PRIMARY KEY,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX admin_request_nonces_expires_at ON admin_request_nonces (expires_at);
+```
+
 上の 16 テーブルのほかに監査ログ用のテーブル `audit_log` を 1 つ置き、管理操作と本人のパスキー操作を記録する。カラムは OWASP Logging Cheat Sheet の「いつ、どこで、誰が、何を」に対応させ、値の形は [実装に依存しない契約](cross-language-contract.md)で固定する。管理者は `idpctl` の `audit_tail` で、いつでも新しい順に読める。
 
-- 管理操作の行の操作者は、管理用の Worker が許可リストで解決した管理者の名前で、操作する側の自己申告ではない（[管理 CLI と管理用の Worker](idpctl.md)参照）。上の SQL のコメントは前の設計（mTLS のクライアント証明書のフィンガープリント）のままで、マイグレーションと 1 対 1 なので書き換えない。署名に切り替えた後の `admin_cert_sha256` は、署名を検証した鍵の `keyid`（SPKI の DER の SHA-256）になり、種類を区別する `admin_credential` の列とトリガーは `0004` のマイグレーションで足す。署名の `nonce` を置く `admin_request_nonces` は `0003` で足す。どちらの SQL も、マイグレーションを足す PR でこの文書に書く（[ホスティングのモード](hosting-modes.md)の 3.6、3.9）。
+- 管理操作の行の操作者は、管理用の Worker が許可リストで解決した管理者の名前で、操作する側の自己申告ではない（[管理 CLI と管理用の Worker](idpctl.md)参照）。上の SQL のコメントは前の設計（mTLS のクライアント証明書のフィンガープリント）のままで、マイグレーションと 1 対 1 なので書き換えない。署名に切り替えた後の `admin_cert_sha256` は、署名を検証した鍵の `keyid`（SPKI の DER の SHA-256）になり、種類を区別する `admin_credential` の列とトリガーは `0004` のマイグレーションで足す。署名の `nonce` を置く `admin_request_nonces` は `0003` で足した（上のブロック）。`0004` の SQL は、マイグレーションを足す PR でこの文書に書く（[ホスティングのモード](hosting-modes.md)の 3.6、3.9）。
 - 記録するのは書き込みの操作で、読み取りの操作（`users_list`、`audit_tail` など）は記録しない。
 - IdP の Worker が書くのは、本人のパスキー操作だけにする。登録リンクによる登録は `passkey_enroll`、本人による追加は `passkey_add`、本人による失効は `passkey_self_revoke` とし、`actor` は `user`、`target` は `user:<id>`、`detail_json` に credential ID を入れる。本人への通知の代わりに、認証器が増えたり減ったりしたことを管理者が監査ログで確認できるようにする（[認証フロー](authentication.md)参照）。
 - 成功した操作は、操作と同じバッチで 1 行を書く。管理用の Worker は、失敗した操作も記録する。バッチが丸ごとロールバックされるので、その後に別の書き込みで `failure` の行を書く。失敗の行を書くのは、許可リストで管理者が確定した後の失敗だけにする。署名の検証や許可リストで拒否したリクエストは、監査ログではなく管理用の Worker のログに残す。

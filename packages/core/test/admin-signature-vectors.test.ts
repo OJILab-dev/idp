@@ -1,15 +1,20 @@
 // The RFC 9421 admin-signature vectors of contract/testdata/vectors.json (docs/design/hosting-modes.md 3.12).
-// The verifier (plan step 3) and the Go signer (plan step 4) do not exist yet, so this file checks what can be
-// checked without them: the vectors are consistent with RFC 9421 and RFC 9530, and workerd's WebCrypto verifies
-// the chosen algorithm (operator decision 4). The verifier cases are listed as todo until step 3.
+// It checks that the vectors are consistent with RFC 9421 and RFC 9530, that workerd's WebCrypto verifies the chosen
+// algorithm (operator decision 4), and that the shared core's verifier (plan step 3) accepts and refuses every
+// verifier case inside workerd. The Go signer (plan step 4) checks the same vectors in its own tests.
 import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Miniflare } from "miniflare";
+import { build } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { migrationNames, readMigration, splitStatements } from "../../../contract/test/d1.js";
 import { base64urlDecode } from "../src/shared/index.js";
+import { EXPECTED_REFUSALS, makeTestKeys, materialize, signBase, spkiBase64, substitute, tamper, type TestKeys } from "./admin-signature-fixture.js";
 import { type SignedRequest, type VerifyCase, vectors } from "./vectors.js";
 
 const sig = vectors.admin_signature;
-const subtle = crypto.subtle;
 
 function sha256(bytes: Uint8Array): Buffer {
   return createHash("sha256").update(bytes).digest();
@@ -54,53 +59,6 @@ function coveredComponents(inner: string): readonly string[] {
   return list === "" ? [] : list.split(" ").map((c) => c.slice(1, -1));
 }
 
-type TestKeys = {
-  readonly allowlisted: CryptoKeyPair;
-  readonly other: CryptoKeyPair;
-  readonly keyid: string;
-  readonly otherKeyid: string;
-};
-
-async function keyidOf(key: CryptoKey): Promise<string> {
-  return sha256(new Uint8Array((await subtle.exportKey("spki", key)) as ArrayBuffer)).toString("hex");
-}
-
-function substitute(text: string, keys: TestKeys): string {
-  return text
-    .replaceAll("{keyid_upper}", keys.keyid.toUpperCase())
-    .replaceAll("{other_keyid}", keys.otherKeyid)
-    .replaceAll("{keyid}", keys.keyid);
-}
-
-function derInteger(bytes: Uint8Array): number[] {
-  let start = 0;
-  while (start < bytes.length - 1 && bytes[start] === 0) start += 1;
-  const body = [...bytes.subarray(start)];
-  if ((body[0] ?? 0) & 0x80) body.unshift(0);
-  return [0x02, body.length, ...body];
-}
-
-// ASN.1 DER form of an ECDSA signature, which RFC 9421 §3.3.5 does not allow on the wire.
-function derEncode(raw: Uint8Array): Uint8Array {
-  const half = raw.length / 2;
-  const content = [...derInteger(raw.subarray(0, half)), ...derInteger(raw.subarray(half))];
-  return Uint8Array.from([0x30, content.length, ...content]);
-}
-
-function tamper(signature: Uint8Array, how: VerifyCase["signature_tamper"]): Uint8Array {
-  switch (how) {
-    case undefined:
-      return signature;
-    case "flip_first_byte":
-      return Uint8Array.from(signature, (b, i) => (i === 0 ? b ^ 1 : b));
-    case "drop_last_byte":
-      return signature.subarray(0, signature.length - 1);
-    case "append_zero_byte":
-      return Uint8Array.from([...signature, 0]);
-    case "der_encode":
-      return derEncode(signature);
-  }
-}
 
 describe("admin signature vectors: profile", () => {
   it("fixes the algorithm, tag, label, window, and components of docs/design/hosting-modes.md 3", () => {
@@ -200,13 +158,8 @@ describe("admin signature vectors: verification in workerd", () => {
     return (await response.json()) as readonly unknown[];
   }
 
-  async function spkiOf(key: CryptoKey): Promise<string> {
-    return Buffer.from((await subtle.exportKey("spki", key)) as ArrayBuffer).toString("base64");
-  }
-
-  async function sign(key: CryptoKey, base: string): Promise<Uint8Array> {
-    return new Uint8Array(await subtle.sign({ name: "ECDSA", hash: "SHA-384" }, key, utf8(base)));
-  }
+  const spkiOf = spkiBase64;
+  const sign = signBase;
 
   beforeAll(async () => {
     mf = new Miniflare({
@@ -220,10 +173,7 @@ describe("admin signature vectors: verification in workerd", () => {
         },
       ],
     });
-    const p384 = { name: "ECDSA", namedCurve: "P-384" };
-    const allowlisted = (await subtle.generateKey(p384, true, ["sign", "verify"])) as CryptoKeyPair;
-    const other = (await subtle.generateKey(p384, true, ["sign", "verify"])) as CryptoKeyPair;
-    keys = { allowlisted, other, keyid: await keyidOf(allowlisted.publicKey), otherKeyid: await keyidOf(other.publicKey) };
+    keys = await makeTestKeys();
   });
 
   afterAll(async () => {
@@ -274,9 +224,96 @@ describe("admin signature vectors: verification in workerd", () => {
   });
 });
 
-// Plan step 3 replaces these with calls to the shared core's verifier.
-describe("admin signature vectors: verifier (plan step 3)", () => {
-  for (const c of sig.verify.valid) it.todo(`accepts ${c.case}`);
-  for (const c of sig.verify.invalid) it.todo(`rejects ${c.case} with forbidden (${c.reason ?? ""})`);
-  it.todo(`rejects the second request of ${sig.verify.replay.case}`);
+// Plan step 3: the shared core's verifier and the D1 nonce store, bundled into a Worker and run inside workerd on the
+// requests workerd received, so @target-uri comes from the URL the runtime gives a Worker, not from the vector text.
+describe("admin signature vectors: verifier in workerd (plan step 3)", () => {
+  type ProbeAnswer = {
+    readonly url: string;
+    readonly result: { readonly ok: boolean; readonly reason?: string; readonly admin?: unknown; readonly nonce?: string };
+    readonly claim: "fresh" | "replayed" | null;
+  };
+  let mf: Miniflare;
+  let keys: TestKeys;
+  let bundleDir: string;
+
+  async function send(c: VerifyCase): Promise<ProbeAnswer> {
+    const request = await materialize(c, keys);
+    const body = request.body_utf8 === "" ? null : request.body_utf8;
+    const response = await mf.dispatchFetch(request.url, { method: request.method, headers: request.headers.map(([n, v]) => [n, v]), body });
+    return (await response.json()) as ProbeAnswer;
+  }
+
+  async function nonceRows(): Promise<number> {
+    const db = await mf.getD1Database("DB");
+    return (await db.prepare("SELECT COUNT(*) AS n FROM admin_request_nonces").first<number>("n")) ?? -1;
+  }
+
+  beforeAll(async () => {
+    keys = await makeTestKeys();
+    bundleDir = await mkdtemp(join(tmpdir(), "admin-signature-probe-"));
+    await build({
+      configFile: false,
+      logLevel: "warn",
+      publicDir: false,
+      ssr: { noExternal: true, target: "webworker" },
+      build: {
+        outDir: bundleDir,
+        ssr: join(import.meta.dirname, "support", "admin-signature-probe.ts"),
+        target: "es2024",
+        minify: false,
+        rollupOptions: { output: { entryFileNames: "index.js", format: "es" } },
+      },
+    });
+    const allowlist = [{ keyid: keys.keyid, name: "alice", public_key: await spkiBase64(keys.allowlisted.publicKey) }];
+    mf = new Miniflare({
+      workers: [
+        {
+          config: {
+            name: "admin-signature-verifier",
+            compatibilityDate: "2026-10-01",
+            manifest: { mainModule: "index.js", modules: { "index.js": { type: "esm", contents: await readFile(join(bundleDir, "index.js"), "utf8") } } },
+            env: {
+              DB: { type: "d1", name: crypto.randomUUID() },
+              NOW: { type: "text", value: String(sig.verify.now) },
+              KEYS: { type: "text", value: JSON.stringify(allowlist) },
+            },
+          },
+        },
+      ],
+    });
+    const db = await mf.getD1Database("DB");
+    const statements = migrationNames().flatMap((name) => splitStatements(readMigration(name)));
+    await db.batch(statements.map((s) => db.prepare(s)));
+  });
+
+  afterAll(async () => {
+    await mf.dispose();
+    await rm(bundleDir, { recursive: true, force: true });
+  });
+
+  it.each(sig.verify.valid.map((c) => [c.case, c] as const))("accepts %s, with @target-uri as workerd hands it over", async (_, c) => {
+    const answer = await send(c);
+    // The verifier signs over request.url; workerd must not re-encode the vector's URL (docs/design/hosting-modes.md 3.12).
+    expect(answer.url).toBe(c.request.url);
+    expect(answer.result).toMatchObject({ ok: true, admin: { name: "alice", keyid: keys.keyid } });
+    expect(answer.claim).toBe("fresh");
+  });
+
+  it.each(sig.verify.invalid.map((c) => [c.case, c.reason ?? "", c] as const))("rejects %s (%s) and writes nothing to D1", async (name, _, c) => {
+    const before = await nonceRows();
+    const answer = await send(c);
+    expect(answer.result).toEqual({ ok: false, reason: EXPECTED_REFUSALS[name] });
+    expect(answer.claim).toBeNull();
+    expect(await nonceRows()).toBe(before);
+  });
+
+  it(`rejects the second request of ${sig.verify.replay.case} (${sig.verify.replay.reason ?? ""})`, async () => {
+    const first = await send(sig.verify.replay);
+    expect(first.result.ok).toBe(true);
+    expect(first.claim).toBe("fresh");
+    // The same signed request again: the signature still verifies, and the nonce store refuses it.
+    const second = await send(sig.verify.replay);
+    expect(second.result.ok).toBe(true);
+    expect(second.claim).toBe("replayed");
+  });
 });
