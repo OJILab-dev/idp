@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# A fake curl for the script tests. It never reaches the network. It writes its arguments, one per line, to
+# ${OP_STUB_DIR}/curl_args, and prints ${OP_STUB_DIR}/curl_response, failing as curl -f does on an HTTP error when
+# that file is missing. It fails when the fake token of the op stub is missing from its environment, so a test
+# notices a call that bypassed op run.
+set -euxo pipefail
+
+printf '%s\n' "$@" >"${OP_STUB_DIR}/curl_args"
+[[ "${CLOUDFLARE_API_TOKEN-}" == "stub-api-token" ]] || exit 2
+[[ -f "${OP_STUB_DIR}/curl_response" ]] || exit 22
+cat "${OP_STUB_DIR}/curl_response"

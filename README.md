@@ -5,7 +5,17 @@ Cloudflare Workers の無料枠と D1 だけで動く、パスキー専用の最
 
 2 つの Worker は、自分のドメインのカスタムドメイン（カスタムドメインのモード）か、ドメインを持たない人のための `<名前>.<アカウントのサブドメイン>.workers.dev`（`workers.dev` のモード）で公開できます（[ホスティングのモード](docs/design/hosting-modes.md)）。
 
-> **`workers.dev` のモードの警告**：issuer とパスキーの RP ID は、アカウントの `workers.dev` のサブドメインと Worker の名前に固定されます。後からカスタムドメインに移すと、全員のパスキーが使えなくなり、すべての RP の設定を移し直すことになります。長く使うつもりなら、最初からカスタムドメインのモードを選んでください。Cloudflare も `workers.dev` を本番向けとしていません。
+モードは、デプロイの設定ファイルの `hosting_mode`（`custom_domain` か `workers_dev`）で選びます。既定値はなく、最初のデプロイの前に決めます。モードを変えることは issuer を変えることなので、後から切り替えるのではなく、新しいデプロイとして作り直します。
+
+> **`workers.dev` のモードの警告**（fork してモードを選ぶ前に読んでください。[ホスティングのモード](docs/design/hosting-modes.md)の 2.4）
+>
+> - issuer とパスキーの RP ID は、アカウントの `workers.dev` のサブドメインと Worker の名前に固定されます。後からカスタムドメインに移すと、全員のパスキーが使えなくなり（登録し直し）、`iss` が変わるので、すべての RP の設定を移し直すことになります。長く使うつもりなら、最初からカスタムドメインのモードを選んでください。
+> - アカウントの `workers.dev` のサブドメインと Worker の名前を変えないでください。どちらも issuer を変えます。手放したサブドメインは、別のアカウントに取られるかもしれません（未確認）。
+> - Cloudflare は `workers.dev` を本番向けとしておらず、業務上重要でない個人や趣味のプロジェクト向けとしています。
+> - `workers.dev` へのすべての要求は Browser Integrity Check を受け、無効にできません。ライブラリの既定の `User-Agent` を送る RP のサーバーは Error 1010 で拒否されうるので、つなぐ RP ごとに確かめてください。
+> - 同じアカウントのほかの Worker は IdP と same-site になります。アカウントにほかの Worker を置くなら、その Worker の権限を持つ人が IdP の Worker も差し替えられます。
+>
+> 手順の前提と確認は [ブートストラップ](docs/deployment/bootstrap.md) を参照してください。
 
 ## 現在の状態
 
@@ -16,7 +26,7 @@ Cloudflare Workers の無料枠と D1 だけで動く、パスキー専用の最
 
 - 検証用の Cloudflare アカウントへの最初のデプロイ。運用者が [ブートストラップの実行手順](docs/deployment/runbook.md) に沿って行います。Worker のデプロイの workflow はまだありません（雛形は [examples/github-actions/deploy.yml](examples/github-actions/deploy.yml)）。
 - e2e テスト（Playwright）。[セキュリティ要件チェックリスト](docs/design/security-checklist.md) の攻撃ケースを実装します。
-- [ホスティングのモード](docs/design/hosting-modes.md) の残りの実装（`workers.dev` のモードの入力）。署名による管理者の認証と mTLS の撤去は済み、管理用の Worker は RFC 9421 の署名と `admin_signing_keys` の許可リストだけで管理者を確かめます。
+- [ホスティングのモード](docs/design/hosting-modes.md) の残りの実装（実装の順番の 9：`workers.dev` のモードのブートストラップの道筋と、`workers.dev` の形の issuer での e2e）。署名による管理者の認証、mTLS の撤去、モードの入力（`hosting_mode` と `workers_dev_subdomain`）は済みです。管理用の Worker は RFC 9421 の署名と `admin_signing_keys` の許可リストだけで管理者を確かめます。
 
 ## ゴール
 

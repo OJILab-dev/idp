@@ -36,7 +36,7 @@ main() {
   local deployment="${1}"
   local action="${2}"
 
-  require_command jq op terraform
+  require_command curl jq op terraform
   local config
   local vault
   local cloudflare_item
@@ -52,6 +52,14 @@ main() {
   # The S3 backend reads the endpoint from this variable, so the account ID never goes into a backend file.
   export AWS_ENDPOINT_URL_S3="https://${account_id}.r2.cloudflarestorage.com"
   export TF_VAR_account_id="${account_id}"
+
+  # In the workers_dev mode the issuer is derived from the account's workers.dev subdomain, so a plan or apply against
+  # an account whose subdomain differs stops before Terraform runs (docs/design/hosting-modes.md 1.4).
+  local mode
+  mode="$(hosting_mode "${config}")"
+  if [[ "${mode}" == "workers_dev" && "${action}" != "init" ]]; then
+    verify_workers_dev_subdomain "${config}" "${vault}" "${cloudflare_item}" "${account_id}"
+  fi
 
   local reference="op://${vault}/${cloudflare_item}"
   local terraform_command=(

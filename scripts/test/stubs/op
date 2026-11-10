@@ -1,12 +1,19 @@
 #!/usr/bin/env bash
-# A fake op for scripts/test/generate-admin-key.test.sh. It never reaches 1Password. Every call is logged to
-# ${OP_STUB_DIR}/calls. `whoami` succeeds; `read op://<vault>/<item>/<field>` prints ${OP_STUB_DIR}/fields/<field>
-# and fails when that file is missing; `item get` succeeds only when ${OP_STUB_DIR}/item_exists exists; anything
-# else fails, so an unexpected call shows up as a refusal.
+# A fake op for the script tests. It never reaches 1Password. Every call is logged to ${OP_STUB_DIR}/calls.
+# `whoami` succeeds; `read op://<vault>/<item>/<field>` prints ${OP_STUB_DIR}/fields/<field> and fails when that
+# file is missing; `item get` succeeds only when ${OP_STUB_DIR}/item_exists exists; `run -- <command>` logs the op://
+# reference in CLOUDFLARE_API_TOKEN to ${OP_STUB_DIR}/token_reference and runs the command with a fake token in its
+# place, as op run resolves it; anything else fails, so an unexpected call shows up as a refusal.
 set -euxo pipefail
 
 printf '%s\n' "$*" >>"${OP_STUB_DIR}/calls"
 case "${1}" in
+  run)
+    [[ "${2-}" == "--" && "${CLOUDFLARE_API_TOKEN-}" == op://* ]] || exit 1
+    printf '%s\n' "${CLOUDFLARE_API_TOKEN}" >"${OP_STUB_DIR}/token_reference"
+    shift 2
+    CLOUDFLARE_API_TOKEN="stub-api-token" exec "$@"
+    ;;
   whoami)
     exit 0
     ;;

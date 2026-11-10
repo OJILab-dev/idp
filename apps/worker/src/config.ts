@@ -2,7 +2,15 @@
 // signing keys are validated before the first request is served, and a bad value refuses every request instead of
 // being defaulted (design principle 4: fail-closed).
 import { createD1Database } from "@idp/d1-adapter";
-import { InvalidIssuerError, parseIssuer, type Database, type Issuer } from "@idp/core/shared";
+import {
+  InvalidHostingError,
+  InvalidIssuerError,
+  checkHostingHosts,
+  parseHostingMode,
+  parseIssuer,
+  type Database,
+  type Issuer,
+} from "@idp/core/shared";
 import { InvalidSigningKeyConfigError, loadSigningKeys, type SigningKeySet } from "@idp/core/user";
 
 /** The bindings, variables, and Secrets the deployment gives the IdP Worker. Every member is untrusted until parsed. */
@@ -10,6 +18,11 @@ export type Env = {
   readonly DB: D1Database;
   /** The issuer URL, `https://<host>`; every derived value (RP ID, origin, endpoints, aud) comes from it. */
   readonly ISSUER?: string;
+  /**
+   * The hosting mode, `custom_domain` or `workers_dev` (docs/design/hosting-modes.md 1.4). Nothing branches on it: it
+   * only has to agree with the issuer's host, so a configuration that mixes the modes refuses every request.
+   */
+  readonly HOSTING_MODE?: string;
   /** Worker Secrets, each a private JWK as JSON (docs/design/tokens.md, "署名鍵"). Only the Ed25519 current is required. */
   readonly SIGNING_KEY_ED25519_CURRENT?: string;
   readonly SIGNING_KEY_ED25519_PREVIOUS?: string;
@@ -57,7 +70,7 @@ function isRateLimitBinding(value: unknown): value is RateLimit {
  * @param env The Worker's environment.
  * @returns The configuration.
  * @throws {InvalidConfigError} The D1 binding is missing, the Rate Limiting binding is missing, the assets binding is missing,
- *   the issuer is invalid,
+ *   the issuer is invalid, the hosting mode is missing or does not match the issuer's host,
  *   the signing keys are invalid, or the version metadata has no version ID.
  */
 export async function parseWorkerConfig(env: Env): Promise<WorkerConfig> {
@@ -75,6 +88,14 @@ export async function parseWorkerConfig(env: Env): Promise<WorkerConfig> {
   } catch (error) {
     if (!(error instanceof InvalidIssuerError)) throw error;
     throw new InvalidConfigError(`ISSUER: ${error.message}`);
+  }
+  // The same shared-core rules as the admin Worker and both cloudflare.config.ts files, so the three places of
+  // hosting-modes.md 1.4 cannot disagree on what a mixed configuration is.
+  try {
+    checkHostingHosts(parseHostingMode(env.HOSTING_MODE), issuer.rpId);
+  } catch (error) {
+    if (!(error instanceof InvalidHostingError)) throw error;
+    throw new InvalidConfigError(`HOSTING_MODE does not match ISSUER: ${error.message}`, { cause: error });
   }
   let keys: SigningKeySet;
   try {

@@ -10,6 +10,12 @@ describe("fail-closed configuration", () => {
     ["no issuer", ({ ISSUER: _, ...env }) => env],
     ["an issuer with a path", (env) => ({ ...env, ISSUER: "https://idp.example.com/" })],
     ["an http issuer", (env) => ({ ...env, ISSUER: "http://idp.example.com" })],
+    // The mode only detects a configuration that mixes the modes (docs/design/hosting-modes.md 1.4).
+    ["no hosting mode", ({ HOSTING_MODE: _, ...env }) => env],
+    ["an unknown hosting mode", (env) => ({ ...env, HOSTING_MODE: "zone" })],
+    ["the workers_dev mode with a custom-domain issuer", (env) => ({ ...env, HOSTING_MODE: "workers_dev" })],
+    ["the custom_domain mode with a workers.dev issuer", (env) => ({ ...env, ISSUER: "https://idp.team.workers.dev" })],
+    ["the workers_dev mode with another Worker's host", (env) => ({ ...env, HOSTING_MODE: "workers_dev", ISSUER: "https://web.team.workers.dev" })],
     ["no Ed25519 key", ({ SIGNING_KEY_ED25519_CURRENT: _, ...env }) => env],
     ["a malformed key", (env) => ({ ...env, SIGNING_KEY_ED25519_CURRENT: "{" })],
     ["an RSA previous key without a current one", (env) => ({ ...env, SIGNING_KEY_RSA_PREVIOUS: env.SIGNING_KEY_ED25519_CURRENT ?? "" })],
@@ -43,6 +49,15 @@ describe("fail-closed configuration", () => {
     expect(res.status).toBe(200);
     expect(((await res.json()) as Record<string, unknown>)["id_token_signing_alg_values_supported"]).toEqual(["Ed25519", "RS256"]);
     expect(await testSigningKey()).toBe(f.env.SIGNING_KEY_ED25519_CURRENT);
+  });
+
+  it("serves a workers.dev issuer in the workers_dev mode with the same code", async () => {
+    const f = fixture();
+    const issuer = "https://idp.team-1.workers.dev";
+    const env: Env = { ...f.env, HOSTING_MODE: "workers_dev", ISSUER: issuer };
+    const res = await call(f, "GET", "/.well-known/openid-configuration", { env, origin: issuer });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as Record<string, unknown>)["issuer"]).toBe(issuer);
   });
 
   it("answers only on the issuer host, never on a Host it was not configured for", async () => {

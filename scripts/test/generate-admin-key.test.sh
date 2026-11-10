@@ -52,7 +52,10 @@ make_tree() {
   cp "${REPO_ROOT}/scripts/lib.sh" "${REPO_ROOT}/scripts/generate-admin-key.sh" "${tree}/scripts/"
   : >"${tree}/op/calls"
   jq -n '{
+    hosting_mode: "custom_domain",
     zone: "example.com",
+    issuer_host: "id.example.com",
+    admin_host: "admin.id.example.com",
     onepassword_vault: "idp-test",
     onepassword_admin_key_item_prefix: "admin-key-",
     admin_signing_keys: []

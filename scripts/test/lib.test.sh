@@ -111,6 +111,169 @@ test_config_string_fails_closed() {
   rm -f "${config}"
 }
 
+# The ③ input went before the hosting modes; it stops a file in both modes (hosting-modes.md 1.1).
+test_reject_removed_zone_singletons_owner() {
+  local config
+  config="$(mktemp)"
+  printf '%s' '{"zone_singletons_owner":"idp"}' >"${config}"
+  assert_fails "rejects zone_singletons_owner" reject_removed_inputs "${config}"
+  rm -f "${config}"
+}
+
+# A complete file of each mode, holding only the hosting inputs (hosting-modes.md 1.1).
+readonly CUSTOM_DOMAIN_CONFIG='{"hosting_mode":"custom_domain","zone":"example.com","issuer_host":"id.example.com","admin_host":"admin.id.example.com"}'
+readonly WORKERS_DEV_CONFIG='{"hosting_mode":"workers_dev","workers_dev_subdomain":"team-1"}'
+
+# Writes the JSON in ${2}, changed by the jq filter in ${3}, to ${1}.
+write_config() {
+  local config="${1}"
+  local json="${2}"
+  local filter="${3-.}"
+  printf '%s' "${json}" | jq "${filter}" >"${config}"
+}
+
+test_check_hosting_inputs() {
+  local config
+  config="$(mktemp)"
+  write_config "${config}" "${CUSTOM_DOMAIN_CONFIG}"
+  assert_equal "accepts a custom_domain file" "ok" "$(check_hosting_inputs "${config}" && printf ok)"
+  write_config "${config}" "${WORKERS_DEV_CONFIG}"
+  assert_equal "accepts a workers_dev file" "ok" "$(check_hosting_inputs "${config}" && printf ok)"
+
+  # No default: a file without the mode is refused, whatever else it holds.
+  write_config "${config}" "${CUSTOM_DOMAIN_CONFIG}" 'del(.hosting_mode)'
+  assert_fails "rejects a file without hosting_mode" check_hosting_inputs "${config}"
+  local mode
+  for mode in '""' '"CUSTOM_DOMAIN"' '"custom-domain"' '"workers.dev"' '"custom_domain\n"' 'null' '1'; do
+    write_config "${config}" "${CUSTOM_DOMAIN_CONFIG}" ".hosting_mode = ${mode}"
+    assert_fails "rejects hosting_mode ${mode}" check_hosting_inputs "${config}"
+  done
+
+  local key
+  for key in zone issuer_host admin_host; do
+    write_config "${config}" "${CUSTOM_DOMAIN_CONFIG}" "del(.${key})"
+    assert_fails "custom_domain requires ${key}" check_hosting_inputs "${config}"
+    write_config "${config}" "${CUSTOM_DOMAIN_CONFIG}" ".${key} = \"\""
+    assert_fails "custom_domain rejects an empty ${key}" check_hosting_inputs "${config}"
+    # A key of the other mode is refused even when empty: its presence alone misleads a reviewer.
+    write_config "${config}" "${WORKERS_DEV_CONFIG}" ".${key} = null"
+    assert_fails "workers_dev rejects ${key}" check_hosting_inputs "${config}"
+  done
+  write_config "${config}" "${CUSTOM_DOMAIN_CONFIG}" '.workers_dev_subdomain = null'
+  assert_fails "custom_domain rejects workers_dev_subdomain" check_hosting_inputs "${config}"
+  write_config "${config}" "${CUSTOM_DOMAIN_CONFIG}" '.issuer_host = "idp.team.workers.dev"'
+  assert_fails "custom_domain rejects a workers.dev issuer_host" check_hosting_inputs "${config}"
+  write_config "${config}" "${CUSTOM_DOMAIN_CONFIG}" '.admin_host = "idp-admin.team.workers.dev"'
+  assert_fails "custom_domain rejects a workers.dev admin_host" check_hosting_inputs "${config}"
+  write_config "${config}" "${CUSTOM_DOMAIN_CONFIG}" '.zone = "workers.dev"'
+  assert_fails "custom_domain rejects the workers.dev zone" check_hosting_inputs "${config}"
+
+  write_config "${config}" "${WORKERS_DEV_CONFIG}" 'del(.workers_dev_subdomain)'
+  assert_fails "workers_dev requires workers_dev_subdomain" check_hosting_inputs "${config}"
+  local subdomain
+  for subdomain in '""' '"Team"' '"-team"' '"team-"' '"a.b"' '"team.workers.dev"' '"team\n"' "\"$(printf 'a%.0s' {1..64})\"" '1'; do
+    write_config "${config}" "${WORKERS_DEV_CONFIG}" ".workers_dev_subdomain = ${subdomain}"
+    assert_fails "workers_dev rejects the subdomain ${subdomain}" check_hosting_inputs "${config}"
+  done
+  write_config "${config}" "${WORKERS_DEV_CONFIG}" ".workers_dev_subdomain = \"$(printf 'a%.0s' {1..63})\""
+  assert_equal "workers_dev accepts a 63-character label" "ok" "$(check_hosting_inputs "${config}" && printf ok)"
+  rm -f "${config}"
+
+  # The files a forker copies in stage 0 follow the table too.
+  local example
+  for example in "${IDP_REPO_ROOT}"/deployments/*.tfvars.json.example; do
+    assert_equal "$(basename "${example}") follows its mode" "ok" "$(check_hosting_inputs "${example}" && printf ok)"
+  done
+}
+
+# Every script reaches the mode check through deployment_config_path, as it reaches reject_removed_inputs.
+test_deployment_config_path_checks_the_mode() {
+  local name="lib-test-$$"
+  local config="${IDP_REPO_ROOT}/deployments/${name}.tfvars.json"
+  write_config "${config}" "${WORKERS_DEV_CONFIG}"
+  assert_equal "accepts a file of one mode" "${config}" "$(deployment_config_path "${name}")"
+  write_config "${config}" "${WORKERS_DEV_CONFIG}" '.zone = "example.com"'
+  assert_fails "rejects a file that mixes the modes" deployment_config_path "${name}"
+  rm -f "${config}"
+}
+
+test_deployment_hosts() {
+  local config
+  config="$(mktemp)"
+  write_config "${config}" "${CUSTOM_DOMAIN_CONFIG}"
+  assert_equal "custom_domain issuer host" "id.example.com" "$(deployment_issuer_host "${config}")"
+  assert_equal "custom_domain admin host" "admin.id.example.com" "$(deployment_admin_host "${config}")"
+  # Derived from the subdomain and the Worker names, never a separate input (hosting-modes.md 1.3).
+  write_config "${config}" "${WORKERS_DEV_CONFIG}"
+  assert_equal "workers_dev issuer host" "idp.team-1.workers.dev" "$(deployment_issuer_host "${config}")"
+  assert_equal "workers_dev admin host" "idp-admin.team-1.workers.dev" "$(deployment_admin_host "${config}")"
+  write_config "${config}" "${WORKERS_DEV_CONFIG}" '.issuer_host = "id.example.com"'
+  assert_fails "a mixed file has no issuer host" deployment_issuer_host "${config}"
+  rm -f "${config}"
+}
+
+# The subdomain check talks to the Cloudflare API only when the operator runs a script. Here op and curl are the
+# stubs of scripts/test/stubs, so nothing reaches 1Password, Cloudflare, or the network.
+run_subdomain_check() {
+  local stub_dir="${1}"
+  local config="${2}"
+  PATH="$(dirname "${BASH_SOURCE[0]}")/stubs:${PATH}" OP_STUB_DIR="${stub_dir}" \
+    verify_workers_dev_subdomain "${config}" idp-test cloudflare 0123456789abcdef0123456789abcdef
+}
+
+test_verify_workers_dev_subdomain() {
+  local stub_dir
+  local config
+  stub_dir="$(mktemp -d)"
+  config="$(mktemp)"
+  mkdir -p "${stub_dir}/fields"
+  write_config "${config}" "${WORKERS_DEV_CONFIG}"
+
+  printf '%s' '{"success":true,"errors":[],"result":{"subdomain":"team-1"}}' >"${stub_dir}/curl_response"
+  assert_equal "accepts the account's subdomain" "ok" "$(run_subdomain_check "${stub_dir}" "${config}" && printf ok)"
+  # The token reaches curl only through op run's environment: never an argument, so never in xtrace or ps.
+  assert_equal "curl gets no token argument" "0" "$(grep -c 'stub-api-token' "${stub_dir}/curl_args" || true)"
+  assert_equal "curl reads the account's subdomain" "1" \
+    "$(grep -c '^https://api.cloudflare.com/client/v4/accounts/0123456789abcdef0123456789abcdef/workers/subdomain$' "${stub_dir}/curl_args" || true)"
+  assert_equal "op resolves the Terraform token" "1" \
+    "$(grep -c '^op://idp-test/cloudflare/terraform_api_token$' "${stub_dir}/token_reference" || true)"
+
+  printf '%s' '{"success":true,"errors":[],"result":{"subdomain":"other"}}' >"${stub_dir}/curl_response"
+  assert_fails "rejects another subdomain" run_subdomain_check "${stub_dir}" "${config}"
+  printf '%s' '{"success":true,"errors":[],"result":{"subdomain":"team-1\n"}}' >"${stub_dir}/curl_response"
+  assert_fails "rejects a subdomain with a trailing newline" run_subdomain_check "${stub_dir}" "${config}"
+  printf '%s' '{"success":false,"errors":[{"code":10007}],"result":null}' >"${stub_dir}/curl_response"
+  assert_fails "rejects an account without a subdomain" run_subdomain_check "${stub_dir}" "${config}"
+  rm -f "${stub_dir}/curl_response"
+  assert_fails "rejects a failed API call" run_subdomain_check "${stub_dir}" "${config}"
+
+  printf '%s' '{"success":true,"errors":[],"result":{"subdomain":"team-1"}}' >"${stub_dir}/curl_response"
+  write_config "${config}" "${CUSTOM_DOMAIN_CONFIG}"
+  assert_fails "is not for the custom_domain mode" run_subdomain_check "${stub_dir}" "${config}"
+  rm -rf "${stub_dir}" "${config}"
+}
+
+# The operator's script end to end, with the same stubs: it reads the account ID through op and compares.
+test_check_workers_dev_subdomain_script() {
+  local name="lib-test-$$"
+  local config="${IDP_REPO_ROOT}/deployments/${name}.tfvars.json"
+  local stub_dir
+  stub_dir="$(mktemp -d)"
+  mkdir -p "${stub_dir}/fields"
+  printf '%s\n' 0123456789abcdef0123456789abcdef >"${stub_dir}/fields/account_id"
+  write_config "${config}" "${WORKERS_DEV_CONFIG}" '.onepassword_vault = "idp-test" | .onepassword_cloudflare_item = "cloudflare"'
+  local script="${IDP_REPO_ROOT}/scripts/check-workers-dev-subdomain.sh"
+  local stubs
+  stubs="$(cd "$(dirname "${BASH_SOURCE[0]}")/stubs" && pwd)"
+
+  printf '%s' '{"success":true,"errors":[],"result":{"subdomain":"team-1"}}' >"${stub_dir}/curl_response"
+  assert_equal "the script accepts the account's subdomain" "ok" \
+    "$(PATH="${stubs}:${PATH}" OP_STUB_DIR="${stub_dir}" "${script}" "${name}" >/dev/null 2>&1 && printf ok)"
+  printf '%s' '{"success":true,"errors":[],"result":{"subdomain":"other"}}' >"${stub_dir}/curl_response"
+  assert_fails "the script stops on another subdomain" env PATH="${stubs}:${PATH}" OP_STUB_DIR="${stub_dir}" "${script}" "${name}"
+  rm -rf "${stub_dir}" "${config}"
+}
+
 # The P-384 keyid vector of contract/testdata/vectors.json: only a public key, so it is not a secret.
 VECTORS="${IDP_REPO_ROOT}/contract/testdata/vectors.json"
 readonly VECTORS
@@ -254,6 +417,12 @@ test_base64url_has_no_padding_or_unsafe_characters
 test_deployment_config_path_rejects_unsafe_names
 test_reject_removed_inputs
 test_config_string_fails_closed
+test_reject_removed_zone_singletons_owner
+test_check_hosting_inputs
+test_deployment_config_path_checks_the_mode
+test_deployment_hosts
+test_verify_workers_dev_subdomain
+test_check_workers_dev_subdomain_script
 test_p384_keyid_matches_the_contract_vector
 test_p384_keyid_rejects_other_keys_and_encodings
 test_spki_base64_from_public_pem

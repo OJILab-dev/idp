@@ -13,10 +13,11 @@ mock_provider "cloudflare" {
 }
 
 variables {
-  account_id  = "0123456789abcdef0123456789abcdef"
-  zone        = "example.com"
-  issuer_host = "id.example.com"
-  admin_host  = "admin.id.example.com"
+  account_id   = "0123456789abcdef0123456789abcdef"
+  hosting_mode = "custom_domain"
+  zone         = "example.com"
+  issuer_host  = "id.example.com"
+  admin_host   = "admin.id.example.com"
   # The P-384 keyid vector of contract/testdata/vectors.json (a public key only).
   admin_signing_keys = [
     {
@@ -43,9 +44,166 @@ run "a_valid_deployment_file_plans_and_looks_the_zone_up" {
   command = plan
 
   assert {
-    condition     = data.cloudflare_zone.this.zone_id == "fedcba9876543210fedcba9876543210"
+    condition     = data.cloudflare_zone.this[0].zone_id == "fedcba9876543210fedcba9876543210"
     error_message = "The zone must be looked up from the deployment's zone name."
   }
+}
+
+# The hosting mode (docs/design/hosting-modes.md 1.1 and 1.2). The workers_dev mode has no zone at all, so it plans
+# without the zone data source; every input of the other mode is refused.
+run "a_workers_dev_deployment_file_plans_without_the_zone" {
+  command = plan
+
+  variables {
+    hosting_mode          = "workers_dev"
+    zone                  = null
+    issuer_host           = null
+    admin_host            = null
+    workers_dev_subdomain = "team-1"
+  }
+
+  assert {
+    condition     = length(data.cloudflare_zone.this) == 0
+    error_message = "The workers_dev mode must not look a zone up."
+  }
+}
+
+run "rejects_an_unknown_hosting_mode" {
+  command = plan
+
+  variables {
+    hosting_mode = "workers.dev"
+  }
+
+  expect_failures = [var.hosting_mode]
+}
+
+run "rejects_workers_dev_subdomain_in_the_custom_domain_mode" {
+  command = plan
+
+  variables {
+    workers_dev_subdomain = "team-1"
+  }
+
+  expect_failures = [var.workers_dev_subdomain]
+}
+
+run "rejects_a_custom_domain_mode_without_a_zone" {
+  command = plan
+
+  variables {
+    zone = null
+  }
+
+  expect_failures = [var.zone]
+}
+
+run "rejects_a_custom_domain_mode_without_an_issuer_host" {
+  command = plan
+
+  variables {
+    issuer_host = null
+  }
+
+  expect_failures = [var.issuer_host]
+}
+
+run "rejects_a_custom_domain_mode_without_an_admin_host" {
+  command = plan
+
+  variables {
+    admin_host = null
+  }
+
+  expect_failures = [var.admin_host]
+}
+
+run "rejects_the_workers_dev_zone_in_the_custom_domain_mode" {
+  command = plan
+
+  variables {
+    zone        = "workers.dev"
+    issuer_host = "idp.team.workers.dev"
+    admin_host  = "idp-admin.team.workers.dev"
+  }
+
+  expect_failures = [var.zone]
+}
+
+run "rejects_a_zone_in_the_workers_dev_mode" {
+  command = plan
+
+  variables {
+    hosting_mode          = "workers_dev"
+    issuer_host           = null
+    admin_host            = null
+    workers_dev_subdomain = "team-1"
+  }
+
+  expect_failures = [var.zone]
+}
+
+run "rejects_an_issuer_host_in_the_workers_dev_mode" {
+  command = plan
+
+  variables {
+    hosting_mode          = "workers_dev"
+    zone                  = null
+    admin_host            = null
+    workers_dev_subdomain = "team-1"
+  }
+
+  expect_failures = [var.issuer_host]
+}
+
+run "rejects_an_admin_host_in_the_workers_dev_mode" {
+  command = plan
+
+  variables {
+    hosting_mode          = "workers_dev"
+    zone                  = null
+    issuer_host           = null
+    workers_dev_subdomain = "team-1"
+  }
+
+  expect_failures = [var.admin_host]
+}
+
+run "rejects_a_workers_dev_mode_without_a_subdomain" {
+  command = plan
+
+  variables {
+    hosting_mode = "workers_dev"
+    zone         = null
+    issuer_host  = null
+    admin_host   = null
+  }
+
+  expect_failures = [var.workers_dev_subdomain]
+}
+
+run "rejects_a_workers_dev_subdomain_that_is_not_one_label" {
+  command = plan
+
+  variables {
+    hosting_mode          = "workers_dev"
+    zone                  = null
+    issuer_host           = null
+    admin_host            = null
+    workers_dev_subdomain = "team.workers.dev"
+  }
+
+  expect_failures = [var.workers_dev_subdomain]
+}
+
+run "rejects_the_removed_zone_singletons_owner" {
+  command = plan
+
+  variables {
+    zone_singletons_owner = "idp"
+  }
+
+  expect_failures = [var.zone_singletons_owner]
 }
 
 # The inputs removed with mTLS (docs/design/hosting-modes.md plan step 7) stop a stale deployment file, even when

@@ -17,42 +17,98 @@ variable "account_id" {
   }
 }
 
-variable "zone" {
-  description = "The zone (domain) that holds the issuer and admin hostnames. The zone ID is looked up from it."
+# The hosting mode decides which of the inputs below a deployment must have and which it must not
+# (docs/design/hosting-modes.md 1.1). It has no default. The inputs of only one mode default to null, so that the
+# other mode can leave them out, and each one checks against the mode that it is present exactly when its mode needs
+# it. Terraform cannot tell an explicit null from a missing key, so `"zone": null` passes here in the workers_dev
+# mode; scripts/lib.sh (check_hosting_inputs) is the authority on whether a key is present and stops on it first.
+
+variable "hosting_mode" {
+  description = "Where the two Workers are served: custom_domain (custom domains in the zone) or workers_dev (<worker>.<workers_dev_subdomain>.workers.dev, no zone). No default (docs/design/hosting-modes.md 1.1)."
   type        = string
   nullable    = false
 
   validation {
-    condition     = can(regex("^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$", var.zone))
+    condition     = contains(["custom_domain", "workers_dev"], var.hosting_mode)
+    error_message = "hosting_mode must be custom_domain or workers_dev (docs/design/hosting-modes.md 1.1)."
+  }
+}
+
+variable "zone" {
+  description = "custom_domain only: the zone (domain) that holds the issuer and admin hostnames. The zone ID is looked up from it."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = (var.hosting_mode == "custom_domain") == (var.zone != null)
+    error_message = "zone is required in the custom_domain mode and forbidden in the workers_dev mode (docs/design/hosting-modes.md 1.1)."
+  }
+
+  validation {
+    condition     = var.zone == null || can(regex("^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$", var.zone))
     error_message = "zone must be a lowercase domain name."
+  }
+
+  # The issuer and admin hosts are inside the zone, so this keeps every custom_domain host off workers.dev, where
+  # the hosts belong to the other mode (docs/design/hosting-modes.md 1.4).
+  validation {
+    condition     = var.zone == null || !try(var.zone == "workers.dev" || endswith(var.zone, ".workers.dev"), true)
+    error_message = "zone must not be workers.dev or under it; use the workers_dev mode instead (docs/design/hosting-modes.md 1.4)."
   }
 }
 
 variable "issuer_host" {
-  description = "Hostname of the IdP Worker (the issuer is https://<issuer_host>). The Worker's custom domain owns its DNS record."
+  description = "custom_domain only: hostname of the IdP Worker (the issuer is https://<issuer_host>). The Worker's custom domain owns its DNS record. In workers_dev the host is derived from workers_dev_subdomain."
   type        = string
-  nullable    = false
+  default     = null
 
   validation {
-    condition     = var.issuer_host == var.zone || endswith(var.issuer_host, ".${var.zone}")
+    condition     = (var.hosting_mode == "custom_domain") == (var.issuer_host != null)
+    error_message = "issuer_host is required in the custom_domain mode and forbidden in the workers_dev mode, where it is derived (docs/design/hosting-modes.md 1.3)."
+  }
+
+  # Skipped without a zone: the zone's own check reports that.
+  validation {
+    condition     = var.issuer_host == null || var.zone == null || try(var.issuer_host == var.zone || endswith(var.issuer_host, ".${var.zone}"), false)
     error_message = "issuer_host must be the zone itself or a name inside it."
   }
 }
 
 variable "admin_host" {
-  description = "Hostname of the admin Worker. Terraform only checks it; the admin Worker's custom domain owns its DNS record."
+  description = "custom_domain only: hostname of the admin Worker. Terraform only checks it; the admin Worker's custom domain owns its DNS record. In workers_dev the host is derived from workers_dev_subdomain."
   type        = string
-  nullable    = false
+  default     = null
+
+  validation {
+    condition     = (var.hosting_mode == "custom_domain") == (var.admin_host != null)
+    error_message = "admin_host is required in the custom_domain mode and forbidden in the workers_dev mode, where it is derived (docs/design/hosting-modes.md 1.3)."
+  }
 
   # Lowercase only: the admin Worker compares it with the request URL's host, which is always lowercase.
   validation {
-    condition     = can(regex("^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$", var.admin_host))
+    condition     = var.admin_host == null || can(regex("^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$", var.admin_host))
     error_message = "admin_host must be a lowercase hostname without a port."
   }
 
   validation {
-    condition     = endswith(var.admin_host, ".${var.zone}") && var.admin_host != var.issuer_host
+    condition     = var.admin_host == null || var.zone == null || try(endswith(var.admin_host, ".${var.zone}") && var.admin_host != var.issuer_host, false)
     error_message = "admin_host must be a name inside the zone and must differ from issuer_host (docs/design/idpctl.md)."
+  }
+}
+
+variable "workers_dev_subdomain" {
+  description = "workers_dev only: the account's workers.dev subdomain label (<label>.workers.dev). The issuer is https://idp.<label>.workers.dev and the admin host idp-admin.<label>.workers.dev (docs/design/hosting-modes.md 1.3). Terraform does not use it; scripts/check-workers-dev-subdomain.sh compares it with the account."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = (var.hosting_mode == "workers_dev") == (var.workers_dev_subdomain != null)
+    error_message = "workers_dev_subdomain is required in the workers_dev mode and forbidden in the custom_domain mode (docs/design/hosting-modes.md 1.1)."
+  }
+
+  validation {
+    condition     = var.workers_dev_subdomain == null || can(regex("^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$", var.workers_dev_subdomain))
+    error_message = "workers_dev_subdomain must be one DNS label: lowercase letters, digits, and hyphens, 1 to 63 characters, no hyphen at either end."
   }
 }
 
@@ -255,6 +311,17 @@ variable "admin_allowlist" {
   validation {
     condition     = var.admin_allowlist == null
     error_message = "admin_allowlist was removed with mTLS; delete it from the deployment file (admin_signing_keys replaces it, docs/design/hosting-modes.md 3.7)."
+  }
+}
+
+variable "zone_singletons_owner" {
+  description = "Removed with ③ (docs/design/domain-placement.md): the IdP owns no zone singleton. Must not be in the deployment file."
+  type        = any
+  default     = null
+
+  validation {
+    condition     = var.zone_singletons_owner == null
+    error_message = "zone_singletons_owner was removed; delete it from the deployment file (docs/design/hosting-modes.md 1.1)."
   }
 }
 

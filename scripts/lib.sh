@@ -11,6 +11,9 @@
 # (docs/design/deployment.md "デプロイごとの入力"). Keep them in sync with the IdP Worker's cloudflare.config.ts
 # and its Secret binding.
 readonly IDP_WORKER_NAME="idp"
+# The admin Worker's name; in the workers_dev mode it is the admin host's first label, so it is code too. Keep it in
+# sync with ADMIN_WORKER_NAME of packages/core/src/shared/hosting.ts (docs/design/hosting-modes.md 1.2 and 1.3).
+readonly ADMIN_WORKER_NAME="idp-admin"
 readonly SIGNING_KEY_SECRET_NAME="SIGNING_KEY_ED25519_CURRENT"
 
 # Field labels of the Vault item named by onepassword_cloudflare_item. The operator creates this item by hand,
@@ -56,21 +59,145 @@ deployment_config_path() {
   [[ "${deployment}" =~ ^[a-z0-9][a-z0-9-]{0,62}$ ]] || fail "invalid deployment name: ${deployment}"
   local path="${IDP_REPO_ROOT}/deployments/${deployment}.tfvars.json"
   [[ -f "${path}" ]] || fail "deployment file not found: ${path}"
-  reject_removed_inputs "${path}"
+  reject_removed_inputs "${path}" || exit 1
+  check_hosting_inputs "${path}" || exit 1
   printf '%s\n' "${path}"
 }
 
 # Stops if the deployment file still holds an input that was removed: admin_allowlist and admin_client_certificates
-# went with mTLS (docs/design/hosting-modes.md 1.1 and plan step 7). A stale key stops every script, whatever its
-# value, so that no one reads a deployment as still using mTLS (fail-closed against stale configs). Terraform's
-# variables refuse the same keys. Every script reaches this through deployment_config_path.
+# went with mTLS (docs/design/hosting-modes.md 1.1 and plan step 7), and zone_singletons_owner went with ③. A stale
+# key stops every script, whatever its value, so that no one reads a deployment as still using what it named
+# (fail-closed against stale configs). Terraform's variables refuse the same keys. Every script reaches this through
+# deployment_config_path.
 reject_removed_inputs() {
   local path="${1}"
   local removed
-  removed="$(jq -er '[keys[] | select(. == "admin_allowlist" or . == "admin_client_certificates")] | join(" ")' "${path}")" ||
-    fail "deployment file is not a JSON object: ${path}"
+  removed="$(jq -er '[keys[] | select(. == "admin_allowlist" or . == "admin_client_certificates" or . == "zone_singletons_owner")]
+    | join(" ")' "${path}")" || fail "deployment file is not a JSON object: ${path}"
   [[ -z "${removed}" ]] ||
-    fail "deployment file holds inputs removed with mTLS (${removed}); delete them, admin_signing_keys replaces them: ${path}"
+    fail "deployment file holds removed inputs (${removed}); delete them (admin_signing_keys replaces those removed with mTLS): ${path}"
+}
+
+# Prints the inputs among the given keys that the deployment file holds, whatever their value (null included).
+present_inputs() {
+  local path="${1}"
+  shift
+  # With --args every argument after the filter is a key, so the file comes in on stdin.
+  jq -er --args '[keys[] as $key | select($ARGS.positional | index($key))] | join(" ")' "$@" <"${path}"
+}
+
+# Prints the hosting mode, the one input every other hosting input follows (docs/design/hosting-modes.md 1.1). It
+# has no default, and only the exact strings are accepted.
+hosting_mode() {
+  local path="${1}"
+  jq -er '.hosting_mode | select(. == "custom_domain" or . == "workers_dev")' "${path}" ||
+    fail "deployment file lacks \"hosting_mode\" (custom_domain or workers_dev; there is no default): ${path}"
+}
+
+# Stops unless the hosting inputs follow the table of docs/design/hosting-modes.md 1.1 exactly: custom_domain requires
+# zone, issuer_host, and admin_host and forbids workers_dev_subdomain; workers_dev is the reverse. A forbidden key
+# stops the script even when its value is empty or null, because a value left over from the other mode would make a
+# reviewer misread which mode the deployment runs in. Terraform's variables and both cloudflare.config.ts files check
+# the same rules (hosting-modes.md 1.4). Every script reaches this through deployment_config_path.
+#
+# Each $(...) ends in `|| exit 1`: fail inside a command substitution exits only that subshell, and errexit does not
+# apply where a caller tests the result (an if or a ||), so the failure must be passed on explicitly.
+check_hosting_inputs() {
+  local path="${1}"
+  local mode
+  local forbidden
+  mode="$(hosting_mode "${path}")" || exit 1
+  case "${mode}" in
+    custom_domain)
+      forbidden="$(present_inputs "${path}" workers_dev_subdomain)" || exit 1
+      [[ -z "${forbidden}" ]] || fail "the custom_domain mode forbids ${forbidden}: ${path}"
+      local key
+      for key in zone issuer_host admin_host; do
+        config_string "${path}" "${key}" >/dev/null || exit 1
+      done
+      # A custom domain under workers.dev would be the workers_dev mode's host under the other mode's name.
+      jq -e '[.zone, .issuer_host, .admin_host] | all(. != "workers.dev" and (endswith(".workers.dev") | not))' "${path}" >/dev/null ||
+        fail "the custom_domain mode forbids hosts under workers.dev: ${path}"
+      ;;
+    workers_dev)
+      forbidden="$(present_inputs "${path}" zone issuer_host admin_host)" || exit 1
+      [[ -z "${forbidden}" ]] ||
+        fail "the workers_dev mode forbids ${forbidden}; the hosts are derived from workers_dev_subdomain: ${path}"
+      # One DNS label, matched on the raw JSON string inside jq (see check_admin_signing_keys for why \A and \z).
+      jq -e '.workers_dev_subdomain | type == "string" and test("\\A[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\z")' "${path}" >/dev/null ||
+        fail "the workers_dev mode requires \"workers_dev_subdomain\", one DNS label of <subdomain>.workers.dev: ${path}"
+      ;;
+  esac
+}
+
+# Prints the issuer host: issuer_host in custom_domain, idp.<workers_dev_subdomain>.workers.dev in workers_dev. The
+# workers_dev hosts are derived, never separate inputs (docs/design/hosting-modes.md 1.3).
+deployment_issuer_host() {
+  deployment_host "${1}" issuer_host "${IDP_WORKER_NAME}"
+}
+
+# Prints the admin host: admin_host in custom_domain, idp-admin.<workers_dev_subdomain>.workers.dev in workers_dev.
+deployment_admin_host() {
+  deployment_host "${1}" admin_host "${ADMIN_WORKER_NAME}"
+}
+
+# Prints the custom_domain input named by key, or <worker name>.<workers_dev_subdomain>.workers.dev.
+deployment_host() {
+  local path="${1}"
+  local key="${2}"
+  local worker="${3}"
+  local mode
+  local subdomain
+  check_hosting_inputs "${path}" || exit 1
+  mode="$(hosting_mode "${path}")" || exit 1
+  if [[ "${mode}" == "custom_domain" ]]; then
+    config_string "${path}" "${key}" || exit 1
+  else
+    subdomain="$(config_string "${path}" workers_dev_subdomain)" || exit 1
+    printf '%s.%s.workers.dev\n' "${worker}" "${subdomain}"
+  fi
+}
+
+# Prints the account's workers.dev subdomain label from the Cloudflare API ("Get a Workers Subdomain",
+# GET /accounts/{account_id}/workers/subdomain); the pinned cf has no command for it. The token is the Terraform
+# token of the Vault item, which needs account-level Workers Scripts Read in the workers_dev mode
+# (docs/design/deployment.md, API トークン). op run resolves the op:// reference into curl's environment only, and curl
+# reads it from there (--variable, curl 8.3 or later), so the token never appears in an argument, in xtrace, or in
+# the output (op run also masks it). Talks to the network: only the operator's scripts call it, never a test or CI.
+read_workers_dev_subdomain() {
+  local vault="${1}"
+  local item="${2}"
+  local account_id="${3}"
+  [[ "${account_id}" =~ ^[0-9a-f]{32}$ ]] || fail "not a Cloudflare account ID: ${account_id}"
+  local response
+  response="$(env "CLOUDFLARE_API_TOKEN=op://${vault}/${item}/${OP_FIELD_TERRAFORM_API_TOKEN}" op run -- \
+    curl --fail --silent --show-error --proto '=https' --max-time 30 \
+    --variable '%CLOUDFLARE_API_TOKEN' --expand-header 'Authorization: Bearer {{CLOUDFLARE_API_TOKEN}}' \
+    "https://api.cloudflare.com/client/v4/accounts/${account_id}/workers/subdomain")" || return 1
+  # Checked on the raw JSON string, so a value with a trailing newline cannot pass after $(...) strips it.
+  printf '%s' "${response}" | jq -er 'select(.success == true) | .result.subdomain
+    | select(type == "string" and test("\\A[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\z"))'
+}
+
+# Stops unless the account's workers.dev subdomain is the deployment's workers_dev_subdomain, before anything is
+# changed (docs/design/hosting-modes.md 1.1 and 1.4). The issuer is derived from it, so a subdomain changed on the
+# dashboard would otherwise deploy the IdP under another issuer unnoticed. It also stops an account that has no
+# subdomain yet: the deploy must never create one on its own (the operator creates it on the dashboard).
+verify_workers_dev_subdomain() {
+  local config="${1}"
+  local vault="${2}"
+  local item="${3}"
+  local account_id="${4}"
+  local mode
+  local expected
+  local actual
+  mode="$(hosting_mode "${config}")" || exit 1
+  [[ "${mode}" == "workers_dev" ]] || fail "the workers.dev subdomain is checked only in the workers_dev mode"
+  expected="$(config_string "${config}" workers_dev_subdomain)" || exit 1
+  actual="$(read_workers_dev_subdomain "${vault}" "${item}" "${account_id}")" ||
+    fail "cannot read the account's workers.dev subdomain; the account needs one, and the Terraform token needs Workers Scripts Read"
+  [[ "${actual}" == "${expected}" ]] ||
+    fail "the account's workers.dev subdomain is ${actual}, not workers_dev_subdomain ${expected}; nothing was changed"
 }
 
 # Prints a required string input. A missing or empty value stops the script: no input has a default

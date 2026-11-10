@@ -19,7 +19,8 @@
 - [ ] Browser Integrity Check（BIC）で拒否された要求が、1 日の要求の上限に数えられるか
 - [ ] Go の HTTP クライアントの既定の `User-Agent` が BIC で拒否されるか（`idpctl` は常に明示するので、結果によらず設計は変わらない）
 - [ ] アカウントの `workers.dev` のサブドメインを変えた後、古いサブドメインを別のアカウントが取れるか（取れるなら issuer のなりすましになる。抑え方はサブドメインを変えないこと）
-- [ ] `cf` にアカウントの `workers.dev` のサブドメインを読むコマンドがあるか（なければ Cloudflare API の「Get a Workers Subdomain」で読む）
+- [ ] 運用者のスクリプトが `curl` で読む Cloudflare API の「Get a Workers Subdomain」の応答が、`result.subdomain` にサブドメインのラベルだけを持つこと（固定した `cf` 1.0.0-beta.21 には同じ情報を出すコマンドがないので API で読む。[ホスティングのモード](hosting-modes.md)の 1.1）。`workers.dev` のモードの Terraform 用のトークンに、`Workers Scripts Read` を足せば足りること
+- [ ] `workers.dev` のモードで `cf deploy` が、アカウントにサブドメインがないときに自分で作ろうとするか（`cf` の内部に、`workers.dev` のサブドメインを登録する処理がある）。運用者のスクリプトは、サブドメインがなければデプロイの前に止まる
 - [ ] ブラウザとパスワードマネージャーが、Public Suffix List の私的な領域のホスト名（`workers.dev` の下）のパスキーを、カスタムドメインと同じに扱うか（e2e と、つなぐ予定の端末で確かめる）
 
 **ゾーンをサービスと共有する構成（[ドメインの置き場所](domain-placement.md)の A2）**
