@@ -243,7 +243,9 @@ variable "github_plan_environment" {
 # Removed inputs. They are declared only to refuse them: an undeclared key in -var-file would only warn, and a
 # deployment file that still carries the mTLS inputs would then pass review as if the admin host were still behind
 # mTLS (docs/design/hosting-modes.md 1.1 and 1.4, fail-closed against stale configs). These are the only variables
-# with a default, and the default is null so that only their absence passes. scripts/lib.sh refuses the same keys.
+# with a default, and the default is null so that their absence passes. Terraform cannot tell an explicit null from
+# a missing key, so `"admin_allowlist": null` passes here; scripts/lib.sh (reject_removed_inputs) is the authority on
+# whether a key is present, null included, and every script stops on it before Terraform runs.
 
 variable "admin_allowlist" {
   description = "Removed with mTLS (docs/design/hosting-modes.md plan step 7). Must not be in the deployment file; admin_signing_keys replaces it."

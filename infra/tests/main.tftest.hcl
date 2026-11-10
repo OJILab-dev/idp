@@ -60,6 +60,17 @@ run "rejects_the_removed_admin_allowlist" {
   expect_failures = [var.admin_allowlist]
 }
 
+# Terraform sees an explicit null exactly as a missing key, so it cannot refuse it; scripts/lib.sh does
+# (scripts/test/lib.test.sh, "rejects a removed input set to null"). Pinned so the doc stays accurate.
+run "an_explicit_null_removed_input_passes_terraform_and_is_left_to_the_scripts" {
+  command = plan
+
+  variables {
+    admin_allowlist           = null
+    admin_client_certificates = null
+  }
+}
+
 run "rejects_the_removed_admin_client_certificates" {
   command = plan
 
