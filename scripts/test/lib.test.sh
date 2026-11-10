@@ -148,9 +148,14 @@ config_with_keys() {
 
 check_keys() {
   local keys="${1}"
+  local empty="${2-}"
   local config
   config="$(config_with_keys "${keys}")"
-  check_admin_signing_keys "${config}"
+  if [[ -n "${empty}" ]]; then
+    check_admin_signing_keys "${config}" "${empty}"
+  else
+    check_admin_signing_keys "${config}"
+  fi
   rm -f "${config}"
 }
 
@@ -159,7 +164,12 @@ test_check_admin_signing_keys() {
   local bob
   alice="$(jq -nc --arg k "${P384_KEYID}" --arg p "${P384_SPKI}" '{keyid: $k, name: "alice", public_key: $p}')"
   bob="$(admin_signing_key_row bob "${RFC6979_P384_SPKI}")"
-  assert_equal "accepts an empty list" "ok" "$(check_keys '[]' && printf ok)"
+  # Before a deploy an empty list is refused: the admin Worker would refuse every request (hosting-modes.md 1.1).
+  assert_fails "rejects an empty list" check_keys '[]'
+  assert_fails "rejects an empty list with an unknown mode" check_keys '[]' allow-all
+  # The generation script adds the first row to the empty list of a new deployment.
+  assert_equal "accepts an empty list with allow-empty" "ok" "$(check_keys '[]' allow-empty && printf ok)"
+  assert_equal "accepts valid rows with allow-empty" "ok" "$(check_keys "[${alice}]" allow-empty && printf ok)"
   assert_equal "accepts valid rows" "ok" "$(check_keys "[${alice},${bob}]" && printf ok)"
   assert_equal "accepts two keys of one admin" "ok" \
     "$(check_keys "[${alice},$(printf '%s' "${bob}" | jq -c '.name = "alice"')]" && printf ok)"

@@ -172,8 +172,9 @@ main() {
   vault="$(config_string "${config}" onepassword_vault)"
   prefix="$(config_string "${config}" onepassword_admin_key_item_prefix)"
   local item="${prefix}${admin}"
-  # Checked before 1Password is touched: an invalid list must not leave a new item without its row.
-  check_admin_signing_keys "${config}"
+  # Checked before 1Password is touched: an invalid list must not leave a new item without its row. An empty list
+  # is accepted here only, since this script writes a new deployment's first row.
+  check_admin_signing_keys "${config}" allow-empty
   require_op_session
 
   if [[ "${from_existing}" == "true" ]]; then

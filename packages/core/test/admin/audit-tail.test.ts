@@ -50,7 +50,7 @@ describe("audit_tail", () => {
       result: "success",
       detail: { credential_id: "AAEC" },
     });
-    expect(page.body.items[2]).toMatchObject({ admin_name: ROOT.name, admin_cert_sha256: ROOT.certSha256, target: `user:${alice}` });
+    expect(page.body.items[2]).toMatchObject({ admin_name: ROOT.name, admin_cert_sha256: ROOT.keyid, target: `user:${alice}` });
   });
 
   it("filters by target, operation, and a half-open time range", async () => {

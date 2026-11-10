@@ -191,7 +191,7 @@ describe("executeOperation", () => {
   });
 
   it("checks the admin identity through the audit-row builder", async () => {
-    h().admin = { name: "root", certSha256: "not-hex" };
+    h().admin = { name: "root", keyid: "not-hex" };
     await expect(run(h(), userRename, { user_id: "0f8fad5b-d9cb-469f-a165-70867728950e", name: "x" }, null)).rejects.toMatchObject({
       kind: "internal",
     });

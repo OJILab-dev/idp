@@ -281,7 +281,7 @@ CREATE TRIGGER groups_no_delete BEFORE DELETE ON groups
 BEGIN SELECT RAISE(ABORT, 'groups are never deleted'); END;
 ```
 
-マイグレーションは `contract/migrations/` に番号順に置き、各ファイルはこのドキュメントの SQL のブロックと、出てくる順に 1 対 1 で同じ内容にする（ずれはテストで検出する）。適用済みのマイグレーションは書き換えず、変更は次の番号のファイルとして足す。最初のブロックが `0001_init.sql`、2 つ目のブロックが `0002_audit_log_append_only.sql`、3 つ目のブロックが `0003_admin_request_nonces.sql` である。
+マイグレーションは `contract/migrations/` に番号順に置き、各ファイルはこのドキュメントの SQL のブロックと、出てくる順に 1 対 1 で同じ内容にする（ずれはテストで検出する）。適用済みのマイグレーションは書き換えず、変更は次の番号のファイルとして足す。最初のブロックが `0001_init.sql`、2 つ目のブロックが `0002_audit_log_append_only.sql`、3 つ目のブロックが `0003_admin_request_nonces.sql`、4 つ目のブロックが `0004_audit_log_admin_credential.sql` である。
 
 `0002_audit_log_append_only.sql` は、監査ログを出来事の表と同じく追記だけの表にする。`0001` の時点では監査ログの更新と削除を拒否するトリガーがなく、「行は削除しない」が共有コアの規律だけに頼っていた。本人による失効の条件のように、監査ログの行があることを前提にする書き込みもあるので、D1 の側で強制する。`REPLACE`（`INSERT OR REPLACE` を含む）は衝突した行を消すときに DELETE のトリガーを起こさない（SQLite「The ON CONFLICT Clause」の REPLACE の説明。DELETE のトリガーは recursive triggers が有効なときだけ起こる）ので、既にある `id` を名指しする挿入も拒否する。共有コアは `id` を名指しせず、D1 の採番に任せる。
 
@@ -313,9 +313,24 @@ CREATE TABLE admin_request_nonces (
 CREATE INDEX admin_request_nonces_expires_at ON admin_request_nonces (expires_at);
 ```
 
+`0004_audit_log_admin_credential.sql` は、監査ログに管理者の資格情報の種類の列 `admin_credential` を足す（[ホスティングのモード](hosting-modes.md)の 3.9）。`admin_cert_sha256` の意味はこの値で決まり、`signing-key` の行では、署名を検証した鍵の `keyid`（SPKI の DER の SHA-256）になる。`0001` の `CHECK` 制約を変えるには表を作り直す必要があり、追記だけの表を作り直すのは避けたいので、列は `ALTER TABLE … ADD COLUMN` で足し、規則は挿入のトリガーで強制する。管理者の認証は署名だけにする決定（[ホスティングのモード](hosting-modes.md)の運用者の決定の 2）により、`admin` の行は `signing-key` だけを持ち、`certificate` も、値のない行も拒否する。`user` と `break_glass` の行は値を持たない。IdP の Worker の挿入はこの列を名指ししないので、`0004` の前後どちらの D1 でも同じに動く。`0004` より前の行は値を持たず、`admin` の行はすべて証明書の行である。足した列の更新も、`0002` のトリガーが拒否する。このマイグレーションは、書き込む側（管理用の Worker）がこの列を書くようになる切り替えの PR と一緒に入れる。今の管理用の Worker の挿入は列を名指ししないので、先に適用すると拒否されるため。
+
+```sql
+-- 管理操作の行の資格情報の種類。admin_cert_sha256 の意味はこの値で決まり、signing-key では署名を検証した鍵の
+-- keyid（SPKI の DER の SHA-256）になる（hosting-modes.md 3.9）。CHECK を変えるには表の作り直しが要るので、
+-- 列は ADD COLUMN で足し、規則は挿入のトリガーで強制する。管理者の認証は署名だけなので、admin の行は
+-- signing-key だけを持ち、certificate は拒否する。user と break_glass の行は持たない。
+-- 0004 より前の行は admin_credential を持たず、admin の行はすべて証明書の行である。更新は 0002 のトリガーが拒否する
+ALTER TABLE audit_log ADD COLUMN admin_credential TEXT;
+CREATE TRIGGER audit_log_admin_credential BEFORE INSERT ON audit_log
+WHEN (NEW.actor = 'admin' AND (NEW.admin_credential IS NULL OR NEW.admin_credential <> 'signing-key'))
+  OR (NEW.actor <> 'admin' AND NEW.admin_credential IS NOT NULL)
+BEGIN SELECT RAISE(ABORT, 'audit_log.admin_credential does not match the actor'); END;
+```
+
 上の 16 テーブルのほかに監査ログ用のテーブル `audit_log` を 1 つ置き、管理操作と本人のパスキー操作を記録する。カラムは OWASP Logging Cheat Sheet の「いつ、どこで、誰が、何を」に対応させ、値の形は [実装に依存しない契約](cross-language-contract.md)で固定する。管理者は `idpctl` の `audit_tail` で、いつでも新しい順に読める。
 
-- 管理操作の行の操作者は、管理用の Worker が許可リストで解決した管理者の名前で、操作する側の自己申告ではない（[管理 CLI と管理用の Worker](idpctl.md)参照）。上の SQL のコメントは前の設計（mTLS のクライアント証明書のフィンガープリント）のままで、マイグレーションと 1 対 1 なので書き換えない。署名に切り替えた後の `admin_cert_sha256` は、署名を検証した鍵の `keyid`（SPKI の DER の SHA-256）になり、種類を区別する `admin_credential` の列とトリガーは `0004` のマイグレーションで足す。署名の `nonce` を置く `admin_request_nonces` は `0003` で足した（上のブロック）。`0004` の SQL は、マイグレーションを足す PR でこの文書に書く（[ホスティングのモード](hosting-modes.md)の 3.6、3.9）。
+- 管理操作の行の操作者は、管理用の Worker が許可リストで解決した管理者の名前で、操作する側の自己申告ではない（[管理 CLI と管理用の Worker](idpctl.md)参照）。上の SQL のコメントは前の設計（mTLS のクライアント証明書のフィンガープリント）のままで、マイグレーションと 1 対 1 なので書き換えない。署名に切り替えた後の `admin_cert_sha256` は、署名を検証した鍵の `keyid`（SPKI の DER の SHA-256）になり、種類を区別する `admin_credential`（`signing-key`）の列とトリガーは `0004` のマイグレーションで足した。署名の `nonce` を置く `admin_request_nonces` は `0003` で足した（上のブロック。[ホスティングのモード](hosting-modes.md)の 3.6、3.9）。
 - 記録するのは書き込みの操作で、読み取りの操作（`users_list`、`audit_tail` など）は記録しない。
 - IdP の Worker が書くのは、本人のパスキー操作だけにする。登録リンクによる登録は `passkey_enroll`、本人による追加は `passkey_add`、本人による失効は `passkey_self_revoke` とし、`actor` は `user`、`target` は `user:<id>`、`detail_json` に credential ID を入れる。本人への通知の代わりに、認証器が増えたり減ったりしたことを管理者が監査ログで確認できるようにする（[認証フロー](authentication.md)参照）。
 - 成功した操作は、操作と同じバッチで 1 行を書く。管理用の Worker は、失敗した操作も記録する。バッチが丸ごとロールバックされるので、その後に別の書き込みで `failure` の行を書く。失敗の行を書くのは、許可リストで管理者が確定した後の失敗だけにする。署名の検証や許可リストで拒否したリクエストは、監査ログではなく管理用の Worker のログに残す。

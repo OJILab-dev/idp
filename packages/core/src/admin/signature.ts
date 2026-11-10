@@ -61,8 +61,13 @@ export type VerifiedAdminSignature = {
   readonly expiresAt: number;
 };
 
-/** The outcome of {@link verifyAdminSignature}. */
-export type AdminSignatureResult = VerifiedAdminSignature | { readonly ok: false; readonly reason: AdminSignatureRefusal };
+/**
+ * The outcome of {@link verifyAdminSignature}. A refusal carries the keyid the request claimed once the profile check
+ * passed (so it is 64 lowercase hex), for the Worker log only (docs/design/deployment.md, "ログ").
+ */
+export type AdminSignatureResult =
+  | VerifiedAdminSignature
+  | { readonly ok: false; readonly reason: AdminSignatureRefusal; readonly keyid?: string };
 
 type Parsed = {
   readonly label: string;
@@ -103,9 +108,11 @@ export async function verifyAdminSignature(
   keys: ReadonlyMap<string, AdminSigningKey>,
   now: number,
 ): Promise<AdminSignatureResult> {
+  let claimed: string | undefined;
   try {
     const parsed = parseHeaders(request.headers);
     const profile = checkProfile(parsed.input, request);
+    claimed = profile.keyid;
     const key = keys.get(profile.keyid);
     if (key === undefined) throw new Refusal("unknown-key");
     // Written as "not inside" so that a NaN clock, for which every comparison is false, refuses instead of passing.
@@ -120,7 +127,7 @@ export async function verifyAdminSignature(
       expiresAt: profile.created + ADMIN_SIGNATURE_WINDOW_SECONDS,
     };
   } catch (error) {
-    if (error instanceof Refusal) return { ok: false, reason: error.reason };
+    if (error instanceof Refusal) return { ok: false, reason: error.reason, ...(claimed === undefined ? {} : { keyid: claimed }) };
     throw error;
   }
 }

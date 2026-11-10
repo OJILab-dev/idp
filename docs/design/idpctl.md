@@ -2,7 +2,7 @@
 
 管理操作はすべて、IdP の Worker とは別のホスト名に置く管理用の Worker が、共有コアのユースケースとして実行する。手元の `idpctl` は、その HTTPS の管理 API を呼ぶだけの Go の薄いクライアントにする。管理者は、`idpctl` が管理者の秘密鍵で要求ごとに付ける HTTP Message Signatures（RFC 9421）の署名を、管理用の Worker が持つ公開鍵の許可リストで検証して確かめる。どちらのホスティングのモード（カスタムドメインと `workers.dev`）でも同じ方法を使う（[ホスティングのモード](hosting-modes.md)。運用者の決定は 2026-11-10）。
 
-移行の間の注意：この文書は決定の後の姿を書く。[ホスティングのモード](hosting-modes.md)の実装の順番の 6 が main に入るまで、今のコードの管理用の Worker は、Cloudflare の managed CA が発行したクライアント証明書による mTLS と、証明書のフィンガープリントの許可リスト（`ADMIN_ALLOWLIST`）で管理者を確かめ、`idpctl` は `--cert` でクライアント証明書を出す。mTLS の撤去は実装の順番の 7 で行う。
+移行の間の注意：管理用の Worker は、[ホスティングのモード](hosting-modes.md)の実装の順番の 6 で署名だけで管理者を確かめるようになり、mTLS の再確認と `ADMIN_ALLOWLIST` を外した。`idpctl` の `--cert`、Terraform の mTLS のホスト名の割り当てとクライアント証明書は、mTLS の撤去（実装の順番の 7）まで残るが、管理用の Worker の判断には使われない。
 
 このドキュメントでは、次の 2 種類の秘密を区別して書く。
 
@@ -40,7 +40,7 @@ D1 を手元から直接操作する形（D1 REST API）をやめ、管理 API �
 
 - `idpctl` は、要求ごとに管理者の秘密鍵で RFC 9421 の署名を作り、`Signature-Input`、`Signature`、`Content-Digest` のヘッダーで送る。対象のコンポーネントは `@method`、`@target-uri`、`@authority`、`content-digest`、本文が空でない要求の `content-type`、`Idempotency-Key` を持つ要求の `idempotency-key` に固定し、パラメーターは `created`、`nonce`、`keyid`、`tag`（`idp-admin`）の 4 つだけにする。アルゴリズムは ECDSA P-384 と SHA-384 で、要求の `alg` は受け付けない。管理者の秘密鍵は Cloudflare にも IdP にも渡らない。
 - 管理用の Worker のゲートが、管理者の認証の唯一の強制の箇所になり、fail-closed で確かめる。順番は、ホスト名、スキーム、TLS のバージョン、接続元の IP ごとの Rate Limiting バインディング、本文の大きさ、構造化フィールドの厳格な解析、コンポーネントとパラメーターの形、`keyid` が許可リストにあること、`created` が今の時刻の前後 60 秒にあること、許可リストの公開鍵による署名の検証、本文の SHA-256 と `Content-Digest` の一致、`nonce` の D1 への一意な挿入（[ホスティングのモード](hosting-modes.md)の 3.8）。D1 に書くのは最後の `nonce` だけで、署名の検証を通らない要求は D1 に 1 行も書かない。
-- Rate Limiting で上限を超えた要求は、本文のない 429 を返す。解析から `nonce` までのどこで拒否しても、同じ `forbidden` の本文を返し、理由は Worker のログにだけ書く。`nonce` の挿入が一意制約以外の理由で失敗したときは `internal` を返す。
+- Rate Limiting で上限を超えた要求は、本文のない 429 を返す。接続元の IP がない要求は `forbidden`、バインディングの呼び出しの失敗は `internal` にする。本文の大きさ（64 KiB）を超えた要求と、解析から `nonce` までのどこで拒否した要求には、同じ `forbidden` の本文を返し、理由は Worker のログにだけ書く。`nonce` の挿入が一意制約以外の理由で失敗したときは `internal` を返す。管理操作は、署名の対象になった本文のバイト列だけを入力として解釈する。
 - 同じ `nonce` の 2 回目の要求は、署名が正しくてもリプレイとして拒否する。`nonce` は D1 の `admin_request_nonces` に `created` から 60 秒の有効期限で置き、期限切れから窓 1 つ分（60 秒）を過ぎた行は次の挿入と同じバッチで消す（[ホスティングのモード](hosting-modes.md)の 3.6）。
 - Cloudflare の managed CA とクライアント証明書は使わない。前の設計では、エッジの mTLS と、Worker での `request.cf.tlsClientAuth` の再確認（`certVerified`、`certRevoked`、`certFingerprintSHA256`）を使っていた。③ で WAF のカスタムルールを外した後は、証明書のない要求も管理用の Worker に届き、mTLS に残る利点は小さかった。managed CA はアカウント単位で検証するので、A2 ではサービスのために発行した証明書もエッジを通り、信頼の根が広かった。両方のモードで 1 つの認証の経路にするため、署名だけにした（[ホスティングのモード](hosting-modes.md)の 4.2）。
 - 管理用の Worker は、`request.cf.tlsVersion` が `TLSv1.2` か `TLSv1.3` でない要求を、ホスト名の確認と同じく何もせずに `forbidden` で拒否する。ゾーンの TLS の最小バージョンを IdP は持たないため（[デプロイと設定](deployment.md)の設定値）。
@@ -254,7 +254,7 @@ ID トークンの署名アルゴリズム（[トークン設計](tokens.md)参�
 
 **監査ログ**
 
-- 管理用の Worker は管理操作を監査ログに書き、操作者として、許可リストで確定した管理者の名前と、署名を検証した鍵の `keyid`（SPKI の DER の SHA-256）を残す。列は前の設計の `admin_cert_sha256` を使い、資格情報の種類を `admin_credential`（`signing-key`）で区別する（[ホスティングのモード](hosting-modes.md)の 3.9。列を足すマイグレーションは実装の順番の 6 で足す）。本人のパスキー操作（登録リンクによる登録、本人による追加と失効）は IdP の Worker が同じ表に書く。セッション ID、トークン、シークレット、登録トークンは書かない（スキーマは[データモデル](data-model.md)参照）。失敗した操作も `failure` の行として記録する（IdP の Worker は成功の行だけを書く）。
+- 管理用の Worker は管理操作を監査ログに書き、操作者として、許可リストで確定した管理者の名前と、署名を検証した鍵の `keyid`（SPKI の DER の SHA-256）を残す。列は前の設計の `admin_cert_sha256` を使い、資格情報の種類を `admin_credential`（`signing-key`）で区別する（[ホスティングのモード](hosting-modes.md)の 3.9。列とトリガーは `0004` のマイグレーションで足した）。本人のパスキー操作（登録リンクによる登録、本人による追加と失効）は IdP の Worker が同じ表に書く。セッション ID、トークン、シークレット、登録トークンは書かない（スキーマは[データモデル](data-model.md)参照）。失敗した操作も `failure` の行として記録する（IdP の Worker は成功の行だけを書く）。
 - 操作者はサーバーが確かめた値なので、管理者が監査ログの行を管理 API で偽造したり消したりすることはできない。管理 API には監査ログを書き換える操作を置かない。
 - **受け入れるリスク**：D1 の API トークンを持つ人（下の break-glass、基盤の権限）は、共有コアを通らずに D1 を書けるので、管理者の行も `actor` が `user` の行（本人によるパスキーの追加と失効）も偽造でき、行を消すこともできる。本人の行は、本人への通知をしない NIST の通知要件の例外を補う手段（[認証フロー](authentication.md)参照）なので、API トークンを持つ人に対しては、その補いが効かない。ただし API トークンはそれだけで全ユーザーの全操作ができる基盤の権限であり（[操作とリスク](operations-and-risks.md)参照）、監査ログでそれを防ぐことはもともとできない。家族規模の運用では、この限界を受け入れる。
 

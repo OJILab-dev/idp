@@ -19,6 +19,15 @@ export {
 export { InvalidBase64urlError, base64urlDecode, base64urlEncode } from "./base64url.js";
 export { DatabaseError, type Database, type SqlRow, type SqlStatement, type SqlStatementResult, type SqlValue } from "./db.js";
 export { sha256Base64url } from "./hash.js";
+export {
+  ADMIN_WORKER_NAME,
+  HOSTING_MODES,
+  IDP_WORKER_NAME,
+  InvalidHostingError,
+  checkHostingHosts,
+  parseHostingMode,
+  type HostingMode,
+} from "./hosting.js";
 export { isClientId, isCredentialId, isRandomTokenFormat, isUuidV4, newUuidV4, randomToken } from "./identifiers.js";
 export { InvalidIssuerError, parseIssuer, type Issuer } from "./issuer.js";
 export { InvalidJwkError, jwkThumbprint } from "./jwk.js";

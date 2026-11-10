@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { D1Database } from "@cloudflare/workers-types";
-import { createTestD1, migrationNames, readMigration, splitStatements, type TestD1 } from "./d1.js";
+import { applyMigrations, createTestD1, migrationNames, readMigration, splitStatements, type TestD1 } from "./d1.js";
 
 const NOW = 1_800_000_000;
 
@@ -127,8 +127,8 @@ describe("append-only and never-deleted rows (triggers)", () => {
     async function addAuditRow(): Promise<void> {
       await db
         .prepare(
-          `INSERT INTO audit_log (occurred_at, actor, admin_name, admin_cert_sha256, writer_version, operation, target, result, detail_json)
-           VALUES (?, 'admin', 'root', ?, 'admin-worker@test', 'user_create', 'none', 'success', '{}')`,
+          `INSERT INTO audit_log (occurred_at, actor, admin_name, admin_cert_sha256, admin_credential, writer_version, operation, target, result, detail_json)
+           VALUES (?, 'admin', 'root', ?, 'signing-key', 'admin-worker@test', 'user_create', 'none', 'success', '{}')`,
         )
         .bind(NOW, "a".repeat(64))
         .run();
@@ -144,7 +144,14 @@ describe("append-only and never-deleted rows (triggers)", () => {
       await addAuditRow();
       await expect(db.prepare("UPDATE audit_log SET result = 'failure'").run()).rejects.toThrow(/audit_log is append-only/);
       await expect(db.prepare("UPDATE audit_log SET detail_json = '{}' WHERE id = 1").run()).rejects.toThrow(/audit_log is append-only/);
-      expect(await db.prepare("SELECT result FROM audit_log WHERE id = 1").first("result")).toBe("success");
+      // The column 0004 added is covered by the same trigger: a row's credential kind cannot be rewritten either.
+      await expect(db.prepare("UPDATE audit_log SET admin_credential = 'certificate' WHERE id = 1").run()).rejects.toThrow(
+        /audit_log is append-only/,
+      );
+      expect(await db.prepare("SELECT result, admin_credential FROM audit_log WHERE id = 1").first()).toEqual({
+        result: "success",
+        admin_credential: "signing-key",
+      });
     });
 
     it("rejects DELETE", async () => {
@@ -259,6 +266,75 @@ describe("admin_request_nonces (0003)", () => {
   });
 });
 
+describe("audit_log.admin_credential (0004)", () => {
+  const MIGRATION = "0004_audit_log_admin_credential.sql";
+
+  function insert(target: D1Database, actor: string, credential: string | null, columns = true) {
+    const admin = actor === "admin";
+    if (!columns) {
+      // The insert of a writer that predates 0004: it does not name the column at all.
+      return target
+        .prepare(
+          `INSERT INTO audit_log (occurred_at, actor, admin_name, admin_cert_sha256, writer_version, operation, target, result)
+           VALUES (?, ?, ?, ?, 'v', 'op', 'none', 'success')`,
+        )
+        .bind(NOW, actor, admin ? "root" : null, admin ? "a".repeat(64) : null)
+        .run();
+    }
+    return target
+      .prepare(
+        `INSERT INTO audit_log (occurred_at, actor, admin_name, admin_cert_sha256, admin_credential, writer_version, operation, target, result)
+         VALUES (?, ?, ?, ?, ?, 'v', 'op', 'none', 'success')`,
+      )
+      .bind(NOW, actor, admin ? "root" : null, admin ? "a".repeat(64) : null, credential)
+      .run();
+  }
+
+  it("adds the column and its insert trigger without rebuilding the append-only table", () => {
+    const statements = splitStatements(readMigration(MIGRATION));
+    expect(statements).toHaveLength(2);
+    expect(statements[0]).toMatch(/^ALTER TABLE audit_log ADD COLUMN admin_credential TEXT;$/);
+    expect(statements[1]).toMatch(/^CREATE TRIGGER audit_log_admin_credential BEFORE INSERT ON audit_log\b/);
+  });
+
+  it("requires signing-key on admin rows and refuses certificate, other values, and NULL", async () => {
+    await expect(insert(db, "admin", "signing-key")).resolves.toBeDefined();
+    // The signature-only decision (docs/design/hosting-modes.md 3.9): no new row may claim a certificate.
+    await expect(insert(db, "admin", "certificate")).rejects.toThrow(/admin_credential/);
+    await expect(insert(db, "admin", "SIGNING-KEY")).rejects.toThrow(/admin_credential/);
+    await expect(insert(db, "admin", null)).rejects.toThrow(/admin_credential/);
+    // The admin Worker before the switch named no admin_credential; after 0004 its insert is refused.
+    await expect(insert(db, "admin", null, false)).rejects.toThrow(/admin_credential/);
+    expect(await db.prepare("SELECT COUNT(*) AS n FROM audit_log").first("n")).toBe(1);
+  });
+
+  it.each(["user", "break_glass"])("keeps admin_credential NULL on %s rows", async (actor) => {
+    await expect(insert(db, actor, null)).resolves.toBeDefined();
+    // The IdP Worker's insert does not name the column, so it is unaffected by 0004.
+    await expect(insert(db, actor, null, false)).resolves.toBeDefined();
+    await expect(insert(db, actor, "signing-key")).rejects.toThrow(/admin_credential/);
+    await expect(insert(db, actor, "certificate")).rejects.toThrow(/admin_credential/);
+  });
+
+  it("keeps the rows written before 0004, which all came from a certificate, as they were", async () => {
+    const before = await createTestD1("0003_admin_request_nonces.sql");
+    try {
+      await insert(before.db, "admin", null, false);
+      await insert(before.db, "user", null, false);
+      await applyMigrations(before.db, [MIGRATION]);
+      const { results } = await before.db.prepare("SELECT actor, admin_credential FROM audit_log ORDER BY id").all();
+      expect(results).toEqual([
+        { actor: "admin", admin_credential: null },
+        { actor: "user", admin_credential: null },
+      ]);
+      // And the table stays append-only for them.
+      await expect(before.db.prepare("UPDATE audit_log SET admin_credential = 'certificate'").run()).rejects.toThrow(/append-only/);
+    } finally {
+      await before.dispose();
+    }
+  });
+});
+
 describe("identity constraints", () => {
   it("prevents one id from being both a user and a group", async () => {
     await addGroup("x");
@@ -337,12 +413,14 @@ describe("effective_access", () => {
 
 describe("audit_log constraints", () => {
   function insert(actor: string, adminName: string | null, cert: string | null, result: string) {
+    // Admin rows carry the credential kind 0004 requires; the CHECK constraints of 0001 are what these cases test.
+    const credential = actor === "admin" ? "signing-key" : null;
     return db
       .prepare(
-        `INSERT INTO audit_log (occurred_at, actor, admin_name, admin_cert_sha256, writer_version, operation, target, result)
-         VALUES (?, ?, ?, ?, 'v', 'op', 'none', ?)`,
+        `INSERT INTO audit_log (occurred_at, actor, admin_name, admin_cert_sha256, admin_credential, writer_version, operation, target, result)
+         VALUES (?, ?, ?, ?, ?, 'v', 'op', 'none', ?)`,
       )
-      .bind(NOW, actor, adminName, cert, result)
+      .bind(NOW, actor, adminName, cert, credential, result)
       .run();
   }
 
