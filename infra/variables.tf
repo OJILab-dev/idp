@@ -98,8 +98,14 @@ variable "admin_signing_keys" {
   type     = list(map(string))
   nullable = false
 
-  # An empty list is accepted: a new deployment starts with no admin (docs/deployment/runbook.md, stage 0), and the
-  # admin Worker refuses every request while it is empty.
+  # An empty list is refused: the admin Worker reads this list as ADMIN_SIGNING_KEYS and refuses every request while
+  # it is empty (docs/design/hosting-modes.md 1.1 and 1.4). A new deployment adds its first row with
+  # scripts/generate-admin-key.sh (docs/deployment/runbook.md, stage 4a) before Terraform runs (stage 4b).
+  validation {
+    condition     = length(var.admin_signing_keys) > 0
+    error_message = "admin_signing_keys must not be empty; add a row with scripts/generate-admin-key.sh (docs/deployment/runbook.md, stage 4a)."
+  }
+
   validation {
     # Compared as one string: a list never equals a tuple literal in Terraform.
     condition     = alltrue([for row in var.admin_signing_keys : join(",", sort(keys(row))) == "keyid,name,public_key"])

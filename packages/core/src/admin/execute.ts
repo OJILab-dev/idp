@@ -100,7 +100,7 @@ async function runWrite<I, R>(
   const early = operation.idempotent ? plan.result([]) : undefined;
   const audit = auditSuccessStatement({
     occurredAt: now,
-    actor: { kind: "admin", name: ctx.admin.name, certSha256: ctx.admin.certSha256 },
+    actor: { kind: "admin", name: ctx.admin.name, keyid: ctx.admin.keyid },
     writerVersion: ctx.writerVersion,
     operation: operation.name,
     target: plan.target,
@@ -182,7 +182,7 @@ async function writeFailureRow<I, R>(
     await ctx.db.batch([
       auditFailureStatement({
         occurredAt: now,
-        actor: { kind: "admin", name: ctx.admin.name, certSha256: ctx.admin.certSha256 },
+        actor: { kind: "admin", name: ctx.admin.name, keyid: ctx.admin.keyid },
         writerVersion: ctx.writerVersion,
         operation: operation.name,
         target: failureTarget(operation as WriteOperation<unknown, unknown>, input),

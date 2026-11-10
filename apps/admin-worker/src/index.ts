@@ -1,4 +1,4 @@
-// The admin Worker: the admin API behind edge mTLS and the certificate allowlist (docs/design/idpctl.md).
+// The admin Worker: the admin API behind the RFC 9421 signature and the signing-key allowlist (docs/design/idpctl.md).
 import { createApp } from "./app.js";
 import type { Env } from "./config.js";
 

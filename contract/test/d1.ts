@@ -53,8 +53,13 @@ export function readMigration(name: string): string {
  * Starts an in-memory D1 (workerd's SQLite, the engine `cf dev` uses) and applies the migrations.
  *
  * Each call gets its own empty database, so tests do not share state.
+ *
+ * @param through The last migration to apply; every migration when omitted. A test of a later migration starts from
+ *   the schema before it, holds rows written then, and applies the rest with {@link applyMigrations}.
+ * @returns The database, migrated through `through`.
+ * @throws {Error} `through` names no migration.
  */
-export async function createTestD1(): Promise<TestD1> {
+export async function createTestD1(through?: string): Promise<TestD1> {
   const mf = new Miniflare({
     workers: [
       {
@@ -76,7 +81,20 @@ export async function createTestD1(): Promise<TestD1> {
     ],
   });
   const db = (await mf.getD1Database("DB")) as unknown as D1Database;
-  const statements = migrationNames().flatMap((name) => splitStatements(readMigration(name)));
-  await db.batch(statements.map((s) => db.prepare(s)));
+  const names = migrationNames();
+  const last = through === undefined ? names.length - 1 : names.indexOf(through);
+  if (last < 0) throw new Error(`no migration named ${String(through)}`);
+  await applyMigrations(db, names.slice(0, last + 1));
   return { db, dispose: () => mf.dispose() };
+}
+
+/**
+ * Applies migrations in one batch, as `cf d1 migrations apply` applies one file.
+ *
+ * @param db The database.
+ * @param names The migration files, in order.
+ */
+export async function applyMigrations(db: D1Database, names: readonly string[]): Promise<void> {
+  const statements = names.flatMap((name) => splitStatements(readMigration(name)));
+  await db.batch(statements.map((s) => db.prepare(s)));
 }

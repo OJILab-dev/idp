@@ -12,14 +12,14 @@ import { createD1Database } from "../../../d1-adapter/src/index.js";
 import { createTestD1, type TestD1 } from "../../../../contract/test/d1.js";
 
 export const T0 = 1_800_000_000;
-export const ROOT = { name: "root", certSha256: "a".repeat(64) } as const;
+export const ROOT = { name: "root", keyid: "a".repeat(64) } as const;
 
 /** The state of one test: the database, a context whose clock and settings the test can change, and helpers. */
 export type Harness = {
   readonly db: Database;
   clock: number;
   rs256Enabled: boolean;
-  admin: { readonly name: string; readonly certSha256: string };
+  admin: { readonly name: string; readonly keyid: string };
   readonly failureAuditErrors: unknown[];
   readonly ctx: () => AdminContext;
 };

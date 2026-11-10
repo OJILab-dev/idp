@@ -374,9 +374,10 @@ describe("audit events", () => {
 });
 
 describe("everything else", () => {
-  it("answers not-found for an unknown path or method", async () => {
+  it("answers not-found for an unknown path, and forbidden for a method no signed admin request uses", async () => {
     await expectProblem(await call(f(), "GET", "/v1/nope"), "not-found", 404);
-    await expectProblem(await call(f(), "PATCH", "/v1/users"), "not-found", 404);
+    // The signature profile admits GET, POST, PUT, and DELETE only (docs/design/hosting-modes.md 3.2).
+    await expectProblem(await call(f(), "PATCH", "/v1/users"), "forbidden", 403);
     await expectProblem(await call(f(), "GET", "/v1/users/"), "not-found", 404);
   });
 

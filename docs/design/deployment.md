@@ -33,9 +33,9 @@
 | GitHub Environment の名前（デプロイ用と plan 用） | デプロイの設定ファイル | CI の workflow、1Password の destination の条件 |
 | 管理者の署名鍵の許可リスト（`admin_signing_keys`、新設） | デプロイの設定ファイル（管理者の生成スクリプトが行を書く） | 管理用の Worker の設定 `ADMIN_SIGNING_KEYS` |
 
-- 前の設計の入力の、管理者の証明書のフィンガープリントの許可リスト（`admin_allowlist`）とクライアント証明書の CSR（`admin_client_certificates`）は、管理者の認証を署名だけにする決定で廃止する。外すのは mTLS の撤去（[ホスティングのモード](hosting-modes.md)の実装の順番の 7）で、それまでは今のコードが使うので残す。`zone_singletons_owner` は ③ で外れた。
-- 新設の入力のうち、`admin_signing_keys` と `admin_rate_limit_namespace_id` は、[ホスティングのモード](hosting-modes.md)の実装の順番の 5 で、Terraform の変数（設定ファイルの検証）と生成スクリプトに足した。管理用の Worker に渡すのは実装の順番の 6 から。`hosting_mode` と `workers_dev_subdomain` は実装の順番の 8 で足し、それまでは設定ファイルに書かない。
-- Terraform は `admin_signing_keys` の形（3 つのメンバー、`keyid` の形、管理者の名前、P-384 の SPKI の base64 の形、`keyid` の重複）だけを確かめる。Terraform はバイト列の SHA-256 を計算できないので、`keyid` と `public_key` の一致と、公開鍵が曲線の上の点であることは、生成スクリプト（書くたびに設定ファイルのリスト全体を確かめる）と管理用の Worker が確かめる。空のリストは、新しいデプロイが管理者のいない状態から始まるので、今は受け付ける（管理用の Worker は、空の間はすべての要求を拒否する）。これは[ホスティングのモード](hosting-modes.md)の 1.1 と 1.4 の必須からの一時的な例外で、実装の順番の 6 で、デプロイの前の検証と Terraform の変数でも空のリストを拒否する。
+- 前の設計の入力の、管理者の証明書のフィンガープリントの許可リスト（`admin_allowlist`）とクライアント証明書の CSR（`admin_client_certificates`）は、管理者の認証を署名だけにする決定で廃止する。外すのは mTLS の撤去（[ホスティングのモード](hosting-modes.md)の実装の順番の 7）で、それまでは Terraform の mTLS の割り当てとクライアント証明書が使うので残す。管理用の Worker は実装の順番の 6 から使わない。`zone_singletons_owner` は ③ で外れた。
+- 新設の入力のうち、`admin_signing_keys` と `admin_rate_limit_namespace_id` は、[ホスティングのモード](hosting-modes.md)の実装の順番の 5 で、Terraform の変数（設定ファイルの検証）と生成スクリプトに足した。実装の順番の 6 で、管理用の Worker の `cloudflare.config.ts` が、デプロイのスクリプトの環境変数 `IDP_ADMIN_SIGNING_KEYS`（`admin_signing_keys` の JSON）と `IDP_ADMIN_RATE_LIMIT_NAMESPACE_ID` から `ADMIN_SIGNING_KEYS` と `RATE_LIMITER` を組み立てるようにした。ほかに、`IDP_HOSTING_MODE`、`IDP_ISSUER`、`IDP_ADMIN_HOST`、`IDP_D1_DATABASE_ID` を受け取り、どれかが欠けているか形が違えば設定の評価が失敗する。`hosting_mode` と `workers_dev_subdomain` は実装の順番の 8 で足し（それまで、デプロイのスクリプトは `IDP_HOSTING_MODE` に `custom_domain` を渡す）、それまでは設定ファイルに書かない。
+- Terraform は `admin_signing_keys` の形（3 つのメンバー、`keyid` の形、管理者の名前、P-384 の SPKI の base64 の形、`keyid` の重複）だけを確かめる。Terraform はバイト列の SHA-256 を計算できないので、`keyid` と `public_key` の一致と、公開鍵が曲線の上の点であることは、生成スクリプト（書くたびに設定ファイルのリスト全体を確かめる）と管理用の Worker が確かめる。空のリストは、[ホスティングのモード](hosting-modes.md)の 1.1 と 1.4 の必須に合わせ、Terraform の変数、デプロイの前の検証（`scripts/lib.sh` の `check_admin_signing_keys`）、管理用の Worker の `cloudflare.config.ts`、管理用の Worker 自身のすべてで拒否する（実装の順番の 6 で、実装の順番の 5 の一時的な例外を終えた）。例外は生成スクリプトだけで、新しいデプロイの空のリストに最初の行を足すために、書く前の確認では空を受け付け、書いた後のリストは空を拒否する確認に通す。
 
 - デプロイの設定ファイルは、デプロイごとに 1 つ、`deployments/<デプロイの名前>.tfvars.json` に置く。秘密を含まない値だけを書く。Terraform は `-var-file` で読み、`cf` のスクリプトと CI も同じファイルを読む。同じ値を 2 か所に持たないため。
 - アカウント ID だけは設定ファイルに書かず、1Password から実行時に環境変数で受け取る。公開リポジトリにアカウント ID を残さないため。ゾーン、ホスト名、`workers.dev` のサブドメインは DNS と discovery で外から見える値で、許可リストの公開鍵と `keyid` は秘密ではないので、設定ファイルに書いてよい。
@@ -115,6 +115,8 @@
 - main へのマージ：その 1 つのコミットから、`terraform apply`、`cf` のスクリプトによる D1 のマイグレーション、IdP の Worker の `cf deploy`、管理用の Worker の `cf deploy` の順に流し、最初の失敗で止める。
 - 手動の承認は置かない。apply とデプロイは main へのマージで自動で走る。デプロイは管理者の署名鍵の許可リストも変えるので、main のブランチのルールセット（PR のレビューとマージの権限）が、管理者の権限と基盤の変更の唯一の関門になる（[操作とリスク](operations-and-risks.md)参照）。
 - 2 つの Worker は別々に切り替わるので、マイグレーションは expand / contract にする。新しいマイグレーションは、古いコードと新しいコードの両方で動く形にし、古い形を消すのは、両方の Worker が新しいコードになった後の別のマイグレーションで行う。
+- 例外：`0004`（監査ログの `admin_credential`）は、署名だけにする決定に合わせ、`admin_credential` のない `admin` の行を拒否するので、署名の前の管理用の Worker とは両立しない（IdP の Worker の挿入は列を名指ししないので影響しない）。そのため `0004` は、署名に切り替えた管理用の Worker（[ホスティングのモード](hosting-modes.md)の実装の順番の 6）と同じデプロイで適用し、それより前のデプロイで先に適用しない。上の流れでは同じデプロイの中でマイグレーションが管理用の Worker の `cf deploy` より先に走るので、その間だけ古い管理用の Worker と `0004` が並ぶが、その間に管理操作の書き込みは走らない（管理操作は `idpctl` から運用者が送るものだけで、デプロイの間には送らない）ので害はない。最初のデプロイがすでにこの管理用の Worker を含むので、署名の前の管理用の Worker が動いたデプロイは実際にはない。
+- 管理者が締め出されたときは、Worker を前のバージョンに戻さず、許可リストの行か鍵を PR で直してデプロイし直す。`0004` の後に署名の前の管理用の Worker へ戻すと、管理操作の書き込みがすべて `0004` のトリガーで失敗する。`0004` より前からあるデプロイで戻すことがどうしても避けられないときは、先に break-glass で `0004` のトリガーを外す。
 - ロールバック：Worker は前のバージョンに戻す。Cloudflare のドキュメントは、ロールバックをダッシュボードと Wrangler の `wrangler rollback` でしか説明していない（Cloudflare「Rollbacks」）。`cf` か Cloudflare API でできるかは実装の前に確かめる（[未決事項](open-questions.md)参照）。ロールバックはバインディング先の D1 を変えない（同じページの「Bindings」）。D1 は Time Travel で戻す。
 - 依存の取得は、Takumi Guard の下で、バージョンを固定した pnpm のセットアップの Action と `pnpm install --frozen-lockfile` で行う。Takumi Guard が pnpm に対応していることは利用者が確認済みで、セットアップの Action の実装で改めて確かめる。
 - `examples/github-actions/deploy.yml` は、今は npm の雛形のままで、pnpm、`cf`、Terraform の上の流れに作り直すのは実装の作業にする。
@@ -172,7 +174,7 @@
 - 管理者は、要求ごとの RFC 9421 の署名を、許可リストの公開鍵で検証して確かめる。両方のモードで同じ（[管理 CLI と管理用の Worker](idpctl.md)、[ホスティングのモード](hosting-modes.md)の 3）。エッジでは何も止めず、管理用の Worker のゲートが拒否する。プレビューの URL は無効にし、カスタムドメインのモードでは `workers.dev` も無効にする。
 - 管理者の署名鍵の許可リスト（`admin_signing_keys`）は、デプロイの設定ファイル（上の「デプロイごとの入力」）に置き、管理用の Worker の設定 `ADMIN_SIGNING_KEYS` として CI のデプロイでだけ変える。D1 には置かない。
 - 管理用の Worker も、接続元の IP ごとの Rate Limiting バインディングを持つ。名前空間の ID は `admin_rate_limit_namespace_id` で、IdP の Worker と分ける。
-- 移行の間：[ホスティングのモード](hosting-modes.md)の実装の順番の 6 が main に入るまで、今の管理用の Worker は、管理用のホスト名の mTLS と証明書のフィンガープリントの許可リスト（`admin_allowlist`）で管理者を確かめる。クライアント証明書の発行と失効には「SSL and Certificates Write」の権限が要り、基盤の権限として扱う。
+- 移行の間：管理用の Worker は[ホスティングのモード](hosting-modes.md)の実装の順番の 6 で署名だけで管理者を確かめるようになった。mTLS の撤去（実装の順番の 7）までは、Terraform が管理用のホスト名の mTLS の割り当てとクライアント証明書を持ち、その発行と失効には「SSL and Certificates Write」の権限が要るので、基盤の権限として扱う。
 
 **D1 の API トークン（break-glass）**
 

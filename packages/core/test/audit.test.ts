@@ -16,7 +16,7 @@ import { createTestD1, type TestD1 } from "../../../contract/test/d1.js";
 const NOW = 1_800_000_000;
 const USER = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const GROUP = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
-const ADMIN: AuditActor = { kind: "admin", name: "alice-admin", certSha256: "a".repeat(64) };
+const ADMIN: AuditActor = { kind: "admin", name: "alice-admin", keyid: "a".repeat(64) };
 
 let t: TestD1;
 let db: Database;
@@ -58,6 +58,8 @@ describe("auditSuccessStatement", () => {
         actor: "admin",
         admin_name: "alice-admin",
         admin_cert_sha256: "a".repeat(64),
+        // The keyid of the signing key the admin Worker verified (docs/design/hosting-modes.md 3.9).
+        admin_credential: "signing-key",
         writer_version: "admin-worker@1",
         operation: "group_member_add",
         target: `group:${GROUP}`,
@@ -79,7 +81,19 @@ describe("auditSuccessStatement", () => {
       }),
     ]);
     const [row] = await rows();
-    expect(row).toMatchObject({ actor: "user", admin_name: null, admin_cert_sha256: null, result: "success" });
+    expect(row).toMatchObject({ actor: "user", admin_name: null, admin_cert_sha256: null, admin_credential: null, result: "success" });
+  });
+
+  it("does not name admin_credential in a user row, so the IdP Worker does not depend on migration 0004", () => {
+    const statement = auditSuccessStatement({
+      occurredAt: NOW,
+      actor: { kind: "user" },
+      writerVersion: "worker@1",
+      operation: "passkey_add",
+      target: `user:${USER}`,
+      detail: { credential_id: "AAEC" },
+    });
+    expect(statement.sql).not.toContain("admin_credential");
   });
 
   it("writes nothing when the guard is false, and one row when it is true", async () => {
@@ -258,12 +272,12 @@ describe("a name never reaches detail_json", () => {
     ).toThrow(InvalidAuditRowError);
   });
 
-  it("rejects an admin actor without a name or a SHA-256 fingerprint", () => {
+  it("rejects an admin actor without a name or a SHA-256 keyid", () => {
     const row = { occurredAt: NOW, writerVersion: "v", operation: "user_create", target: "none", detail: {} } as const;
-    expect(() => auditSuccessStatement({ ...row, actor: { kind: "admin", name: "", certSha256: "a".repeat(64) } })).toThrow(
+    expect(() => auditSuccessStatement({ ...row, actor: { kind: "admin", name: "", keyid: "a".repeat(64) } })).toThrow(
       InvalidAuditRowError,
     );
-    expect(() => auditSuccessStatement({ ...row, actor: { kind: "admin", name: "a", certSha256: "xyz" } })).toThrow(
+    expect(() => auditSuccessStatement({ ...row, actor: { kind: "admin", name: "a", keyid: "xyz" } })).toThrow(
       InvalidAuditRowError,
     );
   });

@@ -13,14 +13,14 @@ import {
   type AdminIdentity,
   type AdminOperation,
 } from "@idp/core/admin";
-import { isAcceptedTlsVersion } from "@idp/core/shared";
 import { createD1Database } from "@idp/d1-adapter";
 import { adminConfig, InvalidConfigError, type AdminConfig, type Env } from "./config.js";
-import { isAdminHost, resolveAdmin } from "./gate.js";
+import { admitRequest } from "./gate.js";
 import { rs256Enabled } from "./rs256.js";
 import { inputField, pathParams, ROUTES, type Route } from "./routes.js";
 
-type AppEnv = { Bindings: Env; Variables: { config: AdminConfig; admin: AdminIdentity } };
+/** What the gate hands to the routes: the configuration, the admin, the clock, and the body it already read. */
+type AppEnv = { Bindings: Env; Variables: { config: AdminConfig; admin: AdminIdentity; now: number; body: Uint8Array } };
 
 // The two operations that may name RS256; only they pay for the discovery subrequest.
 const NAMES_ALGORITHM = new Set(["client_create", "client_set_id_token_alg"]);
@@ -65,15 +65,17 @@ type RequestParts = {
   readonly rejection?: AdminProblem;
 };
 
-async function readBody(request: Request): Promise<{ readonly body: Readonly<Record<string, unknown>>; readonly rejection?: AdminProblem }> {
-  const text = await request.text();
+// The body is the bytes the gate read and whose digest the signature covers, never a second read of the request.
+function readBody(request: Request, bytes: Uint8Array): { readonly body: Readonly<Record<string, unknown>>; readonly rejection?: AdminProblem } {
   // A POST that carries nothing but its path (enrollment-links, secrets) may send no body at all.
-  if (text === "") return { body: {} };
+  if (bytes.length === 0) return { body: {} };
   const mediaType = (request.headers.get("content-type") ?? "").split(";")[0]?.trim().toLowerCase();
   if (mediaType !== "application/json") return { body: {}, rejection: invalid("The body must be application/json", [""]) };
   let parsed: unknown;
   try {
-    parsed = JSON.parse(text);
+    // fatal: bytes that are not UTF-8 are refused, not replaced; ignoreBOM keeps a BOM, which JSON.parse refuses. The
+    // operation sees exactly the bytes that were signed.
+    parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes));
   } catch {
     return { body: {}, rejection: invalid("The body is not JSON", [""]) };
   }
@@ -99,7 +101,7 @@ async function readParts(c: Context<AppEnv>, route: Route): Promise<RequestParts
     query[key] = value;
   }
   if (route.method === "GET" || route.method === "DELETE") return { path, query, body: {}, ...(rejection === undefined ? {} : { rejection }) };
-  const read = await readBody(c.req.raw);
+  const read = readBody(c.req.raw, c.get("body"));
   rejection ??= read.rejection;
   return { path, query, body: read.body, ...(rejection === undefined ? {} : { rejection }) };
 }
@@ -163,7 +165,8 @@ async function handle(c: Context<AppEnv>, route: Route): Promise<Response> {
     return problemResponse(error);
   }
   const { operation } = planned;
-  const now = Math.floor(Date.now() / 1000);
+  // The clock the signature was checked against, so the window and the operation see the same second.
+  const now = c.get("now");
   const ctx: AdminContext = {
     db: createD1Database(config.db),
     admin,
@@ -198,7 +201,8 @@ async function handle(c: Context<AppEnv>, route: Route): Promise<Response> {
 /**
  * Builds the admin API application.
  *
- * @returns The Hono app; every request passes the config, host, mTLS, and allowlist checks before routing.
+ * @returns The Hono app; every request passes the configuration check and the gate (host, TLS, rate limit, body
+ *   size, RFC 9421 signature, nonce) before routing, so an unknown path is refused like any other request.
  */
 export function createApp(): Hono<AppEnv> {
   const app = new Hono<AppEnv>();
@@ -206,29 +210,32 @@ export function createApp(): Hono<AppEnv> {
   app.use("*", async (c, next) => {
     let config: AdminConfig;
     try {
-      config = adminConfig(c.env);
+      config = await adminConfig(c.env);
     } catch (error) {
       if (!(error instanceof InvalidConfigError)) throw error;
       log({ result: "refused", reason: "config", error: error.message });
       return problemResponse(new AdminProblem("internal", "The admin Worker is misconfigured"));
     }
-    if (!isAdminHost(new URL(c.req.url), config)) {
-      log({ result: "refused", reason: "host" });
-      return forbidden();
-    }
-    // The zone's minimum TLS version is not the IdP's to set when the zone is shared, so TLS below 1.2 is refused
-    // here, before the certificate is even looked at (docs/design/idpctl.md, "管理者の認証（mTLS）").
-    if (!isAcceptedTlsVersion(c.req.raw.cf)) {
-      log({ result: "refused", reason: "tls" });
-      return forbidden();
-    }
-    const gate = resolveAdmin(c.req.raw.cf, config);
+    const now = Math.floor(Date.now() / 1000);
+    const gate = await admitRequest(c.req.raw, config, now);
     if (!gate.ok) {
-      log({ result: "refused", reason: gate.reason, ...(gate.fingerprint === undefined ? {} : { cert_sha256: gate.fingerprint }) });
+      if ("limited" in gate) {
+        log({ result: "refused", reason: "rate_limited" });
+        // No problem details and no Retry-After: idpctl does not retry a 429 (docs/design/hosting-modes.md 3.8).
+        return new Response(null, { status: 429 });
+      }
+      if ("internal" in gate) {
+        log({ result: "refused", reason: "internal", error: gate.internal });
+        return problemResponse(new AdminProblem("internal", "The admin gate failed"));
+      }
+      // The reason and the claimed keyid go to the log only; the response is the same for every refusal.
+      log({ result: "refused", reason: gate.refusal, ...(gate.keyid === undefined ? {} : { keyid: gate.keyid }) });
       return forbidden();
     }
     c.set("config", config);
     c.set("admin", gate.admin);
+    c.set("now", now);
+    c.set("body", gate.body);
     await next();
   });
 

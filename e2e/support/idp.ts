@@ -1,9 +1,12 @@
 // Runs the built IdP Worker on workerd through Miniflare, the runtime cf bundles: the Worker with its static assets,
 // the deployment's own asset settings from apps/worker/cloudflare.config.ts, and a local D1 with the migrations. The
-// admin Worker runs beside it so that its gate can be reached without a client certificate.
+// admin Worker runs beside it with its own deployment configuration (apps/admin-worker/cloudflare.config.ts) and a
+// signing-key allowlist of one test-time P-384 key, so that its RFC 9421 gate runs on a real workerd.
 import { readFile } from "node:fs/promises";
 import { Miniflare } from "miniflare";
 import type { D1Database } from "@cloudflare/workers-types";
+import { adminWorkerConfig } from "../../apps/admin-worker/cloudflare.config.js";
+import { generateTestAdminKey, signingKeysJson, type TestAdminKey } from "../../apps/admin-worker/test/signer.js";
 import { workerConfig } from "../../apps/worker/cloudflare.config.js";
 import { migrationNames, readMigration, splitStatements } from "../../contract/test/d1.js";
 import { generateEd25519Jwk } from "../../packages/core/test/keys.js";
@@ -33,13 +36,27 @@ export type LocalIdp = {
    * since the local server speaks only TLS.
    */
   readonly dispatch: (url: string, init?: { readonly method?: string; readonly body?: string; readonly headers?: Record<string, string> }) => Promise<Response>;
-  /** Sends one request to the admin Worker, without a client certificate (no edge rule stands in front of it). */
-  readonly dispatchAdmin: (url: string) => Promise<Response>;
+  /**
+   * Sends one request to the admin Worker as the edge hands it over (no zone rule stands in front of it): TLS 1.3 for
+   * https, and the given headers, which a test sets to carry a signature and a CF-Connecting-IP.
+   */
+  readonly dispatchAdmin: (url: string, init?: AdminRequestInit) => Promise<Response>;
+  /** The only allowlisted admin key, `e2e-admin`, generated for this run and held only in memory. */
+  readonly adminKey: TestAdminKey;
   readonly dispose: () => Promise<void>;
 };
 
+/** A request to the admin Worker. */
+export type AdminRequestInit = { readonly method?: string; readonly body?: string; readonly headers?: Headers };
+
 /** The admin Worker's host; only {@link LocalIdp.dispatchAdmin} reaches it. */
 export const ADMIN_HOST = "admin.idp.test";
+
+/** The local D1 both Workers bind, as the deployment's two Workers bind one database. */
+const E2E_D1_ID = "idp-e2e";
+
+/** The admin Worker's rate limit in the suite: low enough for a test to cross it from one client IP. */
+export const ADMIN_TEST_RATE_LIMIT = 5;
 
 /** A Worker whose only job is to call the IdP Worker's internal entrypoint over its IDP binding. */
 const BINDING_PROBE = [
@@ -66,6 +83,15 @@ export async function startIdp(certificate: TestCertificate): Promise<LocalIdp> 
     IDP_RATE_LIMIT_NAMESPACE_ID: "1",
   });
   const signingKey = JSON.stringify(await generateEd25519Jwk());
+  const adminKey = await generateTestAdminKey();
+  const admin = adminWorkerConfig({
+    IDP_HOSTING_MODE: "custom_domain",
+    IDP_ISSUER: ISSUER,
+    IDP_ADMIN_HOST: ADMIN_HOST,
+    IDP_D1_DATABASE_ID: "00000000-0000-4000-8000-000000000000",
+    IDP_ADMIN_RATE_LIMIT_NAMESPACE_ID: "2",
+    IDP_ADMIN_SIGNING_KEYS: signingKeysJson([["e2e-admin", adminKey]]),
+  });
   const mf = new Miniflare({
     host: "127.0.0.1",
     port: 0,
@@ -85,7 +111,8 @@ export async function startIdp(certificate: TestCertificate): Promise<LocalIdp> 
           assets: { ...deployed.assets, directory: ASSETS_DIR, hasUserWorker: true },
           env: {
             ...deployed.env,
-            DB: { type: "d1", name: "idp-e2e" },
+            // Miniflare keys a local database by its id, so the admin Worker's binding below names the same one.
+            DB: { type: "d1", id: E2E_D1_ID },
             // The shipped binding with a limit the suite cannot reach: every test signs in from the same loopback
             // address within seconds, which the production limit would rightly refuse. The limit itself is covered
             // by apps/worker/test/edge.test.ts.
@@ -106,21 +133,18 @@ export async function startIdp(certificate: TestCertificate): Promise<LocalIdp> 
       },
       {
         config: {
-          name: "idp-admin",
-          compatibilityDate: deployed.compatibilityDate,
+          name: admin.name,
+          compatibilityDate: admin.compatibilityDate,
           manifest: {
             mainModule: "index.js",
             modules: { "index.js": { type: "esm", contents: await readFile(`${ADMIN_WORKER_DIR}/index.js`, "utf8") } },
           },
-          // A valid configuration, so that a refusal comes from the gate and not from a misconfiguration. The
-          // fingerprint belongs to no certificate: no request of the suite can pass the gate.
+          // The shipped configuration; only the D1 placeholder and the limit are replaced. The limit is low so that
+          // a test can cross it; each test sends from its own client IP, so the counts do not mix.
           env: {
-            DB: { type: "d1", name: "idp-e2e" },
-            ISSUER: { type: "text", value: ISSUER },
-            ADMIN_HOST: { type: "text", value: ADMIN_HOST },
-            ADMIN_ALLOWLIST: { type: "text", value: JSON.stringify([{ sha256: "0".repeat(64), name: "nobody" }]) },
-            CF_VERSION_METADATA: { type: "version-metadata" },
-            IDP: { type: "worker", worker: deployed.name, exportName: "IdpInternal" },
+            ...admin.env,
+            DB: { type: "d1", id: E2E_D1_ID },
+            RATE_LIMITER: { type: "rate-limit", namespace: "2", simple: { limit: ADMIN_TEST_RATE_LIMIT, period: 60 } },
           },
         },
       },
@@ -138,13 +162,19 @@ export async function startIdp(certificate: TestCertificate): Promise<LocalIdp> 
     const response = await mf.dispatchFetch(target, { ...init, redirect: "manual", cf: { tlsVersion: target.startsWith("https:") ? "TLSv1.3" : "" } });
     return response as unknown as Response;
   }
-  async function dispatchAdmin(target: string): Promise<Response> {
-    const admin = await mf.getWorker("idp-admin");
-    const response = await admin.fetch(target, { redirect: "manual", cf: { tlsVersion: target.startsWith("https:") ? "TLSv1.3" : "" } });
+  async function dispatchAdmin(target: string, init: AdminRequestInit = {}): Promise<Response> {
+    const worker = await mf.getWorker(admin.name);
+    const response = await worker.fetch(target, {
+      method: init.method ?? "GET",
+      headers: Object.fromEntries(init.headers ?? new Headers()),
+      ...(init.body === undefined ? {} : { body: init.body }),
+      redirect: "manual",
+      cf: { tlsVersion: target.startsWith("https:") ? "TLSv1.3" : "" },
+    });
     return response as unknown as Response;
   }
   const db = (await mf.getD1Database("DB")) as unknown as D1Database;
   const statements = migrationNames().flatMap((name) => splitStatements(readMigration(name)));
   await db.batch(statements.map((s) => db.prepare(s)));
-  return { port: Number(url.port), certificate, db, internalDiscovery, dispatch, dispatchAdmin, dispose: () => mf.dispose() };
+  return { port: Number(url.port), certificate, db, internalDiscovery, dispatch, dispatchAdmin, adminKey, dispose: () => mf.dispose() };
 }

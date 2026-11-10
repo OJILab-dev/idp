@@ -66,11 +66,14 @@ export type HttpMapping = {
   readonly status: 200 | 201;
 };
 
-/** The admin the allowlist resolved from the client certificate; the caller (the admin Worker) supplies it. */
+/**
+ * The admin the allowlist resolved from a verified RFC 9421 signature; the caller (the admin Worker) supplies it
+ * after the signature and the nonce passed (docs/design/hosting-modes.md 3.8).
+ */
 export type AdminIdentity = {
   readonly name: string;
-  /** The certificate's SHA-256 fingerprint, lowercase hex. */
-  readonly certSha256: string;
+  /** The keyid of the signing key: the SHA-256 of its SPKI DER, lowercase hex (hosting-modes.md 3.7). */
+  readonly keyid: string;
 };
 
 /** Everything an operation needs from its caller. */

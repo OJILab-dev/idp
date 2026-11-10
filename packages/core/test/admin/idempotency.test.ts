@@ -93,7 +93,7 @@ describe("Idempotency-Key", () => {
   it("keeps keys of different admins apart", async () => {
     const key = randomToken();
     await run(h(), userCreate, { name: "A" }, key);
-    h().admin = { name: "other", certSha256: "b".repeat(64) };
+    h().admin = { name: "other", keyid: "b".repeat(64) };
     const other = await run(h(), userCreate, { name: "A" }, key);
     expect(other.replayed).toBe(false);
     expect(await query(h(), "SELECT COUNT(*) AS n FROM users")).toEqual([{ n: 2 }]);

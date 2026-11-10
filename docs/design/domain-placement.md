@@ -169,7 +169,7 @@ IdP の Worker の Rate Limiting バインディング：
 
 | 頼っている機能 | 使っている箇所 |
 | --- | --- |
-| Workers のカスタムドメイン（2 つのホスト名） | IdP の Worker の `cloudflare.config.ts`（`domains`）、管理用の Worker（同じ形の予定） |
+| Workers のカスタムドメイン（2 つのホスト名） | IdP の Worker の `cloudflare.config.ts`（`domains`）、管理用の Worker の `cloudflare.config.ts`（`domains`。モードから導く） |
 | エッジの mTLS（アカウントの managed CA）と、管理用のホスト名の WAF のカスタムルール | `infra/main.tf`（`cloudflare_certificate_authorities_hostname_associations`、`cloudflare_client_certificate`、`cloudflare_ruleset` の `http_request_firewall_custom`） |
 | WAF のレート制限ルール | `infra/main.tf`（`http_ratelimit` のフェーズ） |
 | Always Use HTTPS と TLS の最小バージョン 1.2 | `infra/main.tf`（`cloudflare_zone_setting`） |

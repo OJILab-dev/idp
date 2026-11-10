@@ -302,7 +302,10 @@ describe("admin signature vectors: verifier in workerd (plan step 3)", () => {
   it.each(sig.verify.invalid.map((c) => [c.case, c.reason ?? "", c] as const))("rejects %s (%s) and writes nothing to D1", async (name, _, c) => {
     const before = await nonceRows();
     const answer = await send(c);
-    expect(answer.result).toEqual({ ok: false, reason: EXPECTED_REFUSALS[name] });
+    // Only the refusal and, past the profile check, the claimed keyid: the log may show which key a request named.
+    const { keyid, ...refusal } = answer.result as { readonly keyid?: unknown };
+    expect(refusal).toEqual({ ok: false, reason: EXPECTED_REFUSALS[name] });
+    if (keyid !== undefined) expect(keyid).toMatch(/^[0-9a-f]{64}$/);
     expect(answer.claim).toBeNull();
     expect(await nonceRows()).toBe(before);
   });

@@ -191,12 +191,15 @@ run "rejects_a_csr_that_is_not_pem" {
   expect_failures = [var.admin_client_certificates]
 }
 
-run "accepts_an_empty_admin_signing_keys_list" {
+# The admin Worker reads the list and refuses every request while it is empty (docs/design/hosting-modes.md 1.4).
+run "rejects_an_empty_admin_signing_keys_list" {
   command = plan
 
   variables {
     admin_signing_keys = []
   }
+
+  expect_failures = [var.admin_signing_keys]
 }
 
 run "accepts_two_keys_of_one_admin" {

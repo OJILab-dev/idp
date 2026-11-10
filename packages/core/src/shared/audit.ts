@@ -13,12 +13,13 @@ import { classifyRedirectUri } from "./redirect-uri-registration.js";
 export type AuditTarget = `user:${string}` | `client:${string}` | `group:${string}` | "schema" | "none";
 
 /**
- * Who wrote the row. An admin is the name the allowlist resolved from the client certificate and that certificate's
- * SHA-256 fingerprint; a user row is the user's own passkey operation and carries neither. break_glass rows are
- * written by hand outside the core, so the builder cannot produce them.
+ * Who wrote the row. An admin is the name the allowlist resolved from the verified RFC 9421 signature and the keyid
+ * of that signing key (the SHA-256 of its SPKI DER), written to admin_cert_sha256 with admin_credential
+ * `signing-key` (docs/design/hosting-modes.md 3.9); a user row is the user's own passkey operation and carries
+ * neither. break_glass rows are written by hand outside the core, so the builder cannot produce them.
  */
 export type AuditActor =
-  | { readonly kind: "admin"; readonly name: string; readonly certSha256: string }
+  | { readonly kind: "admin"; readonly name: string; readonly keyid: string }
   | { readonly kind: "user" };
 
 /** A detail member's value: an ID, an enum, a number, a time, or a list of such strings. */
@@ -153,8 +154,8 @@ function validateCommon(row: {
   if (!isAuditTarget(row.target)) throw new InvalidAuditRowError("target is not an ID-bearing target, schema, or none");
   if (row.actor.kind === "admin") {
     if (row.actor.name === "") throw new InvalidAuditRowError("admin_name is empty");
-    if (!SHA256_HEX.test(row.actor.certSha256)) {
-      throw new InvalidAuditRowError("admin_cert_sha256 is not a lowercase hex SHA-256 fingerprint");
+    if (!SHA256_HEX.test(row.actor.keyid)) {
+      throw new InvalidAuditRowError("admin_cert_sha256 is not a lowercase hex SHA-256 keyid");
     }
   }
 }
@@ -167,12 +168,24 @@ function validateDetail(detail: AuditDetail): void {
   }
 }
 
+// The actor's values, in the order of columnsOf.
 function actorColumns(actor: AuditActor): readonly SqlValue[] {
-  return actor.kind === "admin" ? ["admin", actor.name, actor.certSha256] : ["user", null, null];
+  return actor.kind === "admin" ? ["admin", actor.name, actor.keyid, "signing-key"] : ["user", null, null];
 }
 
-const COLUMNS =
-  "occurred_at, actor, admin_name, admin_cert_sha256, writer_version, operation, target, result, detail_json";
+// A user row names no admin_credential: the column comes with migration 0004, and the IdP Worker's inserts must not
+// depend on it, so the IdP Worker keeps working whichever side of 0004 the database is on. The 0004 trigger holds a
+// user row's admin_credential to NULL, which the omitted column already is.
+function columnsOf(actor: AuditActor): string {
+  const credential = actor.kind === "admin" ? ", admin_credential" : "";
+  return `occurred_at, actor, admin_name, admin_cert_sha256${credential}, writer_version, operation, target, result, detail_json`;
+}
+
+function actorPlaceholders(actor: AuditActor): string {
+  return actorColumns(actor)
+    .map(() => "?")
+    .join(", ");
+}
 
 /**
  * Builds the INSERT of one success row, guarded by the condition of the write it records.
@@ -203,7 +216,7 @@ export function auditSuccessStatement(row: AuditSuccessRow): SqlStatement {
     computed.length === 0 ? "?" : `json_set(?, ${computed.map((m) => `'$.${m.key}', json((${m.sql}))`).join(", ")})`;
   const guard = row.guard ?? { sql: "1", params: [] };
   return {
-    sql: `INSERT INTO audit_log (${COLUMNS}) SELECT ?, ?, ?, ?, ?, ?, ?, 'success', ${detailSql} WHERE ${guard.sql}`,
+    sql: `INSERT INTO audit_log (${columnsOf(row.actor)}) SELECT ?, ${actorPlaceholders(row.actor)}, ?, ?, ?, 'success', ${detailSql} WHERE ${guard.sql}`,
     params: [
       row.occurredAt,
       ...actorColumns(row.actor),
@@ -230,7 +243,7 @@ export function auditSuccessStatement(row: AuditSuccessRow): SqlStatement {
 export function auditFailureStatement(row: AuditFailureRow): SqlStatement {
   validateCommon(row);
   return {
-    sql: `INSERT INTO audit_log (${COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, 'failure', ?)`,
+    sql: `INSERT INTO audit_log (${columnsOf(row.actor)}) VALUES (?, ${actorPlaceholders(row.actor)}, ?, ?, ?, 'failure', ?)`,
     params: [
       row.occurredAt,
       ...actorColumns(row.actor),

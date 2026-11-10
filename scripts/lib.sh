@@ -201,13 +201,20 @@ admin_signing_key_row() {
 
 # Stops unless admin_signing_keys of the deployment file is a list the admin Worker accepts row by row: exactly the
 # members keyid, name, and public_key, all strings; a lowercase 64-hex keyid equal to the SHA-256 of a P-384
-# public_key; a valid admin name; and no repeated keyid (docs/design/hosting-modes.md 3.7). An empty list passes
-# here, because a new deployment starts with no admin (docs/deployment/runbook.md, stage 0); the admin Worker
-# refuses every request while the list is empty.
+# public_key; a valid admin name; and no repeated keyid (docs/design/hosting-modes.md 3.7). An empty list stops it
+# too, because the admin Worker reads the list and refuses every request while it is empty (hosting-modes.md 1.1 and
+# 1.4). Only the generation script passes "allow-empty", to add the first row to a new deployment's list
+# (docs/deployment/runbook.md, stage 0 and 4a); what it writes is then checked again without it.
 check_admin_signing_keys() {
   local config="${1}"
+  local empty="${2-}"
+  [[ -z "${empty}" || "${empty}" == "allow-empty" ]] || fail "unknown admin_signing_keys check mode: ${empty}"
   jq -e '.admin_signing_keys | type == "array"' "${config}" >/dev/null 2>&1 ||
     fail "deployment file lacks the list \"admin_signing_keys\": ${config}"
+  if [[ "${empty}" != "allow-empty" ]]; then
+    jq -e '.admin_signing_keys | length > 0' "${config}" >/dev/null ||
+      fail "admin_signing_keys is empty; add a row with scripts/generate-admin-key.sh before deploying: ${config}"
+  fi
   jq -e '.admin_signing_keys | all(type == "object" and keys == ["keyid", "name", "public_key"] and all(.[]; type == "string"))' \
     "${config}" >/dev/null || fail "every admin_signing_keys row must have exactly the strings keyid, name, and public_key: ${config}"
   # The forms are checked on the raw JSON strings inside jq, not after $(...): command substitution strips trailing

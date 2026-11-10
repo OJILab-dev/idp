@@ -29,7 +29,8 @@ describe("user_create", () => {
     expect(row).toMatchObject({
       actor: "admin",
       admin_name: ROOT.name,
-      admin_cert_sha256: ROOT.certSha256,
+      admin_cert_sha256: ROOT.keyid,
+      admin_credential: "signing-key",
       writer_version: "admin-worker@test",
       operation: "user_create",
       target: `user:${id}`,

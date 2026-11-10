@@ -1,6 +1,6 @@
 // Scenario 10: plain http and the admin gate without any zone rule in front (docs/design/domain-placement.md, 3). The
 // IdP Worker runs before its static pages, so it alone redirects a page to https and refuses /token over http; the
-// admin Worker redirects nothing and refuses what reaches it without a client certificate.
+// admin Worker redirects nothing and refuses what reaches it without a signature.
 import { expect, test } from "../support/fixtures.js";
 import { ADMIN_HOST, ISSUER } from "../support/idp.js";
 
@@ -57,8 +57,8 @@ test("the admin host refuses plain http without a redirect", async ({ idp }) => 
   expect(((await response.json()) as Record<string, unknown>)["type"]).toBe("urn:ojilab:idp:problem:forbidden");
 });
 
-test("the admin Worker's own gate refuses an https request without a client certificate", async ({ idp }) => {
-  const response = await idp.dispatchAdmin(`https://${ADMIN_HOST}/v1/users`);
+test("the admin Worker's own gate refuses an unsigned https request", async ({ idp }) => {
+  const response = await idp.dispatchAdmin(`https://${ADMIN_HOST}/v1/users`, { headers: new Headers({ "cf-connecting-ip": "203.0.113.1" }) });
   expect(response.status).toBe(403);
   expect(((await response.json()) as Record<string, unknown>)["type"]).toBe("urn:ojilab:idp:problem:forbidden");
 });

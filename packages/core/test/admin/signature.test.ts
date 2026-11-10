@@ -83,7 +83,10 @@ describe("verifyAdminSignature: the contract vectors", () => {
 
   it.each(sig.verify.invalid.map((c) => [c.case, c.reason ?? "", c] as const))("rejects %s (%s)", async (name, _, c) => {
     const result = await verifyAdminSignature(await requestOf(c), allowlist, NOW);
-    expect(result).toEqual({ ok: false, reason: EXPECTED_REFUSALS[name] });
+    const reason = EXPECTED_REFUSALS[name];
+    // The claimed keyid is reported only once the profile check passed, so it is always 64 lowercase hex.
+    if (reason === "malformed" || reason === "profile") expect(result).toEqual({ ok: false, reason });
+    else expect(result).toEqual({ ok: false, reason, keyid: expect.stringMatching(/^[0-9a-f]{64}$/) });
   });
 
   it("accepts the replay vector: replay is the nonce store's decision, not the verifier's", async () => {
@@ -117,7 +120,7 @@ describe("verifyAdminSignature: checks beyond the vectors", () => {
     const canonical = params.replace("{keyid}", keys.keyid);
     const spaced = canonical.replace('("@method" ', '( "@method"  ');
     const request = await signedGet(spaced, baseFor("GET", spaced));
-    expect(await verifyAdminSignature(request, allowlist, NOW)).toEqual({ ok: false, reason: "signature" });
+    expect(await verifyAdminSignature(request, allowlist, NOW)).toEqual({ ok: false, reason: "signature", keyid: keys.keyid });
   });
 
   it("refuses a covered component with parameters (RFC 9421 §2.1), which the profile never uses", async () => {
@@ -149,10 +152,11 @@ describe("verifyAdminSignature: checks beyond the vectors", () => {
     const wrong = new Map([[keys.keyid, { keyid: keys.keyid, name: "alice", publicKey: p256.publicKey }]]);
     const canonical = params.replace("{keyid}", keys.keyid);
     const request = await signedGet(canonical, baseFor("GET", canonical));
-    expect(await verifyAdminSignature(request, wrong, NOW)).toEqual({ ok: false, reason: "signature" });
+    expect(await verifyAdminSignature(request, wrong, NOW)).toEqual({ ok: false, reason: "signature", keyid: keys.keyid });
     expect(await verifyAdminSignature(request, new Map([[keys.keyid, { keyid: keys.keyid, name: "alice", publicKey: keys.allowlisted.privateKey }]]), NOW)).toEqual({
       ok: false,
       reason: "signature",
+      keyid: keys.keyid,
     });
   });
 
@@ -169,12 +173,12 @@ describe("verifyAdminSignature: checks beyond the vectors", () => {
   ])("refuses every request when the clock is %s (fail-closed)", async (_, now) => {
     const canonical = params.replace("{keyid}", keys.keyid);
     const request = await signedGet(canonical, baseFor("GET", canonical));
-    expect(await verifyAdminSignature(request, allowlist, now)).toEqual({ ok: false, reason: "created" });
+    expect(await verifyAdminSignature(request, allowlist, now)).toEqual({ ok: false, reason: "created", keyid: keys.keyid });
   });
 
   it("refuses a URL that is not absolute", async () => {
     const canonical = params.replace("{keyid}", keys.keyid);
     const request = { ...(await signedGet(canonical, baseFor("GET", canonical))), url: "/v1/users" };
-    expect(await verifyAdminSignature(request, allowlist, NOW)).toEqual({ ok: false, reason: "malformed" });
+    expect(await verifyAdminSignature(request, allowlist, NOW)).toEqual({ ok: false, reason: "malformed", keyid: keys.keyid });
   });
 });

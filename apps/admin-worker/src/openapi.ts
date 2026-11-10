@@ -172,7 +172,7 @@ export function buildOpenApiDocument(): JsonSchema {
       title: "ojilab idp admin API",
       version: "1",
       description:
-        "Served only on the admin host behind mTLS and the certificate allowlist. Every response carries Cache-Control: no-store.",
+        "Served only on the admin host. Every request carries an RFC 9421 signature by an allowlisted ECDSA P-384 key; an unsigned or invalid request gets forbidden, and a rate-limited one a bodyless 429. Every response carries Cache-Control: no-store.",
     },
     paths,
     components: {
