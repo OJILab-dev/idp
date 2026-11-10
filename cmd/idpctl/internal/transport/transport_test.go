@@ -25,20 +25,24 @@ func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-func TestLoadClientCertificateAcceptsECDSAP384AndP256(t *testing.T) {
+func TestLoadClientCertificateAcceptsECDSAP384(t *testing.T) {
 	ca := testpki.NewCA(t)
-	for _, curve := range []elliptic.Curve{elliptic.P384(), elliptic.P256()} {
-		certPEM, keyPEM := ca.IssueClient(t, testpki.NewECDSAKey(t, curve))
-		if _, err := transport.LoadClientCertificate(certPEM, keyPEM); err != nil {
-			t.Errorf("%s: %v", curve.Params().Name, err)
-		}
+	certPEM, keyPEM := ca.IssueClient(t, testpki.NewECDSAKey(t, elliptic.P384()))
+	if _, err := transport.LoadClientCertificate(certPEM, keyPEM); err != nil {
+		t.Fatal(err)
 	}
 }
 
 func TestLoadClientCertificateRejectsOtherKeys(t *testing.T) {
 	ca := testpki.NewCA(t)
 
-	certPEM, keyPEM := ca.IssueClient(t, testpki.NewEd25519Key(t))
+	// P-256 was the managed CA fallback; it cannot sign ecdsa-p384-sha384.
+	certPEM, keyPEM := ca.IssueClient(t, testpki.NewECDSAKey(t, elliptic.P256()))
+	if _, err := transport.LoadClientCertificate(certPEM, keyPEM); err == nil {
+		t.Error("P-256 key accepted")
+	}
+
+	certPEM, keyPEM = ca.IssueClient(t, testpki.NewEd25519Key(t))
 	if _, err := transport.LoadClientCertificate(certPEM, keyPEM); err == nil {
 		t.Error("Ed25519 key accepted")
 	}

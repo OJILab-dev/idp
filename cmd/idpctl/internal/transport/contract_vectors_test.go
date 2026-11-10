@@ -1,9 +1,10 @@
 package transport_test
 
 // The RFC 9421 admin-signature vectors of contract/testdata/vectors.json, the same file the TypeScript verifier
-// reads (docs/design/cross-language-contract.md). The signer arrives in plan step 4 of
-// docs/design/hosting-modes.md; until then the signer cases skip, and the rest checks that Go's standard library
-// reads the vectors the same way: Content-Digest, keyid, nonce, and the fixed interop signatures.
+// reads (docs/design/cross-language-contract.md). The signer cases check that idpctl's signer produces the
+// vectors' Signature-Input and signature base character for character, and that its signatures verify over the
+// verifier's valid cases; the rest checks that Go's standard library reads the vectors the same way:
+// Content-Digest, keyid, nonce, and the fixed interop signatures.
 
 import (
 	"bytes"
@@ -15,11 +16,16 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"math/big"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
+	"strings"
 	"testing"
+
+	"github.com/OJILab-dev/idp/cmd/idpctl/internal/transport"
 )
 
 type signedRequest struct {
@@ -260,7 +266,83 @@ func TestAdminSignatureVectorsSigner(t *testing.T) {
 			if got := sha256ContentDigest(c.Request.BodyUTF8); !hasHeader(c.Request, "Content-Digest", got) {
 				t.Fatalf("the request's Content-Digest is not %q", got)
 			}
-			t.Skip("plan step 4 (docs/design/hosting-modes.md 10): the signer must produce signature_input and signature_base")
+
+			// The pure base: the vector's created, nonce, and keyid give the vector's strings, character for
+			// character.
+			input, base, err := transport.SignatureBase(vectorRequest(t, c.Request), transport.SignatureParams{
+				Created: c.Created, Nonce: c.Nonce, Keyid: c.Keyid,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if input != c.SignatureInput {
+				t.Errorf("Signature-Input\n got %s\nwant %s", input, c.SignatureInput)
+			}
+			if base != c.SignatureBase {
+				t.Errorf("signature base\n got %q\nwant %q", base, c.SignatureBase)
+			}
+
+			// The full signer, from a request that carries no Content-Digest yet: the key is a test key, so its
+			// keyid replaces the vector's, and everything else must match.
+			signer, key := fixedSigner(t, c.Created, c.Nonce)
+			req := vectorRequest(t, c.Request)
+			req.Header.Del("Content-Digest")
+			if err := signer.Sign(req); err != nil {
+				t.Fatal(err)
+			}
+			keyid := keyidOf(t, &key.PublicKey)
+			if signer.Keyid() != keyid {
+				t.Fatalf("Keyid() = %s, want %s", signer.Keyid(), keyid)
+			}
+			if got := req.Header.Get("Content-Digest"); !hasHeader(c.Request, "Content-Digest", got) {
+				t.Errorf("Content-Digest %q", got)
+			}
+			if got, want := req.Header.Get("Signature-Input"), strings.ReplaceAll(c.SignatureInput, c.Keyid, keyid); got != want {
+				t.Errorf("Signature-Input\n got %s\nwant %s", got, want)
+			}
+			verifySignature(t, &key.PublicKey, req.Header.Get("Signature"), strings.ReplaceAll(c.SignatureBase, c.Keyid, keyid))
+			var body []byte
+			if req.Body != nil {
+				body, _ = io.ReadAll(req.Body)
+			}
+			if string(body) != c.Request.BodyUTF8 {
+				t.Errorf("the signed request sends body %q, want %q", body, c.Request.BodyUTF8)
+			}
+		})
+	}
+}
+
+// TestSignerSatisfiesTheVerifierValidCases signs each verify.valid request of the vectors and checks the result
+// against the vector's own signature base, so the signer and the verifier agree on the same inputs.
+func TestSignerSatisfiesTheVerifierValidCases(t *testing.T) {
+	v := loadAdminSignatureVectors(t)
+	nonceOf := regexp.MustCompile(`;nonce="([^"]+)"`)
+	createdOf := regexp.MustCompile(`;created=(\d+)`)
+	for _, c := range v.Verify.Valid {
+		t.Run(c.Case, func(t *testing.T) {
+			var input string
+			for _, h := range c.Request.Headers {
+				if h[0] == "Signature-Input" {
+					input = h[1]
+				}
+			}
+			created, err := strconv.ParseInt(createdOf.FindStringSubmatch(input)[1], 10, 64)
+			if err != nil {
+				t.Fatal(err)
+			}
+			signer, key := fixedSigner(t, created, nonceOf.FindStringSubmatch(input)[1])
+			req := vectorRequest(t, c.Request)
+			for _, name := range []string{"Content-Digest", "Signature-Input", "Signature"} {
+				req.Header.Del(name)
+			}
+			if err := signer.Sign(req); err != nil {
+				t.Fatal(err)
+			}
+			keyid := keyidOf(t, &key.PublicKey)
+			if got, want := req.Header.Get("Signature-Input"), strings.ReplaceAll(input, "{keyid}", keyid); got != want {
+				t.Errorf("Signature-Input\n got %s\nwant %s", got, want)
+			}
+			verifySignature(t, &key.PublicKey, req.Header.Get("Signature"), strings.ReplaceAll(*c.SignatureBase, "{keyid}", keyid))
 		})
 	}
 }
