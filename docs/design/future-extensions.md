@@ -13,20 +13,20 @@
 
 **管理コンソールと管理権限の分離**
 
-- 管理系は IdP の OIDC クライアントにしない。管理用の Worker（[管理 CLI と管理用の Worker](idpctl.md)参照）も、管理者を IdP ではなく mTLS と許可リストで確かめる。次の理由による。
+- 管理系は IdP の OIDC クライアントにしない。管理用の Worker（[管理 CLI と管理用の Worker](idpctl.md)参照）も、管理者を IdP ではなく RFC 9421 の署名と署名鍵の許可リストで確かめる。次の理由による。
   - 管理権限を IdP の grant で表すと、grant を書ける人が自分を管理者にでき、権限の根拠が守る対象の中に閉じる。
-  - IdP の認証やトークン発行の欠陥が、そのまま管理権限の奪取になる。今は管理者の確定が mTLS と、デプロイでだけ変わる許可リストにあり、IdP の欠陥と切り離されている。
+  - IdP の認証やトークン発行の欠陥が、そのまま管理権限の奪取になる。今は管理者の確定が、管理者の手元の鍵による署名と、デプロイでだけ変わる許可リストにあり、IdP の欠陥と切り離されている。
   - IdP に入れなくなる障害のとき、それを直す管理系にも入れない。
 - 管理の権限を人ごとに分ける必要が出たら（[認可](authorization.md)の管理の関心事を参照）、許可リストの管理者ごとに、ユーザーの管理と RP・アクセスの管理のどれを持つかを設定に足し、管理用の Worker が共有コアの操作の分類のメタデータと照らしてサーバー側で強制する。基盤の権限はこの Worker の外（Cloudflare と 1Password）に置いたままにする。
 - RP の管理とその RP へのアクセスの管理は、その RP を登録した人が持つ。どの主体がどの client を所有するかの表をマイグレーションで足し、所有者がいなくなったときに付け替える手段も用意する。
-- 管理 Web UI が必要になっても、IdP の Worker には置かない。管理用の Worker と同じ共有コアの管理系のユースケースを使う別の入り口として足し、同じ mTLS と許可リストで守る。
+- 管理 Web UI が必要になっても、IdP の Worker には置かない。管理用の Worker と同じ共有コアの管理系のユースケースを使う別の入り口として足し、同じ署名と許可リストで守る。
 - IdP のデータを見せる画面が必要なら、Service Binding 経由の読み取り専用の関数で見せる。IdP の D1 を直接バインドしない。
 
 **MCP（後で再検討）**
 
 今は MCP を作らない。Claude Code などから管理操作をしたくなったら、次の事実を前提に考え直す。
 
-- 管理 API は mTLS で守るので、MCP サーバーも管理者のクライアント証明書を提示する必要がある。Claude Code のドキュメントは、リモートの MCP サーバーに TLS のクライアント証明書を提示する方法を書いていない。`CLAUDE_CODE_CLIENT_CERT` は企業ネットワークでのクライアント証明書の認証として説明されているが、MCP サーバーとの通信に使えるとは書かれていない（Claude Code「Enterprise network configuration」の「mTLS authentication」）。リモートの MCP サーバーの認証として書かれているのは OAuth とヘッダーである（Claude Code「Connect Claude Code to tools via MCP」）。
+- 管理 API は要求ごとの RFC 9421 の署名で守るので、MCP サーバーが管理 API を呼ぶには、管理者の秘密鍵で要求に署名する必要がある。リモートの MCP サーバーに秘密鍵を置くと、鍵が管理者の手元を離れる。手元で動く stdio の MCP サーバーにして、`idpctl` と同じく秘密鍵を標準入力から受け取る形が候補になる。前の設計（mTLS）では、Claude Code のドキュメントにリモートの MCP サーバーへ TLS のクライアント証明書を提示する方法がないことが制約だった（Claude Code「Enterprise network configuration」の「mTLS authentication」、「Connect Claude Code to tools via MCP」）。
 - リモートの MCP サーバーは、IdP が発行する秘密を手元の `0600` のファイルに書けない。平文を AI のコンテキストに入れないという規則（[管理 CLI と管理用の Worker](idpctl.md)の IdP が発行する秘密の扱い）を守るには、手元で動く stdio の MCP サーバーにするか、秘密を返す操作を出さない必要がある。
 - MCP のツールは、`tools/list` の応答で `_meta["anthropic/requiresUserInteraction"]` を `true` にすると、呼び出しのたびに人間の確認を求められる（Claude Code「Connect Claude Code to tools via MCP」の「Require approval for a specific tool」）。書き込みの操作はすべてこれを付ける。
 - 出す操作の範囲は、共有コアの操作の分類のメタデータから導く。本人性を確定させる操作（`enroll_link_issue`）は出さない。ユーザー、client、グループの完全な削除の操作はもともと置かない（[管理 CLI と管理用の Worker](idpctl.md)の操作の分類を参照）。

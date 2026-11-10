@@ -1,7 +1,11 @@
 # idp
 
 Cloudflare Workers の無料枠と D1 だけで動く、パスキー専用の最小構成 OIDC IdP です。
-対象は自分と家族のセルフホストアプリです。管理は、mTLS の背後に置いた別の管理用の Worker を、手元の Go の CLI `idpctl` から呼んで行います。
+対象は自分と家族のセルフホストアプリです。管理は、別の管理用の Worker を、手元の Go の CLI `idpctl` から呼んで行います。管理者は、`idpctl` が要求ごとに付ける HTTP Message Signatures（RFC 9421）の署名で確かめます。
+
+2 つの Worker は、自分のドメインのカスタムドメイン（カスタムドメインのモード）か、ドメインを持たない人のための `<名前>.<アカウントのサブドメイン>.workers.dev`（`workers.dev` のモード）で公開できます（[ホスティングのモード](docs/design/hosting-modes.md)）。
+
+> **`workers.dev` のモードの警告**：issuer とパスキーの RP ID は、アカウントの `workers.dev` のサブドメインと Worker の名前に固定されます。後からカスタムドメインに移すと、全員のパスキーが使えなくなり、すべての RP の設定を移し直すことになります。長く使うつもりなら、最初からカスタムドメインのモードを選んでください。Cloudflare も `workers.dev` を本番向けとしていません。
 
 ## 現在の状態
 
@@ -12,13 +16,14 @@ Cloudflare Workers の無料枠と D1 だけで動く、パスキー専用の最
 
 - 検証用の Cloudflare アカウントへの最初のデプロイ。運用者が [ブートストラップの実行手順](docs/deployment/runbook.md) に沿って行います。Worker のデプロイの workflow はまだありません（雛形は [examples/github-actions/deploy.yml](examples/github-actions/deploy.yml)）。
 - e2e テスト（Playwright）。[セキュリティ要件チェックリスト](docs/design/security-checklist.md) の攻撃ケースを実装します。
+- [ホスティングのモード](docs/design/hosting-modes.md) の実装（署名による管理者の認証、mTLS の撤去、`workers.dev` のモード）。今のコードの管理用の Worker は、まだ mTLS と証明書のフィンガープリントの許可リストで管理者を確かめます。
 
 ## ゴール
 
 - Cloudflare Workers と D1 の無料枠の範囲で常時稼働する
 - ユーザーの認証手段はパスキーだけにし、OIDC と WebAuthn の標準に厳格に準拠する
 - アプリ単位で「誰が使えるか」を管理できる
-- 管理操作は手元の CLI から行い、管理者は IdP 自身ではなく mTLS で確かめる
+- 管理操作は手元の CLI から行い、管理者は IdP 自身ではなく、IdP の外の鍵による RFC 9421 の署名で確かめる
 - 将来、Worker を Rust で書き直せる余地を残す
 
 ## 構成
@@ -26,7 +31,7 @@ Cloudflare Workers の無料枠と D1 だけで動く、パスキー専用の最
 | 要素 | 役割 |
 | --- | --- |
 | IdP の Worker（TypeScript + Hono） | 利用者と RP に公開する要素。OIDC エンドポイント、パスキー API、サインイン・登録・アカウントページを提供する |
-| 管理用の Worker（TypeScript） | 別のホスト名に置く管理 API。mTLS の検証の結果と証明書のフィンガープリントの許可リストで、Worker 自身が管理者を確かめる |
+| 管理用の Worker（TypeScript） | 別のホスト名に置く管理 API。要求ごとの RFC 9421 の署名を署名鍵の許可リストで検証して、Worker 自身が管理者を確かめる |
 | 共有コア（TypeScript） | ドメインの規則、入力の検証、SQL、ユースケースを 1 か所に持ち、2 つの Worker が使う |
 | D1 | IdP の全状態を置くデータベース。2 つの Worker が同じものをバインドする |
 | `idpctl`（Go） | 手元で動かす管理 CLI。管理 API を呼ぶだけの薄いクライアントで、ドメインの規則は評価しない |
@@ -39,12 +44,12 @@ IdP の Worker には管理用のエンドポイントや管理 UI を置きま�
 | パス | 内容 |
 | --- | --- |
 | [apps/worker/](apps/worker) | IdP の Worker。OIDC エンドポイント、`/webauthn/*` の API、サインイン・登録・アカウントの静的ページ |
-| [apps/admin-worker/](apps/admin-worker) | 管理用の Worker。mTLS の検証の結果と許可リストを確かめるゲートの後ろの管理 API と、その OpenAPI の仕様の生成 |
+| [apps/admin-worker/](apps/admin-worker) | 管理用の Worker。管理者を確かめるゲートの後ろの管理 API と、その OpenAPI の仕様の生成（ゲートは今は mTLS の検証の結果と許可リスト。署名に切り替える） |
 | [packages/core/](packages/core) | 共有コア。利用者向け（`user`）、管理系（`admin`）、共通（`shared`）のユースケースとドメインの規則 |
 | [packages/d1-adapter/](packages/d1-adapter) | 共有コアのデータベースのポートを D1 で実装するアダプタと、その適合テスト |
 | [contract/](contract) | 実装に依存しない契約。D1 のマイグレーション（`migrations`）、管理 API の仕様（`openapi`）、テストベクタ（`testdata`）、スキーマのテスト（`test`） |
 | [cmd/idpctl/](cmd/idpctl) | Go の管理 CLI。管理 API のクライアントは `contract/openapi/admin.json` から生成する |
-| [infra/](infra) | 管理者のクライアント証明書と、管理用のホスト名の mTLS の割り当てだけを持つ Terraform と、そのオフラインのテスト。ゾーンのルールセット（WAF、リダイレクト、レート制限）は持たず、HTTPS へのリダイレクト、TLS のバージョン、mTLS の強制、レート制限は Worker が行う（[ドメインの置き場所](docs/design/domain-placement.md)の決定 ③） |
+| [infra/](infra) | Terraform と、そのオフラインのテスト。今は管理者のクライアント証明書と管理用のホスト名の mTLS の割り当てだけを持ち、署名への切り替えの後に外す（[ホスティングのモード](docs/design/hosting-modes.md)の実装の順番の 7）。ゾーンのルールセット（WAF、リダイレクト、レート制限）は持たず、HTTPS へのリダイレクト、TLS のバージョン、管理者の認証、レート制限は Worker が行う（[ドメインの置き場所](docs/design/domain-placement.md)の決定 ③） |
 | [scripts/](scripts) | ブートストラップのスクリプト（state のバケット、D1、マイグレーション、署名鍵と管理者の鍵の生成、Terraform の実行） |
 | [deployments/](deployments) | デプロイごとの設定ファイル（`<デプロイの名前>.tfvars.json`）とその雛形 |
 | [docs/](docs) | 設計思想、設計ドキュメント、デプロイの手順 |
@@ -77,7 +82,8 @@ Terraform とシェルスクリプトの検査は CI（[.github/workflows/ci.yml
 | --- | --- |
 | [docs/philosophy/README.md](docs/philosophy/README.md) | OJILab の設計思想とエンジニアリング原則 |
 | [docs/design/README.md](docs/design/README.md) | IdP の設計ドキュメントの索引。概要、ゴール、設計原則、全体構成 |
-| [docs/design/cross-language-contract.md](docs/design/cross-language-contract.md) | SQL、エンコーディング、ID、鍵の形式、テストベクタ、管理 API の仕様の取り決め |
+| [docs/design/hosting-modes.md](docs/design/hosting-modes.md) | カスタムドメインと `workers.dev` の 2 つのホスティングのモード、RFC 9421 の署名による管理者の認証、実装の順番 |
+| [docs/design/cross-language-contract.md](docs/design/cross-language-contract.md) | SQL、エンコーディング、ID、鍵の形式、管理者の署名の形、テストベクタ、管理 API の仕様の取り決め |
 | [docs/deployment/bootstrap.md](docs/deployment/bootstrap.md) | 空の Cloudflare アカウントから最初のユーザーと RP をつなぐまでの手順の設計 |
 | [docs/deployment/runbook.md](docs/deployment/runbook.md) | ブートストラップを `infra/` と `scripts/` で実行するときの運用者の操作の順番 |
 | [docs/deployment/secret.md](docs/deployment/secret.md) | 1Password Environments と GitHub Actions による CD 用 Secret の扱い |

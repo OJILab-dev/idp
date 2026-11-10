@@ -4,7 +4,7 @@ D1 に保存する値の形と、管理 API の形を、どの実装からも独
 
 - 将来 IdP の Worker を Rust で書き直すとき（[Rust 移行計画](rust-migration.md)参照）に、新しい実装が同じ値を読み書きできることを確かめる。
 - 実装言語に依存しない e2e テスト（Playwright）が、外から観測できる値を検証する。
-- Go の `idpctl` と TypeScript の管理用の Worker が、管理 API の仕様だけでつながる。
+- Go の `idpctl` と TypeScript の管理用の Worker が、管理 API の仕様と管理者の署名の形だけでつながる。
 
 どれか 1 つでもずれると、たとえば片方の実装で登録したクライアントシークレットのハッシュがもう片方で一致せず、認証が通らなくなる。
 
@@ -32,12 +32,20 @@ D1 に保存する値の形と、管理 API の形を、どの実装からも独
 | Idempotency-Key | トークン・シークレットと同じ形（32 バイトの乱数の base64url）。それ以外の形は拒否する |
 | 一覧のカーソル | 向き（次か前か）と境界の行の並びのキー（次はページの最後の行、前はページの最初の行）を base64url（パディングなし）にしたもの。中身は UTF-8 の JSON のオブジェクトで、メンバーは向きの `d`（`next` か `prev`）と、並びのキーの値を列の順に並べた配列の `k` の 2 つだけ。署名しない。共有コアが、メンバー、向き、キーの数と型を一覧ごとに検証する。`idpctl` には不透明な値で、中身を解釈しない |
 | パスキーの上限 | 1 人あたりのパスキーの上限を、名前の付いた共有の値 `max_passkeys_per_user` として 1 か所で定める。今の値は 10。IdP の Worker の本人による追加と登録リンクによる登録の確認、管理用の Worker の `enroll_link_issue` の確認は、どれもこの値を使う。仕様が定める値ではない（NIST SP 800-63B-4 §4.1.2.1 は複数の認証器の結び付けを許可しなければならない（SHALL）とするが、上限は定めていない）ので、暫定の値として扱う。ほかのドキュメントは数を書かず、この行を参照する |
-| 監査ログ | 管理操作は管理用の Worker が、本人のパスキー操作は IdP の Worker が書くので、両者で同じ形にする。`actor` は `admin`（管理用の Worker）か `user`（IdP の Worker）か `break_glass`（基盤の権限で手で書く行）。`admin` の行は、許可リストで確定した管理者の名前を `admin_name` に、使われたクライアント証明書の SHA-256 フィンガープリントを `admin_cert_sha256` に必ず持ち、`user` と `break_glass` の行はどちらも持たない。`writer_version` は書き込んだ Worker のバージョン、`operation` は操作名（`idpctl` の操作名か、`passkey_enroll`・`passkey_add`・`passkey_self_revoke`）、`target` は `user:<id>`・`client:<id>`・`group:<id>`・`schema`・`none` のどれか、`result` は `success` か `failure`（`user` と `break_glass` の行は `success` だけ）、`detail_json` は JSON オブジェクトの文字列で、ID、列挙値、数値、時刻、個人情報を含まない設定値だけを持ち、名前と自由記述を持たない。セッション ID、トークン、シークレット、登録トークンは書かない（[データモデル](data-model.md)参照） |
-| 管理 API | 管理用の Worker の HTTPS API。仕様（OpenAPI など）は共有コアの入力のスキーマから生成し、`idpctl` の Go の型はその仕様から生成する。生成物は手で編集せず、仕様と生成物のずれは CI で検出する。これが Go と TypeScript の間の唯一の契約になる（[管理 CLI と管理用の Worker](idpctl.md)参照） |
+| 監査ログ | 管理操作は管理用の Worker が、本人のパスキー操作は IdP の Worker が書くので、両者で同じ形にする。`actor` は `admin`（管理用の Worker）か `user`（IdP の Worker）か `break_glass`（基盤の権限で手で書く行）。`admin` の行は、許可リストで確定した管理者の名前を `admin_name` に、管理者の資格情報の SHA-256 を `admin_cert_sha256` に必ず持ち、`user` と `break_glass` の行はどちらも持たない。`admin_cert_sha256` の意味は資格情報の種類で決まり、前の設計（mTLS）の行ではクライアント証明書の DER の SHA-256、署名の行では署名を検証した鍵の `keyid`（SPKI の DER の SHA-256）になる。種類を区別する列 `admin_credential`（`certificate` か `signing-key`）は、[ホスティングのモード](hosting-modes.md)の 3.9 のとおり `0004` のマイグレーションで足す。列の名前は、変えると表の作り直しが要るので残す。`writer_version` は書き込んだ Worker のバージョン、`operation` は操作名（`idpctl` の操作名か、`passkey_enroll`・`passkey_add`・`passkey_self_revoke`）、`target` は `user:<id>`・`client:<id>`・`group:<id>`・`schema`・`none` のどれか、`result` は `success` か `failure`（`user` と `break_glass` の行は `success` だけ）、`detail_json` は JSON オブジェクトの文字列で、ID、列挙値、数値、時刻、個人情報を含まない設定値だけを持ち、名前と自由記述を持たない。セッション ID、トークン、シークレット、登録トークンは書かない（[データモデル](data-model.md)参照） |
+| 管理者の署名 | `idpctl`（Go）が作り、管理用の Worker（TypeScript）が検証する RFC 9421 の署名。形の正本は[ホスティングのモード](hosting-modes.md)の 3.2 から 3.7。`Signature-Input` と `Signature` はちょうど 1 つのメンバーを持ち、ラベルが一致する。対象のコンポーネントは順に `"@method"`、`"@target-uri"`、`"@authority"`、`"content-digest"`、本文を持つ要求（`POST` と `PUT`）だけ `"content-type"`、`Idempotency-Key` を持つ要求だけ `"idempotency-key"`。パラメーターは `created`、`nonce`、`keyid`、`tag` の 4 つだけで、`alg` と `expires` は持たない。署名の基底は RFC 9421 §2.5 のとおり組み立てる |
+| 管理者の署名のアルゴリズム | ECDSA P-384 と SHA-384（RFC 9421 §3.3.5 の `ecdsa-p384-sha384`）。署名の値は r と s を 48 バイトずつのビッグエンディアンにして連結した 96 バイトで、それ以外の長さは拒否する。アルゴリズムは許可リストの鍵から決め、要求の申告を受け付けない。Workers で P-384 を検証できなければ Ed25519（§3.3.6）に変える（[ホスティングのモード](hosting-modes.md)の 3.3） |
+| 管理者の鍵の `keyid` | 公開鍵の SubjectPublicKeyInfo（SPKI）の DER の SHA-256 を、小文字の 16 進 64 文字で書いた値。1Password のアイテムの `public_key_sha256` と同じ値。`idpctl` は秘密鍵の公開鍵から計算し、管理用の Worker は許可リストの `public_key` から計算して `keyid` と一致することを確かめる |
+| 署名の `nonce` | トークン・シークレットと同じ形（32 バイトの乱数の base64url）で、厳格な base64url の規則で検証する。管理用の Worker は、署名の検証を通った後で D1 の `admin_request_nonces` に一意に挿入し、2 回目をリプレイとして拒否する |
+| 署名の `created` | 整数の UNIX 秒。管理用の Worker の今の時刻の 60 秒前から 60 秒後までだけを受け付ける |
+| 署名の `tag` | 固定の文字列 `idp-admin` |
+| `Content-Digest` | RFC 9530 の Dictionary で、メンバーはちょうど `sha-256` の 1 つ。値は本文のバイト列の SHA-256 の 32 バイトのバイト列（構造化フィールドのバイト列なので、base64 でパディングあり、コロンで囲む）。本文のない要求は空のバイト列のダイジェストを付ける |
+| 管理 API | 管理用の Worker の HTTPS API。仕様（OpenAPI など）は共有コアの入力のスキーマから生成し、`idpctl` の Go の型はその仕様から生成する。生成物は手で編集せず、仕様と生成物のずれは CI で検出する。上の管理者の署名の取り決めと合わせて、これが Go と TypeScript の間の契約になる（[管理 CLI と管理用の Worker](idpctl.md)参照） |
 
 - D1 のマイグレーションは `contract/migrations/` に置く。SQL は実装の言語に依存しない契約なので、TypeScript の workspace の外に置き、将来の Rust の実装も同じファイルを使う。番号順のマイグレーションのファイルは、[データモデル](data-model.md)の SQL のブロックと出てくる順に 1 対 1 で同じ内容にし、ずれはテストで検出する。
 - base64url の復号は厳格にする。パディング、URL セーフでない文字（`+`、`/`、空白を含む）、長さを 4 で割った余りが 1 のもの、末尾の余りのビットが 0 でないもの（RFC 4648 §3.5）を拒否し、同じバイト列の書き方を 1 つに限る。署名鍵の JWK では、必須のメンバーがこの形の文字列であることと、Ed25519 の `x` が 32 バイト（RFC 8032 §5.1.5）であることも確かめ、合わなければ `kid` を計算せずに拒否する。
 - `contract/testdata/vectors.json` に共通のテストベクタ（入力とハッシュ結果など）を置き、共有コアのテストで検証する。パスキーの上限の値もここに置き、コアが同じ値を使っていることを確かめる。将来 Rust の実装を足すときは、同じテストベクタをその実装のテストでも検証する。
+- 管理者の署名のテストベクタ（署名の基底の文字列、`Content-Digest`、`keyid`、正しい署名と否定の署名、`nonce` の形）も同じファイルに置き、TypeScript の検証器と Go の `idpctl` の両方のテストが同じベクタを満たす（[ホスティングのモード](hosting-modes.md)の 3.12）。RFC 9421 の付録の例が当てはまるものはそれを使い、それ以外の鍵はテストの実行時に作る。公開された例の鍵のほかは、秘密鍵をコミットしない。
 - パスキーの上限を変えるときは、この契約の値を変え、共有コアを更新する。下げても既存のパスキーは消さない。新しい上限を超えているユーザーは今のパスキーをそのまま使え、それ以上の追加と登録リンクの発行は拒否され、失効は（最後の 1 本は失効できない規則のもとで）これまでどおりできる。上げるときはマイグレーションが要らない。
 - 入力の検証（redirect URI の形式、グループ名など）は、書き込みを行う共有コアだけで行う。`idpctl` は検証せず、管理用の Worker が返すエラーを表示する。IdP の Worker は保存された値と完全一致で比べ、壊れた行は拒否する。
 - 管理 API は HTTP の契約なので、サーバー側の実装言語を変えても `idpctl` は影響を受けない。
