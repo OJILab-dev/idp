@@ -78,6 +78,7 @@ export async function startIdp(certificate: TestCertificate): Promise<LocalIdp> 
   // The deployment's configuration, so the asset handling under test is the one that ships; only what a local run
   // must replace is replaced (the module, the asset directory, the signing key Secret, the D1 placeholder ID).
   const deployed = workerConfig({
+    IDP_HOSTING_MODE: "custom_domain",
     IDP_ISSUER: ISSUER,
     IDP_D1_DATABASE_ID: "00000000-0000-4000-8000-000000000000",
     IDP_RATE_LIMIT_NAMESPACE_ID: "1",

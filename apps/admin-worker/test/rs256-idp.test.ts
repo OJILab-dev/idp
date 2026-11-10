@@ -36,6 +36,7 @@ describe("rs256Enabled over the IdP Worker's IdpInternal entrypoint", () => {
     return {
       DB: d1.db,
       ISSUER,
+      HOSTING_MODE: "custom_domain",
       SIGNING_KEY_ED25519_CURRENT: ed25519,
       CF_VERSION_METADATA: { id: "00000000-0000-4000-8000-0000000000bb", tag: "", timestamp: "" },
       RATE_LIMITER: { limit: async () => ({ success: true }) },

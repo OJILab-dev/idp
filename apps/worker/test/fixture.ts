@@ -137,6 +137,7 @@ export function useFixture(): () => Fixture {
     const env: Env = {
       DB: core.t.db,
       ISSUER,
+      HOSTING_MODE: "custom_domain",
       SIGNING_KEY_ED25519_CURRENT: await testSigningKey(),
       CF_VERSION_METADATA: { id: VERSION_ID, tag: "", timestamp: "" },
       RATE_LIMITER: rateLimiter,

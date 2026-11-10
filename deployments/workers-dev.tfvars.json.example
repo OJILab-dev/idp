@@ -1,0 +1,17 @@
+{
+  "hosting_mode": "workers_dev",
+  "workers_dev_subdomain": "example-account",
+  "admin_signing_keys": [],
+  "d1_database_name": "idp-workers-dev",
+  "rate_limit_namespace_id": "1001",
+  "admin_rate_limit_namespace_id": "1002",
+  "state_bucket_name": "idp-workers-dev-tfstate",
+  "onepassword_vault": "idp-workers-dev",
+  "onepassword_cloudflare_item": "cloudflare",
+  "onepassword_signing_key_item": "signing-key-ed25519",
+  "onepassword_admin_key_item_prefix": "admin-key-",
+  "onepassword_deploy_environment": "idp-workers-dev-deploy",
+  "onepassword_plan_environment": "idp-workers-dev-plan",
+  "github_deploy_environment": "workers-dev",
+  "github_plan_environment": "workers-dev-plan"
+}

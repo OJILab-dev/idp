@@ -2,17 +2,24 @@ import { describe, expect, it } from "vitest";
 import { RATE_LIMIT, workerConfig } from "../cloudflare.config.js";
 
 const D1_ID = "0f6b6c3e-5d0a-4a7e-9a35-6f1f4f6c2b11";
-const DEPLOY = { IDP_ISSUER: "https://idp.example.com", IDP_D1_DATABASE_ID: D1_ID, IDP_RATE_LIMIT_NAMESPACE_ID: "1001" } as const;
+const DEPLOY = {
+  IDP_HOSTING_MODE: "custom_domain",
+  IDP_ISSUER: "https://idp.example.com",
+  IDP_D1_DATABASE_ID: D1_ID,
+  IDP_RATE_LIMIT_NAMESPACE_ID: "1001",
+} as const;
 
 describe("cloudflare.config.ts", () => {
-  it("serves only on the issuer's custom domain, with workers.dev and preview URLs off", () => {
+  it("serves only on the issuer's custom domain in the custom_domain mode, with workers.dev and preview URLs off", () => {
     const worker = workerConfig(DEPLOY);
+    expect(worker.name).toBe("idp");
     expect(worker.domains).toEqual([{ hostname: "idp.example.com", production: true, previews: false }]);
     expect(worker.workersDev).toBe(false);
     expect(worker.previewUrls).toBe(false);
     expect(worker.env).toMatchObject({
       DB: { type: "d1", id: D1_ID },
       ISSUER: { type: "text", value: "https://idp.example.com" },
+      HOSTING_MODE: { type: "text", value: "custom_domain" },
       CF_VERSION_METADATA: { type: "version-metadata" },
     });
     // The admin Worker's IDP binding targets the internal entrypoint, not the public fetch handler.
@@ -23,6 +30,17 @@ describe("cloudflare.config.ts", () => {
     expect(worker.env).toMatchObject({ ASSETS: { type: "assets" } });
     // Workers Logs must not see the id_token_hint, state, or nonce of /authorize.
     expect(worker.observability?.redactQueryString).toBe(true);
+  });
+
+  it("serves only on workers.dev in the workers_dev mode, with no custom domain and preview URLs off", () => {
+    const worker = workerConfig({ ...DEPLOY, IDP_HOSTING_MODE: "workers_dev", IDP_ISSUER: "https://idp.team-1.workers.dev" });
+    expect(worker.domains).toBeUndefined();
+    expect(worker.workersDev).toBe(true);
+    expect(worker.previewUrls).toBe(false);
+    expect(worker.env).toMatchObject({
+      ISSUER: { type: "text", value: "https://idp.team-1.workers.dev" },
+      HOSTING_MODE: { type: "text", value: "workers_dev" },
+    });
   });
 
   it("binds the Rate Limiting namespace from the deployment, with the provisional period and limit", () => {
@@ -40,6 +58,13 @@ describe("cloudflare.config.ts", () => {
   });
 
   it.each([
+    // No default mode: a missing one must not silently pick where the issuer lives (hosting-modes.md 1.1).
+    ["no hosting mode", { ...DEPLOY, IDP_HOSTING_MODE: undefined }],
+    ["an unknown hosting mode", { ...DEPLOY, IDP_HOSTING_MODE: "zone" }],
+    ["the workers_dev mode with a custom-domain issuer", { ...DEPLOY, IDP_HOSTING_MODE: "workers_dev" }],
+    ["the workers_dev mode with another Worker's host", { ...DEPLOY, IDP_HOSTING_MODE: "workers_dev", IDP_ISSUER: "https://web.team.workers.dev" }],
+    ["the workers_dev mode with two subdomain labels", { ...DEPLOY, IDP_HOSTING_MODE: "workers_dev", IDP_ISSUER: "https://idp.a.b.workers.dev" }],
+    ["the custom_domain mode with a workers.dev issuer", { ...DEPLOY, IDP_ISSUER: "https://idp.team.workers.dev" }],
     ["no issuer", { ...DEPLOY, IDP_ISSUER: undefined }],
     ["an issuer with a path", { ...DEPLOY, IDP_ISSUER: "https://idp.example.com/x" }],
     ["no D1 ID", { ...DEPLOY, IDP_D1_DATABASE_ID: undefined }],

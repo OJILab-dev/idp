@@ -22,8 +22,11 @@
 # - Worker custom domains and their DNS records: cloudflare.config.ts owns them and `cf deploy` attaches them.
 
 # Looked up so that a zone name outside the account stops the plan, and so that DNS records or fail-closed settings
-# can be added here later without a new input (docs/design/deployment.md).
+# can be added here later without a new input (docs/design/deployment.md). Only in the custom_domain mode: the
+# workers_dev mode has no zone, and its tokens hold no zone permission (docs/design/hosting-modes.md 1.2).
 data "cloudflare_zone" "this" {
+  count = var.hosting_mode == "custom_domain" ? 1 : 0
+
   filter = {
     name = var.zone
     account = {

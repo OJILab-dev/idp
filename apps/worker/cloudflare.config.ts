@@ -1,11 +1,15 @@
 // The IdP Worker's deployment configuration, read by `cf deploy` (docs/design/deployment.md). Deployment-specific
-// values are not written here: the issuer and the D1 ID come from the deploy script's environment, which takes them
-// from the deployment settings file (the issuer) and from a lookup by the database name (the D1 ID).
+// values are not written here: the hosting mode, the issuer, and the D1 ID come from the deploy script's environment,
+// which takes them from the deployment settings file (the mode, and the issuer it derives from issuer_host or
+// workers_dev_subdomain) and from a lookup by the database name (the D1 ID).
 import { bindings, defineConfig, exports, type WorkerConfig as CloudflareWorkerConfig } from "cf/config";
-import { parseIssuer } from "@idp/core/shared";
+import { IDP_WORKER_NAME, checkHostingHosts, parseHostingMode, parseIssuer } from "@idp/core/shared";
 
 /** The deploy script's environment; every value is untrusted until checked. */
 export type DeployEnv = {
+  /** hosting_mode of the deployment settings file (docs/design/hosting-modes.md 1.1). */
+  readonly IDP_HOSTING_MODE?: string | undefined;
+  /** `https://<issuer_host>`, or `https://idp.<workers_dev_subdomain>.workers.dev` (hosting-modes.md 1.3). */
   readonly IDP_ISSUER?: string | undefined;
   readonly IDP_D1_DATABASE_ID?: string | undefined;
   /** rate_limit_namespace_id of the deployment settings file: unique within the account (deployment.md). */
@@ -30,30 +34,39 @@ export const RATE_LIMIT = { period: 10, limit: 10 } as const;
  * declared here: the first deploy runs before the key is registered (bootstrap stage 5 and 5b), and the Worker
  * itself refuses every request until a valid key is present.
  *
+ * The mode decides where the Worker is served (docs/design/hosting-modes.md 1.2): custom_domain serves the issuer host
+ * as a custom domain with workers.dev off; workers_dev serves the workers.dev route only, with no custom domain.
+ * Preview URLs are off in both.
+ *
  * @param env The deploy script's environment.
  * @returns The `worker` member of the configuration.
+ * @throws {InvalidHostingError} IDP_HOSTING_MODE is unset or unknown, or the issuer host does not match the mode.
  * @throws {InvalidIssuerError} IDP_ISSUER is unset or not exactly `https://<host>`.
  * @throws {Error} IDP_D1_DATABASE_ID is unset or not a D1 database UUID.
  * @throws {Error} IDP_RATE_LIMIT_NAMESPACE_ID is unset or not a positive integer.
  */
 export function workerConfig(env: DeployEnv): CloudflareWorkerConfig {
-  // The same parser as the Worker's, so the custom domain is exactly the host the Worker will accept.
+  const mode = parseHostingMode(env.IDP_HOSTING_MODE);
+  // The same parsers as the Worker's, so the route is exactly the host the Worker will accept.
   const issuer = parseIssuer(env.IDP_ISSUER);
+  checkHostingHosts(mode, issuer.rpId);
   const d1Id = env.IDP_D1_DATABASE_ID;
   if (d1Id === undefined || !D1_ID.test(d1Id)) throw new Error("IDP_D1_DATABASE_ID is not a D1 database UUID");
   // No default: a guessed namespace could be one the service's Workers already count in, in the shared account.
   const namespace = env.IDP_RATE_LIMIT_NAMESPACE_ID;
   if (namespace === undefined || !NAMESPACE_ID.test(namespace)) throw new Error("IDP_RATE_LIMIT_NAMESPACE_ID is not a positive integer");
   return {
-    name: "idp",
+    // In the workers_dev mode the name is the issuer host's first label, so it is the shared-core constant.
+    name: IDP_WORKER_NAME,
     compatibilityDate: "2026-10-01",
     entrypoint: "./src/index.ts",
-    domains: [{ hostname: issuer.rpId, production: true, previews: false }],
+    ...(mode === "custom_domain" ? { domains: [{ hostname: issuer.rpId, production: true, previews: false }] } : {}),
     // The admin Worker's IDP Service Binding targets this named entrypoint (src/internal.ts), never the public
     // fetch handler, whose TLS and rate-limit checks refuse a binding call.
     exports: { IdpInternal: exports.worker() },
-    // The custom domain is the only way in: the issuer, RP ID, and origin are all that host.
-    workersDev: false,
+    // One way in per mode, the issuer host: the custom domain, or the workers.dev route. The issuer, RP ID, and origin
+    // are all that host, and preview URLs would be other hosts the Worker refuses anyway (hosting-modes.md 1.2).
+    workersDev: mode === "workers_dev",
     previewUrls: false,
     assets: {
       htmlHandling: "auto-trailing-slash",
@@ -73,6 +86,8 @@ export function workerConfig(env: DeployEnv): CloudflareWorkerConfig {
     env: {
       DB: bindings.d1({ id: d1Id }),
       ISSUER: bindings.text(issuer.url),
+      // Checked again by the Worker at start against the issuer (hosting-modes.md 1.4).
+      HOSTING_MODE: bindings.text(mode),
       // The Worker refuses every request without it: the audit rows of the user's own passkey operations need it.
       CF_VERSION_METADATA: bindings.versionMetadata(),
       // The Worker refuses every request without it (docs/design/free-tier.md).

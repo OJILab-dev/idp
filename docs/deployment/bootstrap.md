@@ -6,7 +6,9 @@
 
 手順は 2 つのホスティングのモード（カスタムドメインと `workers.dev`。[ホスティングのモード](../design/hosting-modes.md)）で同じで、違うのはゾーンに関わる前提と確認だけ。管理者の認証は、どちらのモードでも RFC 9421 の署名で行う。
 
-管理用の Worker は[ホスティングのモード](../design/hosting-modes.md)の実装の順番の 6 で署名だけで管理者を確かめるようになり、実装の順番の 7 で mTLS（Terraform の mTLS の割り当てとクライアント証明書、`idpctl` の `--cert`、`admin_allowlist` と `admin_client_certificates` の入力）を外した。mTLS を使ったデプロイは一度もなかったので、移行の手順も、証明書を消す apply も要らない。`workers.dev` のモードの入力は、同じ文書の実装の順番の 8 で足すまで使えない。
+管理用の Worker は[ホスティングのモード](../design/hosting-modes.md)の実装の順番の 6 で署名だけで管理者を確かめるようになり、実装の順番の 7 で mTLS（Terraform の mTLS の割り当てとクライアント証明書、`idpctl` の `--cert`、`admin_allowlist` と `admin_client_certificates` の入力）を外した。mTLS を使ったデプロイは一度もなかったので、移行の手順も、証明書を消す apply も要らない。モードの入力（`hosting_mode` と `workers_dev_subdomain`）は実装の順番の 8 で足した。`workers.dev` のモードでこの手順を最後まで通すことは、実装の順番の 9 で確かめる。
+
+モードは段階 0 で `hosting_mode` に書き、既定値はない。モードを変えることは issuer を変えることなので、最初のデプロイの前に決め、変えるときは新しいデプロイとして作り直す。カスタムドメインのモードで作った既存のデプロイは、設定ファイルに `"hosting_mode": "custom_domain"` を足すだけでよく、ほかは何も変わらない。`workers.dev` のモードを選ぶ前に、次の警告を読む。
 
 ## `workers.dev` のモードを選ぶ前の警告
 
@@ -50,7 +52,7 @@
 | 1 | Terraform の state 用の R2 のバケットを作る。D1 のデータベースを APAC で作る | 手元。`cf` のスクリプト（バケットと D1。Terraform には D1 を置かない。[デプロイと設定](../design/deployment.md)の Terraform とスクリプトの分担を参照） | バケットと D1 が入力のアカウントにあること。D1 の ID はスクリプトが名前から引き、設定ファイルにも手順にも書き写さないこと。D1 が production バックエンドにあること（Cloudflare API の「Get D1 Database」の `version`。[未決事項](../design/open-questions.md)参照） |
 | 2 | マイグレーション（テーブル、ビュー、トリガー）を適用する | 手元。`cf` のスクリプト | トリガーが更新と削除を拒否すること（[データモデル](../design/data-model.md)参照） |
 | 3 | トークンの署名鍵（Ed25519）を生成し、1Password のアイテムにだけ入れる。Worker Secret には、まだ登録しない（Worker がまだないため。段階 5b で登録する） | 手元。生成スクリプト | 出力が `kid` と公開鍵だけで、平文がディスクにないこと |
-| 4 | 管理者の鍵（ECDSA P-384）を生成し、公開鍵と `keyid` の行をデプロイの設定ファイルの許可リスト（`admin_signing_keys`）に足す。CSR もクライアント証明書も作らない。Terraform を適用する（ゾーンのルール、mTLS の割り当て、証明書は置かない。Worker のカスタムドメインは段階 5 の `cf deploy` が付けるので、Worker がないうちに適用してよい） | 手元。生成スクリプト（鍵と許可リストの行）、Terraform、リポジトリの設定（許可リスト。PR でレビューする） | 秘密鍵が 1Password にだけあり、出力が公開鍵と `keyid` だけであること。許可リストの `keyid` が 1Password のアイテムの `public_key_sha256` と一致すること。plan がゾーンのルールセットと設定を変えないこと |
+| 4 | 管理者の鍵（ECDSA P-384）を生成し、公開鍵と `keyid` の行をデプロイの設定ファイルの許可リスト（`admin_signing_keys`）に足す。CSR もクライアント証明書も作らない。Terraform を適用する（ゾーンのルール、mTLS の割り当て、証明書は置かない。Worker のカスタムドメインは段階 5 の `cf deploy` が付けるので、Worker がないうちに適用してよい） | 手元。生成スクリプト（鍵と許可リストの行）、Terraform、リポジトリの設定（許可リスト。PR でレビューする） | 秘密鍵が 1Password にだけあり、出力が公開鍵と `keyid` だけであること。許可リストの `keyid` が 1Password のアイテムの `public_key_sha256` と一致すること。plan がゾーンのルールセットと設定を変えないこと。`workers.dev` のモードでは、plan がゾーンを引かず、plan の前にアカウントの `workers.dev` のサブドメインが `workers_dev_subdomain` と一致すると確かめられること（違えば何も変えずに止まる。[ホスティングのモード](../design/hosting-modes.md)の 1.1） |
 | 5 | 2 つの Worker を CI で最初にデプロイする | CI（[デプロイと設定](../design/deployment.md)のデプロイのパイプライン） | main へのマージから、apply、マイグレーション、2 つのデプロイが順に成功すること。IdP の Worker は署名鍵がないので、リクエストを処理せずエラーを返すこと（fail-closed） |
 | 5b | 段階 3 の署名鍵を、IdP の Worker の Worker Secret に登録する | 手元。Secret の登録スクリプト（1Password から読み、`cf` か Cloudflare API へパイプで渡す） | 出力が `kid` だけで、IdP の Worker の新しいバージョンが鍵を読めること |
 | 6 | 動作を確かめる | — | discovery と JWKS に届き、JWKS の `kid` が段階 3 の `kid` と一致すること。署名のない管理 API の要求と、許可リストにない鍵の署名の要求に管理用の Worker が `forbidden` を返し、許可リストの鍵で署名した `idpctl` の要求が通ること。同じ署名の要求を送り直すと `forbidden` になること（リプレイ）。拒否した要求の後に `admin_request_nonces` と監査ログの行が増えていないこと、通った要求の監査ログの行が管理者の名前、`keyid`、`admin_credential` の `signing-key` を持つこと。同じ接続元から 10 秒に 10 件を超える管理 API の要求が、本文のない 429 になること。管理用のホスト名への平文の要求がリダイレクトされず拒否されること。`workers.dev` のモードでは、`idpctl` の要求と、つなぐ RP のサーバーの discovery、JWKS、`/token` の要求が Browser Integrity Check で拒否されないこと（`User-Agent`）。issuer への平文の `GET`（ページ、例えば `/signin`）が同じパスとクエリの HTTPS に 308 でリダイレクトされ、平文の `POST /token` が 404 で拒否されること（ゾーンの Always Use HTTPS が有効なら、エッジのリダイレクトが先に返る）。TLS 1.1 以下で届いた要求を、ページを含めて 2 つの Worker が拒否すること（ゾーンの最小バージョンが 1.2 以上ならハンドシェイクで失敗する）。カスタムドメインのモードでは、サービスのほかのホスト名の動きが変わっていないこと |

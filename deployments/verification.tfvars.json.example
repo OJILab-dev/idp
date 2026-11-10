@@ -1,4 +1,5 @@
 {
+  "hosting_mode": "custom_domain",
   "zone": "example.com",
   "issuer_host": "id.example.com",
   "admin_host": "admin.id.example.com",
