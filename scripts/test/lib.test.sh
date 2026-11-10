@@ -545,6 +545,37 @@ test_require_reviewed_checkout() {
   # The stale remote-tracking ref still equals HEAD; only the fetch inside the check reveals the newer main.
   assert_fails "a checkout behind the freshly fetched main is refused" require_reviewed_checkout "${root}/work"
   rm -rf "${root}"
+
+  # A narrowed fetch refspec leaves refs/remotes/origin/main stale after `git fetch origin main`; the check must
+  # still see the newer main.
+  root="$(mktemp -d)"
+  make_reviewed_clone "${root}"
+  git -C "${root}/work" config remote.origin.fetch '+refs/heads/unrelated:refs/remotes/origin/unrelated'
+  git clone --quiet "${root}/origin.git" "${root}/other" 2>/dev/null
+  printf 'merged\n' >>"${root}/other/file"
+  git -C "${root}/other" -c user.name=test -c user.email=test@example.invalid commit --quiet -am merged
+  git -C "${root}/other" push --quiet origin main
+  assert_fails "a narrowed refspec does not hide a newer main" require_reviewed_checkout "${root}/work"
+  rm -rf "${root}"
+}
+
+# The CI deploy refuses a commit that is no longer the head of main, so a late or re-run job never rolls back a
+# newer deploy (and its forward-only migrations).
+test_require_main_head() {
+  local root
+  root="$(mktemp -d)"
+  make_reviewed_clone "${root}"
+  local head
+  head="$(git -C "${root}/work" rev-parse HEAD)"
+  assert_succeeds "the head of main deploys" require_main_head "${root}/work" "${head}"
+  assert_fails "a malformed commit is refused" require_main_head "${root}/work" "main"
+  assert_fails "a checkout other than the commit is refused" require_main_head "${root}/work" "$(printf '1%.0s' {1..40})"
+  git clone --quiet "${root}/origin.git" "${root}/other" 2>/dev/null
+  printf 'merged\n' >>"${root}/other/file"
+  git -C "${root}/other" -c user.name=test -c user.email=test@example.invalid commit --quiet -am merged
+  git -C "${root}/other" push --quiet origin main
+  assert_fails "a commit behind main is refused" require_main_head "${root}/work" "${head}"
+  rm -rf "${root}"
 }
 
 # The deploy workflow's config job turns IDP_DEPLOYMENT into one matrix entry per deployment.
@@ -598,6 +629,7 @@ test_verify_workers_dev_subdomain_from_env
 test_plain_http_verdict
 test_is_admin_forbidden
 test_require_reviewed_checkout
+test_require_main_head
 test_ci_deploy_matrix
 
 if [[ "${failures}" -ne 0 ]]; then

@@ -193,6 +193,9 @@ main() {
   if [[ "${ci}" == "true" ]]; then
     # The value is checked by name only: printenv's output is discarded, so xtrace never shows the token.
     printenv CLOUDFLARE_API_TOKEN >/dev/null || fail "CLOUDFLARE_API_TOKEN is not set; load the deployment's 1Password Environment"
+    # A run whose commit is no longer the head of main (a late run or a re-run) stops before any change, so it never
+    # deploys over a newer merge and its migrations. The workflow checks the same before Terraform.
+    require_main_head "${IDP_REPO_ROOT}" "${GITHUB_SHA:-}"
     IDP_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
     [[ "${IDP_ACCOUNT_ID}" =~ ^[0-9a-f]{32}$ ]] || fail "CLOUDFLARE_ACCOUNT_ID is not a Cloudflare account ID"
     # No verify_cf_account: the token is scoped to the Environment's one account, so no session can span accounts,
@@ -227,6 +230,8 @@ main() {
   export IDP_ADMIN_RATE_LIMIT_NAMESPACE_ID="${admin_namespace}"
   export IDP_ADMIN_SIGNING_KEYS="${signing_keys}"
 
+  # Ignored, so the clean-checkout check cannot see it: an earlier build's output must not be what gets deployed.
+  rm -rf "${IDP_REPO_ROOT}/apps/worker/.cloudflare" "${IDP_REPO_ROOT}/apps/admin-worker/.cloudflare"
   # Build both before changing anything, so a bad input or a build failure stops the run with nothing deployed.
   cf_cli_in apps/worker build
   cf_cli_in apps/admin-worker build

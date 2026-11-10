@@ -30,6 +30,12 @@ on:
 
 permissions: {}
 
+# One run at a time across all deployments; a newer run waiting replaces an older one that is still waiting. This
+# serialises but does not order runs, so each deploy job also refuses a commit that is no longer the head of main.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
 # With `shell: bash` the runner adds -o pipefail, which the bare default leaves out.
 defaults:
   run:
@@ -94,19 +100,24 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.config.outputs.matrix) }}
-    concurrency:
-      group: deploy-${{ matrix.deployment }}
-      cancel-in-progress: false
     environment: ${{ matrix.environment }}
     permissions:
       contents: read
-      # The 1Password OIDC exchange and the Takumi Guard bot authentication.
+      # The 1Password OIDC exchange and the Takumi Guard bot authentication. GitHub grants it to the whole job, so
+      # every step, pnpm install included, can request an OIDC token for this job (docs/design/deployment.md).
       id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      # Concurrency serialises runs but does not order them, and an old run can be re-run: a commit that is no longer
+      # the head of main stops here, before any credential is loaded. scripts/deploy.sh checks the same again.
+      - name: Require the head of main
+        run: |
+          source scripts/lib.sh
+          require_main_head "${GITHUB_WORKSPACE}" "${GITHUB_SHA}"
 
       - name: Enable Takumi Guard for npm
         uses: flatt-security/setup-takumi-guard-npm@6d4182745c1e474c35a023573c2612c085be45a4 # v1.2.0
@@ -119,17 +130,21 @@ jobs:
         with:
           install_args: node pnpm jq terraform
 
+      # No dependency script runs: the build needs none (pnpm-workspace.yaml allows none either), and a script is
+      # code from a dependency running in a job that can request an OIDC token.
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
-      # After the dependencies, so the credentials exist only for Terraform and the deploy (docs/deployment/secret.md).
-      # The variables are the deployment's 1Password Environment (onepassword_deploy_environment); a GitHub
-      # Environment variable or secret of the same name takes precedence over the repository one, which is how each
-      # deployment reaches its own 1Password Environment.
-      - name: Load the deployment's credentials
+      # After the dependencies, so no credential exists while they install (docs/deployment/secret.md). The
+      # deployment's 1Password Environment (onepassword_deploy_environment) is loaded as this step's outputs only,
+      # never into GITHUB_ENV, so a later step sees only the outputs it names in its own env. A GitHub Environment
+      # variable or secret of the same name takes precedence over the repository one, which is how each deployment
+      # reaches its own 1Password Environment.
+      - id: op
+        name: Load the deployment's credentials
         uses: 1password/load-secrets-action@70062d7a876d3eb6334754fa26efd2fbd90c32f2 # v5.0.1
         with:
-          export-env: true
+          export-env: false
         env:
           OP_WORKLOAD_ID: ${{ vars.OP_WORKLOAD_ID }}
           OP_ENVIRONMENT_ID: ${{ vars.OP_ENVIRONMENT_ID }}
@@ -138,24 +153,29 @@ jobs:
       # The account ID is not a secret, but the repository and its logs are public (docs/design/deployment.md), and
       # the scripts run with xtrace. The add-mask command itself is never echoed to the log.
       - name: Mask the account ID
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.op.outputs.CLOUDFLARE_ACCOUNT_ID }}
         run: echo "::add-mask::${CLOUDFLARE_ACCOUNT_ID}"
 
-      # Each token is mapped to the name its tool reads only in the step that uses it, so the Terraform token never
-      # reaches cf and the deploy token never reaches Terraform. The 1Password Environment holds them under role names.
+      # Only the Terraform token and the R2 credentials, under the names Terraform reads; never the deploy token.
       - name: Terraform apply
         env:
           DEPLOYMENT: ${{ matrix.deployment }}
-          CLOUDFLARE_API_TOKEN: ${{ env.TERRAFORM_CLOUDFLARE_API_TOKEN }}
-          AWS_ACCESS_KEY_ID: ${{ env.R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ env.R2_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.op.outputs.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ steps.op.outputs.TERRAFORM_CLOUDFLARE_API_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ steps.op.outputs.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ steps.op.outputs.R2_SECRET_ACCESS_KEY }}
         run: |
           scripts/terraform.sh --ci "${DEPLOYMENT}" init
           scripts/terraform.sh --ci "${DEPLOYMENT}" apply
 
+      # Only the deploy token, under the name cf reads; never the Terraform token or the R2 credentials. cf build runs
+      # the Vite build (dependency code) inside this step, so the deploy token is visible to that code.
       - name: Migrate, deploy, and check
         env:
           DEPLOYMENT: ${{ matrix.deployment }}
-          CLOUDFLARE_API_TOKEN: ${{ env.DEPLOY_CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ steps.op.outputs.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ steps.op.outputs.DEPLOY_CLOUDFLARE_API_TOKEN }}
           BEFORE_SIGNING_KEY: ${{ inputs.before_signing_key }}
         run: |
           args=(--ci)

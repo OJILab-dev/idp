@@ -63,6 +63,8 @@
 - 外からの確認が失敗したときは、2 つの Worker はすでにデプロイされている。どちらの Worker も、確かめた振る舞いが崩れても、要求を処理せずに拒否する側に倒れる。原因を直して main にもう一度マージする。
 - `custom_domain` で、平文の HTTP に 301 が返って確認が失敗したときは、ゾーンの「Always Use HTTPS」かリダイレクトのルールが IdP の Worker より先に答えている。IdP はゾーンの設定を持たないので、ゾーンの持ち主と相談する（そのルールは、資格情報を持つ平文の要求も https へ送り直させる）。
 - `IDP_DEPLOYMENT` を空にすると、workflow は認証情報を使う job を含めて何も動かさない。デプロイを止めたいときも、こうする。
+- デプロイの job は、そのコミットが今の main の先頭でなければ、認証情報を読む前に止まる（続けてマージしたときの古い実行と、古い実行の再実行）。その失敗は正常で、新しい実行がデプロイする。前の版に戻したいときは、古い実行を再実行せず、戻す変更を PR でマージする。
+- 手元で動かすスクリプト（`scripts/terraform.sh`、`scripts/deploy.sh`、ほかのブートストラップのスクリプト）は xtrace で動くので、表示にアカウント ID が出る（`IDP_ACCOUNT_ID`、`AWS_ENDPOINT_URL_S3`、`CLOUDFLARE_ACCOUNT_ID` の代入）。秘密ではないが、手元の表示は隠されないので、公開の場所に貼らない。隠すのは CI の記録だけ。
 
 ### CI のデプロイの一度だけの準備
 
@@ -92,7 +94,8 @@
 - `IDP` の Service Binding の `exportName` が、名前付きのエントリーポイントへのバインディングとして API に届き、IdP の Worker の最初のデプロイの直後から解決すること（段階 5）
 - デプロイ用のトークン（Workers の編集の権限）で、Cloudflare API の「Get a Workers Subdomain」を読めること（`workers.dev` のモードの CI のデプロイ）
 - `workers.dev` が平文の HTTP の要求を Worker に届けるか、自分で https へリダイレクトするか（`workers.dev` のモードの外からの確認は、どちらも受け付けて、どちらが答えたかを記録する）
-- 1Password の `load-secrets-action` が書き出した変数を、後の step の `env` で `${{ env.<名前> }}` として読めること（Terraform とデプロイの step が、役割の名前のトークンを道具の読む名前に写す）
+- 1Password の `load-secrets-action` が、Workload Identity と `export-env: false` で、Environment の変数を変数と同じ名前の step の出力として出すこと（Terraform とデプロイの step が、役割の名前の出力を道具の読む名前に写す）
+- `pnpm install --ignore-scripts` の後の `cf build` が、Takumi Runner でも成功すること（手元では Vite plugin 自身のビルドで確かめた）
 - GitHub Environment の変数と secret（`OP_WORKLOAD_ID`、`OP_ENVIRONMENT_ID`、`OP_INTEGRATION_KEY`）が、デプロイが 2 つ以上のときに、リポジトリのものより優先されること
 - Takumi Runner に、`curl` 8.3 以降、`git`、`openssl` があること（`jq` と Terraform は mise が入れる）
 - Worker Secret（署名鍵）が、`cf deploy --prebuilt` の後も残ること（段階 5b の後のデプロイ）

@@ -108,7 +108,7 @@ run_ci() {
   local status=0
   : >"${tree}/stub/expect_token"
   printf 'stub-api-token\n' >"${tree}/stub/api_token"
-  PATH="${tree}/bin:${PATH}" STUB_DIR="${tree}/stub" OP_STUB_DIR="${tree}/stub/op" \
+  PATH="${tree}/bin:${PATH}" STUB_DIR="${tree}/stub" OP_STUB_DIR="${tree}/stub/op" GITHUB_SHA="${HEAD_SHA}" \
     CLOUDFLARE_ACCOUNT_ID="${ACCOUNT_ID}" CLOUDFLARE_API_TOKEN="stub-api-token" \
     "${tree}/scripts/${script}" "$@" >"${tree}/out" 2>"${tree}/err" || status="$?"
   printf '%s\n' "${status}" >"${tree}/status"
@@ -299,6 +299,38 @@ test_stops_before_any_change() {
   rm -rf "${tree}"
 }
 
+# A late or re-run CI job for a commit that is no longer the head of main stops before any change, so it never
+# rolls back a newer deploy.
+test_ci_refuses_an_older_commit() {
+  local tree
+  tree="$(make_tree custom_domain)"
+  printf '2222222222222222222222222222222222222222\n' >"${tree}/stub/git_main"
+  run_ci "${tree}" deploy.sh --ci test
+  assert_equal "CI: a commit behind main stops" "1" "$(status_of "${tree}")"
+  assert_equal "CI: a commit behind main changes nothing" "" "$(changes_of "${tree}")"
+  rm -rf "${tree}"
+
+  tree="$(make_tree custom_domain)"
+  : >"${tree}/stub/expect_token"
+  PATH="${tree}/bin:${PATH}" STUB_DIR="${tree}/stub" CLOUDFLARE_ACCOUNT_ID="${ACCOUNT_ID}" CLOUDFLARE_API_TOKEN="stub-api-token" \
+    env -u GITHUB_SHA "${tree}/scripts/deploy.sh" --ci test >/dev/null 2>&1 && failure "CI without GITHUB_SHA must stop"
+  assert_equal "CI without GITHUB_SHA changes nothing" "" "$(changes_of "${tree}")"
+  rm -rf "${tree}"
+}
+
+# Ignored build output survives the clean-checkout check, so the deploy removes it before building: what is deployed
+# is always what this run built.
+test_removes_earlier_build_output() {
+  local tree
+  tree="$(make_tree custom_domain)"
+  mkdir -p "${tree}/apps/worker/.cloudflare/output" "${tree}/apps/admin-worker/.cloudflare/output"
+  printf 'stale\n' >"${tree}/apps/worker/.cloudflare/output/stale"
+  run_ci "${tree}" deploy.sh --ci test
+  assert_equal "earlier build output: the deploy succeeds" "0" "$(status_of "${tree}")"
+  assert_equal "earlier build output: both builds ran on a clean project" "$(expected_changes "${tree}")" "$(changes_of "${tree}")"
+  rm -rf "${tree}"
+}
+
 test_failed_idp_deploy_stops_the_admin_deploy() {
   local tree
   tree="$(make_tree custom_domain)"
@@ -412,6 +444,8 @@ test_admin_gate_check
 test_workers_dev_setting_check
 test_before_signing_key
 test_stops_before_any_change
+test_ci_refuses_an_older_commit
+test_removes_earlier_build_output
 test_failed_idp_deploy_stops_the_admin_deploy
 test_local_deploy
 test_usage
