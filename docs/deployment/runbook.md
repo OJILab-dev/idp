@@ -33,13 +33,14 @@
 | 1 | `scripts/bootstrap-state-bucket.sh` を実行して state のバケットを作り、`scripts/bootstrap-d1.sh` を実行して D1 を作る | 両方のスクリプトが、`cf` の対象のアカウントが入力のものであることを確かめてから動くこと。D1 のスクリプトが production バックエンドであることを確かめて正常に終わること |
 | 2 | `scripts/d1-migrate.sh` を実行する | マイグレーションが適用されること。本物の D1 でトリガーが更新と削除を拒否することは、[未決事項](../design/open-questions.md)の項目として確かめる |
 | 3 | `scripts/generate-signing-key.sh` を実行する | 出力が公開鍵の JWK（`kid` を含む）だけであること。1Password のアイテムに `jwk`、`kid`、`public_jwk` があること |
-| 4a | 管理者ごとに `scripts/generate-admin-key.sh` を実行する。署名に切り替えた後のスクリプトは、秘密鍵を 1Password に入れ、`keyid`、`name`、`public_key` の行を設定ファイルの `admin_signing_keys` に書く（実装の順番の 5 で変える）。前の設計で作った鍵があれば、新しく作らず、既存のアイテムから公開鍵だけを読んで行を書くモードを使う。設定ファイルの変更を PR でレビューしてマージする | 出力が公開鍵と `keyid` だけであること。秘密鍵が 1Password のアイテムにだけあること。`keyid` がアイテムの `public_key_sha256` と一致すること |
+| 4a | 管理者ごとに `scripts/generate-admin-key.sh <デプロイの名前> <管理者の名前>` を実行する。スクリプトは秘密鍵を 1Password に入れ、`keyid`、`name`、`public_key` の行を設定ファイルの `admin_signing_keys` に書く（mTLS の撤去までは CSR も書く。下の移行の間の手順）。前の設計で作った鍵があれば、新しく作らず、`--from-existing` を付けて、既存のアイテムの `public_key` と `public_key_sha256` だけを読んで行を書く（秘密鍵のフィールドは読まない）。設定ファイルの変更を PR でレビューしてマージする | 出力が公開鍵と `keyid` の行（新しく作ったときは CSR も）だけであること。秘密鍵が 1Password のアイテムにだけあること。`keyid` がアイテムの `public_key_sha256` と一致すること |
 | 4b | `scripts/terraform.sh` で `init`、`plan`、`apply` の順に実行する。`apply` は Terraform が承認を求めるので、plan の内容を読んでから承認する | plan が、ゾーンのルールセット、ゾーンの設定、D1、DNS のレコード、mTLS の割り当て、クライアント証明書を含まないこと |
 | 5 | 2 つの Worker の最初のデプロイを CI で行う（デプロイの workflow は別の作業） | ブートストラップの段階 5 の確認 |
 | 5b | `scripts/upload-signing-key.sh` を実行する | 出力が `kid` だけで、段階 3 の `kid` と一致すること。JWKS にその `kid` が載ること |
 
 - 段階 3、4a、5b のスクリプトは秘密を扱うので xtrace を付けずに動く。実行中の表示や出力に秘密が出たら、その鍵は漏れたものとして作り直す（[ブートストラップ](bootstrap.md)の失敗したとき）。
-- 段階 3 と 4a のスクリプトは、同じ名前の 1Password のアイテムがあれば止まる。作り直すときだけ `--replace` を付け、古いアイテムをアーカイブさせる（削除はしない）。
+- 段階 3 と 4a のスクリプトは、同じ名前の 1Password のアイテムがあれば止まる。作り直すときだけ `--replace` を付け、古いアイテムをアーカイブさせる（削除はしない）。段階 4a の `--replace` は、その管理者のほかの `admin_signing_keys` の行も消すので、デプロイの後は古い鍵が使えなくなる。
+- 段階 4a のスクリプトは、1Password に触れる前に設定ファイルの `admin_signing_keys` を確かめ、リストがない、形が違う、`keyid` が公開鍵の SHA-256 と食い違う、P-384 でない、`keyid` が重複する、のどれかなら止まる。新しいデプロイでは、段階 0 で空のリスト（`[]`）を書いておく。
 - IdP の Terraform は、ゾーンのルールセット（WAF のカスタムルール、レート制限ルール、シングルリダイレクト）を持たないので、ゾーンにほかのルールがあっても段階 4b の `apply` は失敗せず、それらを変えない（[ドメインの置き場所](../design/domain-placement.md)の決定 ③）。
 - Terraform はゾーン全体の設定（Always Use HTTPS と TLS の最小バージョン）を変えない。ゾーンの TLS の最小バージョンが 1.2 以上であることは、ゾーンの持ち主に確かめる。
 - 前の形（`zone_singletons_owner` で IdP のルールを作った）で apply したデプロイでは、③ の後の最初の apply が、IdP が作ったゾーンのルールセット（WAF のカスタムルール、レート制限ルール、シングルリダイレクト）を削除する。plan で、削除されるのがそれらだけであることを確かめる。mTLS の割り当ては `moved` のブロックで同じものとして引き継ぎ、作り直さない。
@@ -52,13 +53,13 @@
 
 | 段階 | 運用者の操作 | 確かめること |
 | --- | --- | --- |
-| 4a | 管理者ごとに `scripts/generate-admin-key.sh` を実行する。スクリプトは秘密鍵を 1Password に入れ、CSR を設定ファイルの `admin_client_certificates` に書く。設定ファイルの変更を PR でレビューしてマージする | 出力が CSR と公開鍵だけであること。秘密鍵が 1Password のアイテムにだけあること |
+| 4a | 管理者ごとに `scripts/generate-admin-key.sh <デプロイの名前> <管理者の名前>` を実行する。スクリプトは秘密鍵を 1Password に入れ、CSR を設定ファイルの `admin_client_certificates` に、`keyid`、`name`、`public_key` の行を `admin_signing_keys` に書く。設定ファイルの変更を PR でレビューしてマージする | 出力が CSR と、公開鍵と `keyid` の行だけであること。秘密鍵が 1Password のアイテムにだけあること |
 | 4b | `scripts/terraform.sh` で `init`、`plan`、`apply` の順に実行する。`apply` は Terraform が承認を求めるので、plan の内容を読んでから承認する | plan が、管理者ごとのクライアント証明書と、管理用のホスト名の mTLS の割り当てだけを作ること。ゾーンのルールセット、ゾーンの設定、D1、DNS のレコードを含まないこと |
 | 4c | `scripts/terraform.sh` の `output` で、管理者ごとの証明書とフィンガープリントを表示する。フィンガープリントと管理者の名前を設定ファイルの `admin_allowlist` に足し、PR でレビューしてマージする。証明書は `idpctl` の管理者が手元に置く | フィンガープリントが小文字の 16 進 64 文字であること |
 
 - mTLS の割り当ては、ゾーンの managed CA に割り当てたホスト名の一覧を丸ごと持つ。管理用のホスト名のほかに割り当てがあると、段階 4b の `apply` がそれを外すので、plan で mTLS の割り当ての変更が管理用のホスト名の追加だけであることを確かめる。
 - 段階 6 の管理者の確認は、証明書のない要求が `forbidden` になり、許可リストの証明書の要求が通ることで行う。
-- 移行の間に作った P-384 の鍵は、署名に切り替えた後もそのまま使える（段階 4a の既存のアイテムから行を書くモード）。
+- 移行の間に作った P-384 の鍵は、署名に切り替えた後もそのまま使える。署名に切り替える前（実装の順番の 6 の前）に、`scripts/generate-admin-key.sh --from-existing <デプロイの名前> <管理者の名前>` で、まだ行のない鍵の行を `admin_signing_keys` に足しておく。行がないと、切り替えのデプロイの後にその管理者は締め出される。
 
 ## 未確認のこと
 

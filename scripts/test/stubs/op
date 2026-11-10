@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# A fake op for scripts/test/generate-admin-key.test.sh. It never reaches 1Password. Every call is logged to
+# ${OP_STUB_DIR}/calls. `whoami` succeeds; `read op://<vault>/<item>/<field>` prints ${OP_STUB_DIR}/fields/<field>
+# and fails when that file is missing; `item get` succeeds only when ${OP_STUB_DIR}/item_exists exists; anything
+# else fails, so an unexpected call shows up as a refusal.
+set -euxo pipefail
+
+printf '%s\n' "$*" >>"${OP_STUB_DIR}/calls"
+case "${1}" in
+  whoami)
+    exit 0
+    ;;
+  read)
+    cat "${OP_STUB_DIR}/fields/${2##*/}"
+    ;;
+  item)
+    [[ "${2}" == "get" && -f "${OP_STUB_DIR}/item_exists" ]]
+    ;;
+  *)
+    exit 1
+    ;;
+esac

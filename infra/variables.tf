@@ -90,6 +90,44 @@ variable "admin_allowlist" {
   }
 }
 
+variable "admin_signing_keys" {
+  description = "ADMIN_SIGNING_KEYS of the admin Worker: rows of keyid, name, and public_key written by scripts/generate-admin-key.sh. Terraform does not use it; it is declared so the shared deployment file is checked here too."
+  # A list of maps, not of objects: converting to an object type silently drops unknown members, and a row with an
+  # extra member must stop here, as it stops the admin Worker (docs/design/hosting-modes.md 3.7). map(string) still
+  # converts a JSON number or boolean member to a string; the script and the admin Worker refuse those.
+  type     = list(map(string))
+  nullable = false
+
+  # An empty list is accepted: a new deployment starts with no admin (docs/deployment/runbook.md, stage 0), and the
+  # admin Worker refuses every request while it is empty.
+  validation {
+    # Compared as one string: a list never equals a tuple literal in Terraform.
+    condition     = alltrue([for row in var.admin_signing_keys : join(",", sort(keys(row))) == "keyid,name,public_key"])
+    error_message = "admin_signing_keys rows must have exactly the members keyid, name, and public_key (docs/design/hosting-modes.md 3.7)."
+  }
+
+  validation {
+    condition = alltrue([for row in var.admin_signing_keys :
+      can(regex("^[0-9a-f]{64}$", row["keyid"])) && can(regex("^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$", row["name"]))
+    ])
+    error_message = "admin_signing_keys rows must have a lowercase 64-hex keyid and an admin name (docs/design/idpctl.md)."
+  }
+
+  # Terraform cannot hash the decoded bytes, so here public_key is only held to the base64 form of a P-384
+  # SubjectPublicKeyInfo with an uncompressed point: these 32 characters encode its fixed 24-byte DER prefix, and
+  # the 120-byte DER is 160 characters. scripts/generate-admin-key.sh checks that keyid is the SHA-256 of the DER
+  # and that the point is on the curve, and so does the admin Worker at start.
+  validation {
+    condition     = alltrue([for row in var.admin_signing_keys : can(regex("^MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAE[A-Za-z0-9+/]{128}$", row["public_key"]))])
+    error_message = "admin_signing_keys public_key must be the one-line base64 SPKI DER of an ECDSA P-384 public key."
+  }
+
+  validation {
+    condition     = length(distinct([for row in var.admin_signing_keys : lookup(row, "keyid", "")])) == length(var.admin_signing_keys)
+    error_message = "admin_signing_keys must not repeat a keyid."
+  }
+}
+
 # The inputs below are used by the scripts and CI only (docs/design/deployment.md "デプロイごとの入力").
 
 variable "d1_database_name" {
@@ -112,6 +150,22 @@ variable "rate_limit_namespace_id" {
   validation {
     condition     = can(regex("^[1-9][0-9]{0,17}$", var.rate_limit_namespace_id))
     error_message = "rate_limit_namespace_id must be a positive integer written as a string, without leading zeros."
+  }
+}
+
+variable "admin_rate_limit_namespace_id" {
+  description = "Namespace ID of the admin Worker's Rate Limiting binding. The same rule as rate_limit_namespace_id, and a different value, so admin requests and sign-ins never share a count (docs/design/hosting-modes.md 6.2). Terraform does not use it."
+  type        = string
+  nullable    = false
+
+  validation {
+    condition     = can(regex("^[1-9][0-9]{0,17}$", var.admin_rate_limit_namespace_id))
+    error_message = "admin_rate_limit_namespace_id must be a positive integer written as a string, without leading zeros."
+  }
+
+  validation {
+    condition     = var.admin_rate_limit_namespace_id != var.rate_limit_namespace_id
+    error_message = "admin_rate_limit_namespace_id must differ from rate_limit_namespace_id (docs/design/hosting-modes.md 6.2)."
   }
 }
 
@@ -160,7 +214,7 @@ variable "onepassword_signing_key_item" {
 }
 
 variable "onepassword_admin_key_item_prefix" {
-  description = "Prefix of the Vault items that hold the admin mTLS private keys; the admin name follows it."
+  description = "Prefix of the Vault items that hold the admin private keys; the admin name follows it."
   type        = string
   nullable    = false
 

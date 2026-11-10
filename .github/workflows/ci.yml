@@ -91,11 +91,15 @@ jobs:
         run: terraform -chdir=infra test
 
       - name: shellcheck
-        run: shellcheck scripts/*.sh scripts/test/*.sh
+        run: shellcheck scripts/*.sh scripts/test/*.sh scripts/test/stubs/*
 
-      # Offline: only the RFC 8037 Appendix A test vectors, no op, cf, network, or key generation.
+      # Offline: only published test vectors, no op, cf, network, or key generation.
       - name: scripts/lib.sh tests
         run: scripts/test/lib.test.sh
+
+      # Offline: a stub op and an openssl wrapper that refuses genpkey (scripts/test/stubs).
+      - name: scripts/generate-admin-key.sh tests
+        run: scripts/test/generate-admin-key.test.sh
 
   e2e:
     runs-on: takumi-runner
