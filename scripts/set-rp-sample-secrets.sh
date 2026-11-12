@@ -23,7 +23,8 @@ usage() {
     "account of deployments/<deployment>.tfvars.json (workers_dev mode only), which creates a new version of it." \
     "" \
     "<client-secret-file> is the file idpctl client_create --secret-out wrote: a regular file, not a symbolic link," \
-    "owned by you, with mode 0600 or 0400. With -, the client secret is read from stdin instead." \
+    "owned by you, with mode 0600 or 0400. With -, the client secret is read from stdin instead, which must be a" \
+    "pipe or a file, never a terminal (typing would echo it)." \
     "${RP_SAMPLE_SESSION_KEY_NAME} is always a fresh random key, so running this again signs everyone out of the sample." \
     "Prints nothing secret." \
     "" \
@@ -49,12 +50,15 @@ check_secret_file() {
 }
 
 # Reads a secret_text value on stdin and sets it as the named Secret of the sample's Worker. cf prints the API
-# result, which names the Secret but not its value; it is dropped anyway so that a future cf that echoes the request
-# cannot leak it.
+# result, which names the Secret but not its value. Both its stdout and its stderr are dropped, so that a cf that
+# echoes the request body (on success or in an error) cannot put the secret into the terminal or any log; a failure
+# prints a fixed message instead.
 put_secret() {
   local name="${1}"
   jq -Rsc --arg name "${name}" '{name: $name, type: "secret_text", text: .}' |
-    cf_cli workers secrets update "${name}" --worker "${RP_SAMPLE_WORKER_NAME}" --type secret_text --body @/dev/stdin >/dev/null
+    cf_cli workers secrets update "${name}" --worker "${RP_SAMPLE_WORKER_NAME}" --type secret_text --body @/dev/stdin \
+      >/dev/null 2>&1 ||
+    fail "cf could not set ${name} on ${RP_SAMPLE_WORKER_NAME}; its output was discarded because it may echo the secret (check cf auth login and that the Worker was deployed)"
 }
 
 main() {
@@ -84,7 +88,12 @@ main() {
   rp_sample_host "${config}" >/dev/null
   vault="$(config_string "${config}" onepassword_vault)"
   cloudflare_item="$(config_string "${config}" onepassword_cloudflare_item)"
-  [[ "${source}" == "-" ]] || check_secret_file "${source}"
+  if [[ "${source}" == "-" ]]; then
+    # A terminal would echo the secret as it is typed; only a pipe or a redirected file is read.
+    [[ ! -t 0 ]] || fail "stdin is a terminal; pipe the client secret in or pass the --secret-out file instead"
+  else
+    check_secret_file "${source}"
+  fi
 
   # Read before any change, so a bad secret stops the script with nothing set. $(...) drops the newline idpctl
   # writes after the value.

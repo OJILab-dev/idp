@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createHandler, type Handler } from "../src/index.js";
 import { CLIENT_ID, ENV, FakeIdp, ISSUER, ORIGIN, SUB, type FakeIdpOptions } from "./support/fake-idp.js";
 
@@ -233,6 +233,72 @@ describe("GET /callback", () => {
     const response = await call(r, `${callback.pathname}${callback.search}`, { cookies: { [FLOW_COOKIE]: flow } });
     expect(response.status).toBe(status);
     expect(setCookie(response, SESSION_COOKIE)).toBeUndefined();
+    // The error page is built by onError; the flow cookie's deletion set before the throw must survive it.
+    expect(setCookie(response, FLOW_COOKIE)?.get("max-age")).toBe("0");
+  });
+
+  it.each<[string, FakeIdpOptions]>([
+    ["a token response with a lowercase token_type (case-insensitive, RFC 6749 §5.1)", { tokenResponse: { token_type: "bearer" } }],
+    ["a token response with unknown members (ignored, RFC 6749 §5.1)", { tokenResponse: { refresh_hint: "x", at_hash: "ignored" } }],
+    ["a token response with a charset parameter", { contentType: { token: "application/json; charset=UTF-8" } }],
+    ["a /userinfo response in upper case media type", { contentType: { userinfo: "Application/JSON" } }],
+  ])("accepts %s", async (_name, options) => {
+    const r = await rig(options);
+    await signIn(r);
+  });
+
+  it.each<[string, FakeIdpOptions]>([
+    ["another token_type (RFC 6749 §7.1)", { tokenResponse: { token_type: "mac" } }],
+    ["no token_type", { tokenResponse: { token_type: undefined } }],
+    ["no access_token", { tokenResponse: { access_token: undefined } }],
+    ["no id_token (OIDC Core §3.1.3.3)", { tokenResponse: { id_token: undefined } }],
+    ["a token response that is not application/json", { contentType: { token: "application/jsonx" } }],
+    ["a /userinfo response that is not application/json (OIDC Core §5.3.2)", { contentType: { userinfo: "application/jwt" } }],
+    ["a /userinfo response without sub", { userinfo: { name: "Alice" } }],
+    ["a JWKS that is not application/json", { contentType: { jwks: "text/plain" } }],
+  ])("refuses %s, sets no session, and clears the flow cookie", async (_name, options) => {
+    const r = await rig(options);
+    const { callback, flow } = await startLogin(r);
+    const response = await call(r, `${callback.pathname}${callback.search}`, { cookies: { [FLOW_COOKIE]: flow } });
+    expect(response.status).toBe(502);
+    expect(setCookie(response, SESSION_COOKIE)).toBeUndefined();
+    expect(setCookie(response, FLOW_COOKIE)?.get("max-age")).toBe("0");
+  });
+
+  it("refuses discovery that is not application/json", async () => {
+    const r = await rig({ contentType: { discovery: "application/jsonx" } });
+    expect((await call(r, "/login")).status).toBe(502);
+  });
+
+  it("logs the token endpoint's error code, never its description", async () => {
+    const r = await rig({ tokenStatus: 400 });
+    const lines: string[] = [];
+    const spy = vi.spyOn(console, "log").mockImplementation((line: unknown) => {
+      lines.push(String(line));
+    });
+    try {
+      const { callback, flow } = await startLogin(r);
+      await call(r, `${callback.pathname}${callback.search}`, { cookies: { [FLOW_COOKIE]: flow } });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(lines.some((line) => line.includes("token: status 400 error invalid_grant"))).toBe(true);
+  });
+
+  // RFC 6265bis §5.6: a browser drops a cookie whose name and value exceed 4096 octets, counted in UTF-8.
+  it("keeps a session whose claims fit the cookie limit", async () => {
+    const r = await rig({ userinfo: { sub: SUB, name: "a".repeat(1000) } });
+    await signIn(r);
+  });
+
+  it("refuses a sign-in whose session would exceed 4096 octets, counting multibyte claims in UTF-8", async () => {
+    // 1000 characters, as the ASCII case above, but 3000 octets in UTF-8.
+    const r = await rig({ userinfo: { sub: SUB, name: "あ".repeat(1000) } });
+    const { callback, flow } = await startLogin(r);
+    const response = await call(r, `${callback.pathname}${callback.search}`, { cookies: { [FLOW_COOKIE]: flow } });
+    expect(response.status).toBe(502);
+    expect(setCookie(response, SESSION_COOKIE)).toBeUndefined();
+    expect(setCookie(response, FLOW_COOKIE)?.get("max-age")).toBe("0");
   });
 
   it("does not show the IdP's error description, only a plain error code", async () => {

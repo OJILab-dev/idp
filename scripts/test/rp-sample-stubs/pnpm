@@ -26,6 +26,12 @@ case "${1}" in
       secrets)
         [[ "${3-}" == "update" && "${5-}" == "--worker" && "${7-}" == "--type" && "${9-}" == "--body" && "${10-}" == "@/dev/stdin" ]] || exit 1
         cat >"${STUB_DIR}/secret_${4}.json"
+        # A failing cf that echoes the request body on both streams: the script must keep both out of sight.
+        if [[ -f "${STUB_DIR}/fail_secrets_echo" ]]; then
+          cat "${STUB_DIR}/secret_${4}.json"
+          cat "${STUB_DIR}/secret_${4}.json" >&2
+          exit 1
+        fi
         printf '{"name":"%s","type":"secret_text"}\n' "${4}"
         ;;
       *) exit 1 ;;

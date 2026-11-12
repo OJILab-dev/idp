@@ -241,6 +241,39 @@ test_set_secrets_refusals() {
   done
 }
 
+test_set_secrets_cf_failure_is_silent() {
+  local tree
+  tree="$(make_tree workers_dev)"
+  : >"${tree}/stub/fail_secrets_echo"
+  run "${tree}" set-rp-sample-secrets.sh test "${tree}/client-secret"
+  assert_equal "secrets cf failure: exit code" "1" "$(status_of "${tree}")"
+  assert_equal "secrets cf failure: a fixed message" "1" "$(grep -c '^error: cf could not set CLIENT_SECRET' "${tree}/err")"
+  assert_equal "secrets cf failure: cf's echo of the secret is not shown" "0" \
+    "$(grep -c "${FAKE_CLIENT_SECRET}" "${tree}/err" "${tree}/out" | awk -F: '{ sum += $NF } END { print sum }')"
+  assert_equal "secrets cf failure: stops before the session key" "0" "$(grep -c 'SESSION_KEY' "${tree}/stub/calls" || true)"
+  rm -rf "${tree}"
+}
+
+# Runs the secrets script with "-" and stdin on a pseudo-terminal, through script(1) (util-linux or BSD).
+test_set_secrets_refuses_a_terminal() {
+  local tree
+  tree="$(make_tree workers_dev)"
+  local wrapper="${tree}/run-on-tty.sh"
+  printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' \
+    "PATH='${tree}/bin:${PATH}' STUB_DIR='${tree}/stub' OP_STUB_DIR='${tree}/stub/op' '${tree}/scripts/set-rp-sample-secrets.sh' test - >'${tree}/out' 2>'${tree}/err' || printf '%s\n' \"\$?\" >'${tree}/status'" \
+    >"${wrapper}"
+  chmod +x "${wrapper}"
+  if script --version >/dev/null 2>&1; then
+    script -qec "${wrapper}" /dev/null </dev/null >/dev/null 2>&1 || true
+  else
+    script -q /dev/null "${wrapper}" </dev/null >/dev/null 2>&1 || true
+  fi
+  assert_equal "secrets on a terminal: exit code" "1" "$(cat "${tree}/status" 2>/dev/null || printf 'none')"
+  assert_equal "secrets on a terminal: refused" "1" "$(grep -c 'stdin is a terminal' "${tree}/err" || true)"
+  assert_equal "secrets on a terminal: nothing set" "" "$(changes_of "${tree}")"
+  rm -rf "${tree}"
+}
+
 test_secret_script_has_no_xtrace() {
   # xtrace would print the secret after expansion (scripts/upload-signing-key.sh has the same rule).
   assert_equal "secrets: no set -x anywhere" "0" "$(grep -cE '^[[:space:]]*set -[a-z]*x' "${REPO_ROOT}/scripts/set-rp-sample-secrets.sh" || true)"
@@ -269,6 +302,8 @@ test_deploy
 test_deploy_stops_before_any_change
 test_set_secrets
 test_set_secrets_refusals
+test_set_secrets_cf_failure_is_silent
+test_set_secrets_refuses_a_terminal
 test_secret_script_has_no_xtrace
 test_usage
 

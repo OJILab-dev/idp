@@ -19,6 +19,8 @@ export const SESSION_COOKIE = "__Host-rp-sample-session";
 export const FLOW_SECONDS = 600;
 /** The RP session's absolute lifetime; the IdP's own session is also 1 hour (docs/design/tokens.md). */
 export const SESSION_SECONDS = 3600;
+/** The largest cookie name and value a browser must keep (RFC 6265bis §5.6). */
+export const MAX_COOKIE_OCTETS = 4096;
 
 /** What the routes need besides the bindings. */
 export type AppOptions = {
@@ -148,7 +150,13 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
     const { code } = checkAuthorizationResponse(new URL(c.req.url).searchParams, state, config.issuer);
     const { idToken, userinfo } = await c.get("idp").redeem({ code, verifier, nonce });
     const session: SessionView = { idToken: idTokenView(idToken), userinfo };
-    setCookie(c, SESSION_COOKIE, await seal(config.sessionKey, SESSION_COOKIE, session, options.now() + SESSION_SECONDS), {
+    const sealed = await seal(config.sessionKey, SESSION_COOKIE, session, options.now() + SESSION_SECONDS);
+    // RFC 6265bis §5.6: a browser ignores a cookie whose name and value exceed 4096 octets. Refuse here instead, so
+    // a large /userinfo (multibyte names included: measured in UTF-8 octets) fails visibly, not as a silent loop.
+    if (new TextEncoder().encode(`${SESSION_COOKIE}=${sealed}`).length > MAX_COOKIE_OCTETS) {
+      throw new IdpError("session: the claims and /userinfo exceed the 4096-octet cookie limit");
+    }
+    setCookie(c, SESSION_COOKIE, sealed, {
       ...COOKIE_OPTIONS,
       maxAge: SESSION_SECONDS,
     });

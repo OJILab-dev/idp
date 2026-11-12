@@ -13,8 +13,6 @@ import { IdTokenError, verifyIdToken, type IdTokenClaims } from "./id-token.js";
 export const USER_AGENT = "idp-rp-sample/1.0";
 const CACHE_SECONDS = 300;
 const TIMEOUT_MS = 10_000;
-// A session cookie must stay under the browsers' 4 KiB limit, so a larger /userinfo is not stored.
-const MAX_USERINFO_JSON = 2048;
 
 /** The outbound fetch; the Worker's global fetch in production, the fake IdP in tests. */
 export type Fetcher = (request: Request) => Promise<Response>;
@@ -75,9 +73,35 @@ function includes(value: unknown, item: string): boolean {
   return Array.isArray(value) && value.includes(item);
 }
 
-// RFC 6749 §2.3.1: client_secret_basic form-encodes both halves before Base64.
+// RFC 6749 §5.2: error codes are limited to %x20-21 / %x23-5B / %x5D-7E; only plain codes are logged.
+const ERROR_CODE = /^[a-z0-9_.-]{1,64}$/i;
+
+/**
+ * Whether a Content-Type names exactly application/json: the media type before any parameter, compared
+ * case-insensitively (RFC 9110 §8.3.1), so application/jsonx or application/json-seq is not JSON.
+ *
+ * @param contentType The header's value.
+ * @returns Whether the body is application/json.
+ */
+export function isJson(contentType: string | null): boolean {
+  return (contentType ?? "").split(";")[0]?.trim().toLowerCase() === "application/json";
+}
+
 function formEncode(value: string): string {
-  return encodeURIComponent(value).replaceAll("%20", "+");
+  return new URLSearchParams({ v: value }).toString().slice("v=".length);
+}
+
+/**
+ * The Authorization header of client_secret_basic. RFC 6749 §2.3.1: the client_id and the secret are each encoded
+ * with application/x-www-form-urlencoded (Appendix B; the WHATWG serializer, which URLSearchParams implements) before
+ * they are joined with ":" and Base64-encoded as HTTP Basic (RFC 7617).
+ *
+ * @param clientId The client_id.
+ * @param secret The client secret.
+ * @returns The header value.
+ */
+export function clientSecretBasic(clientId: string, secret: string): string {
+  return `Basic ${btoa(`${formEncode(clientId)}:${formEncode(secret)}`)}`;
 }
 
 /**
@@ -102,11 +126,17 @@ export function createIdpClient(fetcher: Fetcher, now: () => number): (config: C
     } catch {
       throw new IdpError(`${what}: request failed`);
     }
+    const json = isJson(response.headers.get("content-type"));
     // Workers report a refused same-account workers.dev fetch as an error page (1042); it fails here, as any non-2xx.
-    if (response.status !== 200) throw new IdpError(`${what}: status ${response.status}`);
-    if (!(response.headers.get("content-type") ?? "").toLowerCase().startsWith("application/json")) {
-      throw new IdpError(`${what}: not JSON`);
+    if (response.status !== 200) {
+      // RFC 6749 §5.2 and OIDC Core §3.1.3.4: an error response carries a JSON `error` code; only a plain code is
+      // logged, never error_description, which is free text from the IdP.
+      const error = json ? parseJsonObject(await response.text())?.error : undefined;
+      const code = typeof error === "string" && ERROR_CODE.test(error) ? ` error ${error}` : "";
+      throw new IdpError(`${what}: status ${response.status}${code}`);
     }
+    // RFC 6749 §5.1 and OIDC Core §5.3.2: the token and UserInfo responses are application/json.
+    if (!json) throw new IdpError(`${what}: not application/json`);
     const body = parseJsonObject(await response.text());
     if (body === undefined) throw new IdpError(`${what}: not a JSON object`);
     return body;
@@ -169,7 +199,7 @@ export function createIdpClient(fetcher: Fetcher, now: () => number): (config: C
         {
           method: "POST",
           headers: {
-            authorization: `Basic ${btoa(`${formEncode(config.clientId)}:${formEncode(config.clientSecret)}`)}`,
+            authorization: clientSecretBasic(config.clientId, config.clientSecret),
             "content-type": "application/x-www-form-urlencoded",
           },
           body: body.toString(),
@@ -183,8 +213,8 @@ export function createIdpClient(fetcher: Fetcher, now: () => number): (config: C
       const claims = await verify(discovery, idToken, exchange.nonce);
 
       const userinfo = await requestJson(discovery.userinfoEndpoint, { headers: { authorization: `Bearer ${accessToken}` } }, "userinfo");
-      if (userinfo.sub !== claims.sub) throw new IdpError("userinfo: sub does not match the ID token");
-      if (JSON.stringify(userinfo).length > MAX_USERINFO_JSON) throw new IdpError("userinfo: too large to keep in the session");
+      // OIDC Core §5.3.2: the UserInfo sub MUST match the ID token's, or the response MUST NOT be used.
+      if (typeof userinfo.sub !== "string" || userinfo.sub !== claims.sub) throw new IdpError("userinfo: sub does not match the ID token");
       return { idToken: claims, userinfo };
     }
 

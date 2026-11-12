@@ -30,11 +30,24 @@ export type FakeIdpOptions = {
   readonly userinfo?: JsonObject;
   /** The token endpoint's status; anything but 200 answers {"error":"invalid_grant"}. */
   readonly tokenStatus?: number;
+  /** Merged into the successful token response (undefined values remove a member). */
+  readonly tokenResponse?: JsonObject;
+  /** Replaces the Content-Type of one endpoint's answer. */
+  readonly contentType?: Partial<Record<Endpoint, string>>;
 };
+
+export type Endpoint = "discovery" | "jwks" | "token" | "userinfo";
 
 export type RecordedRequest = { readonly method: string; readonly url: string; readonly headers: Headers; readonly body: string };
 
-type PendingCode = { readonly challenge: string; readonly nonce: string; readonly redirectUri: string };
+const ENDPOINTS: Readonly<Record<string, Endpoint>> = {
+  "/.well-known/openid-configuration": "discovery",
+  "/jwks": "jwks",
+  "/token": "token",
+  "/userinfo": "userinfo",
+};
+
+type PendingCode ={ readonly challenge: string; readonly nonce: string; readonly redirectUri: string };
 
 function base64url(bytes: Uint8Array): string {
   return btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
@@ -48,8 +61,8 @@ async function sha256Base64url(value: string): Promise<string> {
   return base64url(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))));
 }
 
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+function json(body: unknown, status = 200, contentType = "application/json"): Response {
+  return new Response(JSON.stringify(body), { status, headers: { "content-type": contentType } });
 }
 
 /**
@@ -172,19 +185,27 @@ export class FakeIdp {
     this.requests.push({ method: request.method, url: request.url, headers: request.headers, body });
     const url = new URL(request.url);
     if (url.origin !== ISSUER) return new Response("unexpected host", { status: 599 });
-    switch (`${request.method} ${url.pathname}`) {
+    const response = await this.#answer(`${request.method} ${url.pathname}`, request.headers, body);
+    const endpoint = ENDPOINTS[url.pathname];
+    const contentType = endpoint === undefined ? undefined : this.#options.contentType?.[endpoint];
+    if (contentType !== undefined) response.headers.set("content-type", contentType);
+    return response;
+  };
+
+  async #answer(route: string, headers: Headers, body: string): Promise<Response> {
+    switch (route) {
       case "GET /.well-known/openid-configuration":
         return json(this.discovery());
       case "GET /jwks":
         return json({ keys: [{ ...this.#publicJwk, kid: KID, alg: "Ed25519", use: "sig" }] });
       case "POST /token":
-        return this.#token(request.headers, body);
+        return this.#token(headers, body);
       case "GET /userinfo":
-        return this.#userinfo(request.headers);
+        return this.#userinfo(headers);
       default:
         return new Response("not found", { status: 404 });
     }
-  };
+  }
 
   async #token(headers: Headers, body: string): Promise<Response> {
     if (this.#options.tokenStatus !== undefined && this.#options.tokenStatus !== 200) {
@@ -206,7 +227,9 @@ export class FakeIdp {
       return json({ error: "invalid_grant" }, 400);
     }
     const idToken = await this.sign(this.idTokenClaims(pending.nonce), this.#options.idTokenHeader, this.#options.signWithForeignKey);
-    return json({ access_token: "access-token-1", token_type: "Bearer", expires_in: 300, id_token: idToken, scope: "openid profile" });
+    return json(
+      without({ access_token: "access-token-1", token_type: "Bearer", expires_in: 300, id_token: idToken, scope: "openid profile", ...this.#options.tokenResponse }),
+    );
   }
 
   #userinfo(headers: Headers): Response {
