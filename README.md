@@ -96,6 +96,7 @@ Terraform とシェルスクリプトの検査は CI（[.github/workflows/ci.yml
 | [docs/design/cross-language-contract.md](docs/design/cross-language-contract.md) | SQL、エンコーディング、ID、鍵の形式、管理者の署名の形、テストベクタ、管理 API の仕様の取り決め |
 | [docs/deployment/bootstrap.md](docs/deployment/bootstrap.md) | 空の Cloudflare アカウントから最初のユーザーと RP をつなぐまでの手順の設計 |
 | [docs/deployment/runbook.md](docs/deployment/runbook.md) | ブートストラップを `infra/` と `scripts/` で実行するときの運用者の操作の順番 |
+| [docs/deployment/agent-setup.md](docs/deployment/agent-setup.md) | ブートストラップの認証情報の準備を、秘密の値をコンテキストに入れずにエージェントが行う方法 |
 | [docs/deployment/secret.md](docs/deployment/secret.md) | 1Password Environments と GitHub Actions による CD 用 Secret の扱い |
 | [AGENT.md](AGENT.md) | このリポジトリを変更するエージェントの契約 |
 
@@ -105,7 +106,7 @@ Terraform とシェルスクリプトの検査は CI（[.github/workflows/ci.yml
 
 - 署名鍵と管理者の秘密鍵は、`scripts/` のレビュー済みの生成スクリプトでだけ生成する。手で生成したり、鍵の値を読み出したり受け渡したりしない。
 - 秘密（鍵、API トークン、IdP が発行するクライアントシークレットや登録トークン）を AI のコンテキストに入れない。
-- `cf auth login` は運用者が実行する。エージェントは Cloudflare の認証情報を作成、読み出し、受け渡ししない。
+- `cf auth login` は運用者が実行する。エージェントがブートストラップの認証情報を準備するときは、運用者が認証したセッションの下で、値をコンテキストに入れずにパイプで流す（[エージェントによる認証情報の準備](docs/deployment/agent-setup.md)）。
 - 管理操作は管理用の Worker だけに置く。IdP の Worker は共有コアの管理系のモジュールを import しない（ESLint の規則で検査する）。
 
 ## リポジトリの運用
