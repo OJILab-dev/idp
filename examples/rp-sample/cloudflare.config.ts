@@ -42,6 +42,11 @@ export function workerConfig(env: DeployEnv): CloudflareWorkerConfig {
   return {
     name: RP_SAMPLE_WORKER_NAME,
     compatibilityDate: "2026-10-01",
+    // Without it, a fetch from this Worker to a workers.dev host of the same account, the IdP's in the easyidp
+    // deployment, fails and every sign-in answers 502 (observed on the first deploy). The flag sends the fetch over the
+    // public Internet, as from a third-party RP: the IdP rate-limits by its CF-Connecting-IP and checks its TLS version.
+    // Not a service binding: that would bypass both and tie this reference RP to the IdP's account.
+    compatibilityFlags: ["global_fetch_strictly_public"],
     entrypoint: "./src/index.ts",
     // workers.dev only: the redirect URI registered with the IdP is on this host, and preview URLs would be other
     // hosts the Worker refuses anyway.

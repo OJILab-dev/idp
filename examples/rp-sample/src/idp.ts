@@ -75,6 +75,7 @@ function includes(value: unknown, item: string): boolean {
 
 // RFC 6749 §5.2: error codes are limited to %x20-21 / %x23-5B / %x5D-7E; only plain codes are logged.
 const ERROR_CODE = /^[a-z0-9_.-]{1,64}$/i;
+const ERROR_NAME = /^[A-Za-z]{1,40}$/;
 
 /**
  * Whether a Content-Type names exactly application/json: the media type before any parameter, compared
@@ -123,11 +124,15 @@ export function createIdpClient(fetcher: Fetcher, now: () => number): (config: C
     let response: Response;
     try {
       response = await fetcher(new Request(url, { ...init, headers, redirect: "manual", signal: AbortSignal.timeout(TIMEOUT_MS) }));
-    } catch {
-      throw new IdpError(`${what}: request failed`);
+    } catch (error) {
+      // Only the error's class (TimeoutError, TypeError) is logged, so a timeout is told from a refused connection;
+      // its message is free text and stays out of the log.
+      const kind = error instanceof Error && ERROR_NAME.test(error.name) ? ` (${error.name})` : "";
+      throw new IdpError(`${what}: request failed${kind}`);
     }
     const json = isJson(response.headers.get("content-type"));
-    // Workers report a refused same-account workers.dev fetch as an error page (1042); it fails here, as any non-2xx.
+    // Any status but 200 fails here and is logged with the endpoint's name; the body is never logged. A refused
+    // Worker-to-Worker fetch on the same account answers this way (cloudflare.config.ts global_fetch_strictly_public).
     if (response.status !== 200) {
       // RFC 6749 §5.2 and OIDC Core §3.1.3.4: an error response carries a JSON `error` code; only a plain code is
       // logged, never error_description, which is free text from the IdP.
