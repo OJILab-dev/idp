@@ -216,6 +216,52 @@ export async function verifyIdTokenHint(
   return { sub };
 }
 
+/** The claims of a verified logout `id_token_hint` that RP-Initiated Logout uses. */
+export type LogoutIdTokenHint = {
+  readonly sub: string;
+  /** The client the token was issued to; the IdP always issues a single string. */
+  readonly aud: string;
+  /** The sign-in time of the session the token came from; `undefined` when the token has none. */
+  readonly authTime: number | undefined;
+};
+
+/**
+ * Verifies the `id_token_hint` of an RP-Initiated Logout request: an ID token this IdP issued (RP-Initiated Logout
+ * 1.0 §2, MUST), signed by any configured key, current or previous.
+ *
+ * `exp` is deliberately not checked: §2 says the OP SHOULD accept an expired ID token when the RP has or had a
+ * session, and logging out is what the RP asks for after its own session ended. Unlike {@link verifyIdTokenHint},
+ * `aud` must be one client ID, because it names the client whose post-logout redirect URIs apply and must equal a
+ * given `client_id` (§2, MUST).
+ *
+ * @param token The hint from the logout request.
+ * @param context The issuer and the configured keys.
+ * @returns The hint's `sub`, `aud`, and `auth_time`.
+ * @throws {InvalidTokenError} The JWS is invalid (Ed25519 or RS256, `typ: JWT`; see {@link verifyJws}); `iss` is not
+ *   the issuer; `sub` is not a non-empty string; `aud` is not a single client ID; or `auth_time` is present but not
+ *   an integer.
+ */
+export async function verifyLogoutIdTokenHint(
+  token: string,
+  context: { readonly issuer: Issuer; readonly keys: SigningKeySet },
+): Promise<LogoutIdTokenHint> {
+  const { payload } = await verifyJws(token, { keys: context.keys.all, algorithms: ["Ed25519", "RS256"], typ: "JWT" });
+  if (payload["iss"] !== context.issuer.url) {
+    throw new InvalidTokenError("iss is not the issuer");
+  }
+  const { sub, aud, auth_time: authTime } = payload;
+  if (typeof sub !== "string" || sub === "") {
+    throw new InvalidTokenError("sub is not a string");
+  }
+  if (typeof aud !== "string" || !isClientId(aud)) {
+    throw new InvalidTokenError("aud is not a single client ID");
+  }
+  if (authTime !== undefined && !Number.isSafeInteger(authTime)) {
+    throw new InvalidTokenError("auth_time is not an integer");
+  }
+  return { sub, aud, authTime: authTime as number | undefined };
+}
+
 function parseScope(scope: unknown): readonly GrantedScope[] {
   if (typeof scope !== "string") {
     throw new InvalidTokenError("scope is not a string");

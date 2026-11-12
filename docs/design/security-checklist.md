@@ -73,7 +73,7 @@
 - [ ] セッショントークンはハッシュで保存し、サインインのたびに作り直す
 - [ ] セッションはサインインから 1 時間の絶対期限で切れ、使っても延長しない（NIST SP 800-63B-4 の AAL2）
 - [ ] ID トークンとアクセストークンは 5 分で切れ、期限切れのアクセストークンは `/userinfo` で拒否する
-- [ ] `POST /logout` は今のセッションの行を、`session_revoke` と `user_disable` はそのユーザーの全セッションの行を削除する。`passkey_revoke` と本人による失効は、失効させたパスキーから作ったセッションの行だけを外部キーの連鎖で削除し、別のパスキーから作ったセッションは残す
+- [ ] `POST /logout` と `/end_session`（RP-Initiated Logout）は今のセッションの行を、`session_revoke` と `user_disable` はそのユーザーの全セッションの行を削除する。`passkey_revoke` と本人による失効は、失効させたパスキーから作ったセッションの行だけを外部キーの連鎖で削除し、別のパスキーから作ったセッションは残す
 - [ ] issuer、RP ID、origin は設定値から導き、リクエストの `Host` ヘッダーからは作らない
 - [ ] issuer が未設定または形式が不正なら、リクエストを処理せずエラーを返す
 - [ ] IdP の Worker は、静的なページを含むすべてのリクエストで先に動く（`run_worker_first` が真）。ゾーンのルール（シングルリダイレクト、Always Use HTTPS）には頼らない
@@ -87,8 +87,11 @@
 - [ ] 2 つの Worker は、設定のホスティングのモード（`HOSTING_MODE`）と issuer と管理用のホスト名の形が合わなければ、すべての要求を拒否する（[ホスティングのモード](hosting-modes.md)の 1.4）
 - [ ] IdP の Worker は `/.well-known/webauthn` に応答しない（関連する origin の要求で、ほかの origin にこの RP ID のパスキーを使わせないため。[ホスティングのモード](hosting-modes.md)の 2.2）
 - [ ] `workers_dev` のモードで、バージョン、プレビュー、デプロイメントの URL のホスト名への要求を、2 つの Worker が処理しない。`workers_dev` のモードの RP ID は issuer のホスト名そのもので、アカウントのサブドメインに広げない
-- [ ] セッションの Cookie で認証する状態を変える POST（`/webauthn/*`、`/authorize/resume`、`/logout`）は、`Sec-Fetch-Site` が `same-origin` か（なければ `Origin` が issuer と一致するか）を確認し、どちらのヘッダーもないリクエストは拒否する。`/authorize` はクロスサイトからの POST が正規の動作で、`/token` と `/userinfo` はサーバーからの呼び出しで Cookie を使わない（クライアント認証、PKCE、Bearer のアクセストークンで守る）ので、この確認の対象にしない
-- [ ] サインイン画面、登録画面、アカウントページは、CSP の `frame-ancestors 'none'` でクリックジャッキングを防ぐ
+- [ ] セッションの Cookie で認証する状態を変える POST（`/webauthn/*`、`/authorize/resume`、`/logout`、`/end_session/confirm`）は、`Sec-Fetch-Site` が `same-origin` か（なければ `Origin` が issuer と一致するか）を確認し、どちらのヘッダーもないリクエストは拒否する。`/authorize` はクロスサイトからの POST が正規の動作で、`/token` と `/userinfo` はサーバーからの呼び出しで Cookie を使わない（クライアント認証、PKCE、Bearer のアクセストークンで守る）ので、この確認の対象にしない。`/end_session` もクロスサイトからの GET と POST が正規の動作（RP-Initiated Logout 1.0 §2）なので対象にせず、下の確認の規則で守る
+- [ ] `/end_session` は、`id_token_hint` が有効で、その `sub` と `auth_time` が今のセッションと一致するときだけ、確認なしにセッションを終わらせる。hint がない、hint が今のセッションのものでない、セッションの Cookie のない `POST` では、確認のページを出し、同一オリジンの `POST /end_session/confirm` でだけ終わらせる。クロスサイトのリンクやフォームだけでは、ほかの利用者を意図せずログアウトさせられない（RP-Initiated Logout 1.0 §2、§6）
+- [ ] `/end_session` の `id_token_hint` は、今の JWKS のどれかの鍵での署名、`typ: JWT`、`iss` の一致、`sub` と `aud` の形を確かめ、`exp` だけは確かめない。署名が通らない、別の issuer、`client_id` と `aud` が違う hint はエラーページで拒否し、ログアウトもリダイレクトもしない
+- [ ] `/end_session` のリダイレクトは、client が有効で、`post_logout_redirect_uri` がその client に登録した値と完全に一致するときだけ行う。それ以外はリダイレクトせず IdP のページを出す（オープンリダイレクトにしない）。確認のページに入れる値（`state` を含む）はすべて HTML のエスケープを通す
+- [ ] サインイン画面、登録画面、アカウントページ、RP からのログアウトの確認のページは、CSP の `frame-ancestors 'none'` でクリックジャッキングを防ぐ
 - [ ] 登録リンクのトークンは URL のフラグメントに入れ、登録ページは `Referrer-Policy: no-referrer` にする
 
 **シークレットとデータ**

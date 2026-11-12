@@ -366,8 +366,15 @@ function errorRedirect(
   };
 }
 
-// Appends to the registered URI's own query, which RFC 6749 §3.1.2 requires the server to keep.
-function redirectLocation(redirectUri: string, params: Readonly<Record<string, string | undefined>>): string {
+/**
+ * Appends parameters to a registered URI's own query, which RFC 6749 §3.1.2 requires the server to keep. The
+ * post-logout redirect (end-session.ts) keeps it the same way.
+ *
+ * @param redirectUri A registered, validated URI.
+ * @param params The parameters to append; an `undefined` value is left out.
+ * @returns The URI to redirect to.
+ */
+export function redirectLocation(redirectUri: string, params: Readonly<Record<string, string | undefined>>): string {
   const url = new URL(redirectUri);
   for (const [name, value] of Object.entries(params)) {
     if (value !== undefined) url.searchParams.append(name, value);

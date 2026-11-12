@@ -11,7 +11,7 @@
 
 **構成**
 
-- 管理用の Worker（`apps/admin-worker`）は、IdP の Worker と同じ D1 をバインディングで使い、共有コアの管理系のユースケースを管理 API として出す。`idpctl` の全 29 操作（下の一覧）は IdP のドメインの操作であり、すべて共有コアのユースケースとして実装する（[技術選定](technology.md)のコードの構成を参照）。
+- 管理用の Worker（`apps/admin-worker`）は、IdP の Worker と同じ D1 をバインディングで使い、共有コアの管理系のユースケースを管理 API として出す。`idpctl` の全 30 操作（下の一覧）は IdP のドメインの操作であり、すべて共有コアのユースケースとして実装する（[技術選定](technology.md)のコードの構成を参照）。
 - 共有コアが持つもの：入力の検証、IdP が発行する秘密の生成とハッシュ、条件付きの SQL（パスキーの上限、最後の 1 本の規則など）、監査ログの行の組み立て、`grant_add` と `group_member_add` で新たに使えるようになるユーザーと client の組の計算。
 - `idpctl` が持つもの：引数の解釈、管理 API の呼び出し、出力の整形、手元の入出力（管理者の秘密鍵を標準入力から読む、IdP が発行する秘密を `0600` のファイルに書く）、`Idempotency-Key` の生成と自分の再試行での再利用だけ。ドメインの規則は評価せず、管理用の Worker が返すエラーをそのまま表示する。管理用の Worker が規則の唯一の判定者である。
 - 管理 API の仕様（OpenAPI など）は共有コアの入力のスキーマから生成し、`idpctl` の Go の型はその仕様から生成する。仕様は Go と TypeScript の間の契約として扱う（[実装に依存しない契約](cross-language-contract.md)参照）。
@@ -71,11 +71,11 @@ D1 を手元から直接操作する形（D1 REST API）をやめ、管理 API �
 
 CLI のサブコマンドは操作名をそのまま使う（`idpctl client_create --public`、`idpctl grant_add group:<group_id> <client_id>` など）。操作名は共有コアのユースケースの名前と同じで、監査ログの `operation` にも同じ値が入る。管理 API の OpenAPI の `operationId` も操作名にする。例外は enablement-events のエンドポイントだけで、その `operationId` は `user_enablement_switch`、`client_enablement_switch`、`group_enablement_switch` とし、1 つのエンドポイントで `*_enable` と `*_disable` の両方を受ける（下の管理 API の 2 を参照）。呼び方を 1 つに揃えるため、例外はこの 1 つだけにする。
 
-書き込みの操作は、[認可](authorization.md)の管理の関心事で分類する。基盤の操作（署名鍵、管理者の鍵の生成、Cloudflare の API トークン、許可リストの変更、デプロイ）は `idpctl` の対象外。全 29 操作は次のとおり。
+書き込みの操作は、[認可](authorization.md)の管理の関心事で分類する。基盤の操作（署名鍵、管理者の鍵の生成、Cloudflare の API トークン、許可リストの変更、デプロイ）は `idpctl` の対象外。全 30 操作は次のとおり。
 
 - 読み取り（7）：`users_list`、`user_get`、`clients_list`、`groups_list`、`grants_list`、`access_check`、`audit_tail`
 - ユーザーの管理（13）：`user_create`、`user_rename`、`user_disable`、`user_enable`、`enroll_link_issue`、`passkey_revoke`、`session_revoke`、`group_create`、`group_rename`、`group_disable`、`group_enable`、`group_member_add`、`group_member_remove`
-- RP の管理（7）：`client_create`（public client は `--public`、ID トークンの署名アルゴリズムは `--id-token-alg`）、`client_rename`、`client_set_redirects`、`client_rotate_secret`、`client_set_id_token_alg`、`client_disable`、`client_enable`
+- RP の管理（8）：`client_create`（public client は `--public`、ID トークンの署名アルゴリズムは `--id-token-alg`、ログアウト後の戻り先は `--post-logout-redirect-uri`）、`client_rename`、`client_set_redirects`、`client_set_post_logout_redirects`、`client_rotate_secret`、`client_set_id_token_alg`、`client_disable`、`client_enable`
 - アクセスの管理（2）：`grant_add`、`grant_remove`
 
 ユーザー、client、グループは完全に削除しない。`user_delete`、`client_delete`、`group_delete` は置かず、終わらせるときは無効化する。行を消さないことは D1 のトリガーで強制する（[データモデル](data-model.md)参照）。
@@ -122,6 +122,14 @@ ID トークンの署名アルゴリズム（[トークン設計](tokens.md)参�
 
 `access_check(user, client)` は、許可か拒否かに加えて、どの grant にマッチしたか（直接付与か、どのグループ経由か。または何が足りないか。無効なユーザー、client、グループを含む）を返す。許可か拒否かは `effective_access` ビューそのものから読み、説明は同じスナップショットの行から組み立てる。説明がビューの判定と食い違えば、`access_check` は `internal` を返す。説明の組み立てがビューの定義からずれたことを、黙って誤った説明を返さずに検出するため。
 
+RP-Initiated Logout のログアウト後の戻り先（`post_logout_redirect_uris`。[認証フロー](authentication.md)の「RP からのログアウト」参照）は、次のように扱う。
+
+- `client_create` は、`post_logout_redirect_uris` を任意で受け取る（`idpctl` では `--post-logout-redirect-uri` を繰り返す）。省けば空の一覧で、その client へのログアウト後のリダイレクトはしない。
+- `client_set_post_logout_redirects` は一覧を丸ごと置き換える。空の一覧も受け付け、それでリダイレクトを止められる（`idpctl client_set_post_logout_redirects <client_id>` を URI なしで実行する）。今と同じ一覧（同じ順）は、書き込まずに成功を返す。
+- 登録できる URI は、redirect URI の規則（[クライアントの種類](clients.md)）のうち `https` の形だけで、client の種類によらずループバックの http とカスタムスキームは拒否する。正規の形、フラグメントなし、userinfo なし、2,000 文字まで、0〜10 個、重複なしの規則は redirect URI と同じ。比較は完全一致で、ループバックのポートの例外もない。
+- 新しい一覧は、redirect URI と同じく個人情報を含まない設定値なので、`detail_json` の `post_logout_redirect_uris` にそのまま残す。`client_create` では、一覧が空でないときだけ残す。
+- `clients_list` は client ごとの `post_logout_redirect_uris` も返す。
+
 `client_rotate_secret` は confidential client だけが対象で、public client への要求は `state-conflict` を返す。`client_set_id_token_alg` で今と同じアルゴリズムを指定した要求は、状態を変えない `PUT` として成功を返す。
 
 ユーザーとグループは同じ主体として扱う（[認可](authorization.md)参照）。
@@ -166,6 +174,7 @@ ID トークンの署名アルゴリズム（[トークン設計](tokens.md)参�
 | `client_create`、`clients_list` | `POST /v1/clients`、`GET /v1/clients` |
 | `client_rename` | `PUT /v1/clients/{id}/name` |
 | `client_set_redirects` | `PUT /v1/clients/{id}/redirect-uris` |
+| `client_set_post_logout_redirects` | `PUT /v1/clients/{id}/post-logout-redirect-uris` |
 | `client_set_id_token_alg` | `PUT /v1/clients/{id}/id-token-alg` |
 | `client_rotate_secret` | `POST /v1/clients/{id}/secrets` |
 | `client_enable`、`client_disable` | `POST /v1/clients/{id}/enablement-events` |

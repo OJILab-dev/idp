@@ -4,6 +4,7 @@
 
 - [OpenID Connect Core 1.0](https://openid.net/specs/openid-connect-core-1_0.html)
 - [OpenID Connect Discovery 1.0](https://openid.net/specs/openid-connect-discovery-1_0.html)
+- [OpenID Connect RP-Initiated Logout 1.0](https://openid.net/specs/openid-connect-rpinitiated-1_0.html)
 - [OpenID Connect Dynamic Client Registration 1.0（§2 の `id_token_signed_response_alg` の既定）](https://openid.net/specs/openid-connect-registration-1_0.html)
 - [RFC 9864：Fully-Specified Algorithms for JOSE and COSE（`Ed25519` の登録と `EdDSA` の非推奨化）](https://www.rfc-editor.org/rfc/rfc9864.html)
 - [RFC 8037：CFRG Elliptic Curves for JOSE（OKP の鍵と thumbprint）](https://www.rfc-editor.org/rfc/rfc8037.html)

@@ -20,6 +20,7 @@
   - ループバックの URI はポートなしで登録する。ポートは実行時にネイティブアプリが選び（RFC 8252 §7.3）、比較でもポートを無視するので、登録した値にポートがあると、そのポートだけが使えるように見えて紛らわしいため。`127.0.0.1` と `[::1]` 以外のループバックのアドレスも拒否する。
   - confidential client は `https` だけを登録できる。1 つの client に登録できるのは 1〜10 個で、同じ URI を重ねて登録できない。
   - redirect URI は個人情報を含まない設定値なので、`client_create` と `client_set_redirects` の監査ログの行に、新しい一覧をそのまま残す（[データモデル](data-model.md)参照）。
+- **ログアウト後の戻り先（`post_logout_redirect_uris`）**：RP-Initiated Logout（[認証フロー](authentication.md)の「RP からのログアウト」）で IdP のサインアウト後に RP へ戻すための URI で、redirect URI とは別に登録する。`https` の形だけを 0〜10 個登録でき（ループバックとカスタムスキームは client の種類によらず拒否する）、完全一致で比べる。ほかの形の規則（正規の形、フラグメントなしなど）は redirect URI と同じ判定を使う。登録がなければ、IdP は自分のサインアウト済みのページを表示し、RP には戻さない。
 - **API 向けのトークンは v1 で扱わない**：アクセストークンの `aud` は issuer で、受け付けるのは `/userinfo` だけ（[トークン設計](tokens.md)参照）。別の API を呼ぶ用途（RFC 8707 の `resource` 指定）は、ledger を作るときに足す。
 
 **新しいアプリを足すとき**
@@ -27,6 +28,7 @@
 1. 上の表で種類を決める。SPA なら BFF を置いて Web アプリにする。
 2. `idpctl client_create` で登録する。client ID は管理者が決め（英小文字、数字、ハイフンの 3〜64 文字。[管理 CLI と管理用の Worker](idpctl.md)参照）、後から変えられず、client を無効化しても再利用されない。ネイティブアプリなら `--public` を付ける。Web アプリのシークレットは 0600 のファイルに書き出される。ID トークンの署名アルゴリズムは既定の `Ed25519` のままにし、RP のライブラリが Ed25519 を検証できないときだけ `--id-token-alg RS256` を選ぶ（RS256 を有効にしたデプロイでだけ登録できる。[トークン設計](tokens.md)参照）。
 3. `idpctl grant_add group:<group_id> <client_id>` などで、使える人を決める。
-4. アプリに Discovery の URL（`https://<IdP のホスト>/.well-known/openid-configuration`）と `client_id` を設定し、標準の OIDC ライブラリでつなぐ。IdP 専用の SDK は作らない。
+4. RP のサインアウトで IdP のセッションも終わらせるなら、サインアウト後に戻る URI を `idpctl client_set_post_logout_redirects <client_id> <uri>...`（または `client_create` の `--post-logout-redirect-uri`）で登録し、アプリはサインアウトのときにブラウザを discovery の `end_session_endpoint` へ `id_token_hint` 付きでリダイレクトする。
+5. アプリに Discovery の URL（`https://<IdP のホスト>/.well-known/openid-configuration`）と `client_id` を設定し、標準の OIDC ライブラリでつなぐ。IdP 専用の SDK は作らない。
 
 アプリを使わなくなったら、`idpctl client_disable` で無効化する。client は削除しない。無効な client の `/authorize` はリダイレクトせずエラーページを返し（登録された redirect URI がもう信頼できないかもしれないため）、`/token` と `/userinfo` も拒否する。

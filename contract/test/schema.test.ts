@@ -335,6 +335,40 @@ describe("audit_log.admin_credential (0004)", () => {
   });
 });
 
+describe("clients.post_logout_redirect_uris_json (0005)", () => {
+  const MIGRATION = "0005_clients_post_logout_redirect_uris.sql";
+
+  it("gives an insert that does not name the column, as the Workers before 0005 write, an empty list", async () => {
+    await addClient("c1");
+    expect(await db.prepare("SELECT post_logout_redirect_uris_json AS uris FROM clients").first("uris")).toBe("[]");
+  });
+
+  it("refuses NULL, so a reader never has to guess what a missing list means", async () => {
+    await addClient("c1");
+    await expect(db.prepare("UPDATE clients SET post_logout_redirect_uris_json = NULL").run()).rejects.toThrow(/NOT NULL/);
+  });
+
+  it("gives the clients that existed before 0005 an empty list and leaves their other columns alone", async () => {
+    const before = await createTestD1("0004_audit_log_admin_credential.sql");
+    try {
+      await before.db
+        .prepare(
+          `INSERT INTO clients (id, name, client_type, secret_hash, redirect_uris_json, id_token_signed_response_alg, created_at)
+           VALUES ('old', 'c', 'public', NULL, '["https://a.example.com/cb"]', 'Ed25519', ?)`,
+        )
+        .bind(NOW)
+        .run();
+      await applyMigrations(before.db, [MIGRATION]);
+      const { results } = await before.db.prepare("SELECT id, redirect_uris_json, post_logout_redirect_uris_json FROM clients").all();
+      expect(results).toEqual([{ id: "old", redirect_uris_json: '["https://a.example.com/cb"]', post_logout_redirect_uris_json: "[]" }]);
+      // The rows still cannot be deleted.
+      await expect(before.db.prepare("DELETE FROM clients").run()).rejects.toThrow(/never deleted/);
+    } finally {
+      await before.dispose();
+    }
+  });
+});
+
 describe("identity constraints", () => {
   it("prevents one id from being both a user and a group", async () => {
     await addGroup("x");

@@ -18,7 +18,8 @@
 | DCR / CIMD | 作らない | 必要になったら再検討 |
 | メール送信・パスキー紛失時のセルフ復旧 | 作らない | 復旧は管理者が登録リンクを再発行する |
 | メールアドレスの保持（`email` スコープ） | 作らない | 他人の個人情報を持たない。メールアドレスが必要な RP は本人から集める（[トークン設計](tokens.md)参照） |
-| OIDC のログアウト仕様（RP-Initiated Logout など） | 作らない | v1 では不要。IdP 側のサインアウトだけを用意する |
+| RP-Initiated Logout 1.0 | 作る（2026-11-13 に決定を変更） | RP でのサインアウトの後に IdP のセッションが残ると、次のサインインでパスキーが省かれる。RP から IdP のセッションも終わらせる標準の手段を用意する（[認証フロー](authentication.md)参照） |
+| Front-Channel Logout 1.0、Back-Channel Logout 1.0 | 作らない | IdP はセッションごとにサインインさせた RP を記録せず、`sid` も発行しない。RP のセッションは RP が終わらせる |
 | ブラウザだけで動く SPA（public client）と client\_secret\_post | 作らない | SPA は BFF を置いて Web アプリとして登録する（RFC 10017）。confidential client の認証は client\_secret\_basic だけにする |
 | リフレッシュトークン | 作らない | Secure by Default の方針。必要が生じたら、ローテーションと再利用検知を前提に再検討する |
 | アプリ内ロール・API スコープ（認可レベル 2・3） | 後回し | 必要になったらマイグレーションでテーブルを足す |
