@@ -91,7 +91,7 @@ mise install
 pnpm install --frozen-lockfile
 ```
 
-TypeScript の workspace（`packages/core`、`apps/worker`、`apps/admin-worker`）と、D1 のスキーマ（`contract/migrations`）の正規コマンドは次のとおりです。CI（`.github/workflows/ci.yml`）も同じ `pnpm run check` を実行します。
+TypeScript の workspace（`packages/core`、`apps/worker`、`apps/admin-worker`、RP のサンプルの `examples/rp-sample`）と、D1 のスキーマ（`contract/migrations`）の正規コマンドは次のとおりです。CI（`.github/workflows/ci.yml`）も同じ `pnpm run check` を実行します。
 
 ```sh
 pnpm run typecheck   # tsc

@@ -16,6 +16,14 @@ readonly IDP_WORKER_NAME="idp"
 readonly ADMIN_WORKER_NAME="idp-admin"
 readonly SIGNING_KEY_SECRET_NAME="SIGNING_KEY_ED25519_CURRENT"
 
+# The sample relying party (examples/rp-sample/README.md): its Worker name, the first label of its workers.dev host,
+# is code like the IdP's. Keep it in sync with RP_SAMPLE_WORKER_NAME of examples/rp-sample/cloudflare.config.ts and
+# the secret names with examples/rp-sample/src/config.ts.
+readonly RP_SAMPLE_WORKER_NAME="rp-sample"
+readonly RP_SAMPLE_PROJECT="examples/rp-sample"
+readonly RP_SAMPLE_CLIENT_SECRET_NAME="CLIENT_SECRET"
+readonly RP_SAMPLE_SESSION_KEY_NAME="SESSION_KEY"
+
 # Field labels of the Vault item named by onepassword_cloudflare_item. The operator creates this item by hand,
 # because it holds credentials (docs/deployment/bootstrap.md, 前提).
 readonly OP_FIELD_ACCOUNT_ID="account_id"
@@ -25,6 +33,9 @@ readonly OP_FIELD_R2_SECRET_ACCESS_KEY="r2_secret_access_key"
 
 IDP_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly IDP_REPO_ROOT
+
+# The IdP's client_id rule (packages/core/src/shared/identifiers.ts).
+readonly CLIENT_ID_PATTERN='^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$'
 
 # Same rule as the admin names of ADMIN_SIGNING_KEYS (docs/design/idpctl.md).
 readonly ADMIN_NAME_PATTERN='^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$'
@@ -139,6 +150,18 @@ deployment_issuer_host() {
 # Prints the admin host: admin_host in custom_domain, idp-admin.<workers_dev_subdomain>.workers.dev in workers_dev.
 deployment_admin_host() {
   deployment_host "${1}" admin_host "${ADMIN_WORKER_NAME}"
+}
+
+# Prints the sample relying party's host, rp-sample.<workers_dev_subdomain>.workers.dev. The sample runs in the
+# workers_dev mode only (examples/rp-sample/README.md), so any other mode stops the script.
+rp_sample_host() {
+  local path="${1}"
+  local mode
+  local subdomain
+  mode="$(hosting_mode "${path}")" || exit 1
+  [[ "${mode}" == "workers_dev" ]] || fail "the sample relying party runs only in the workers_dev mode: ${path}"
+  subdomain="$(config_string "${path}" workers_dev_subdomain)" || exit 1
+  printf '%s.%s.workers.dev\n' "${RP_SAMPLE_WORKER_NAME}" "${subdomain}"
 }
 
 # Prints the custom_domain input named by key, or <worker name>.<workers_dev_subdomain>.workers.dev.

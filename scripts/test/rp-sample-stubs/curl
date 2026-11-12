@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# A fake curl for the sample relying party's script tests. It never reaches the network.
+#
+# The Cloudflare API call ("Get a Workers Subdomain") appends "curl subdomain" to ${STUB_DIR}/calls, fails unless
+# CLOUDFLARE_API_TOKEN is the fake token op run puts there, and prints ${STUB_DIR}/subdomain_response.
+#
+# Every other call is the post-deploy probe of the sample. Its URL and User-Agent are appended to ${STUB_DIR}/probes.
+# ${STUB_DIR}/rp_state picks the answer: "ok" is 200; "unconfigured" is the sample's 500 before its secrets are set;
+# "broken" is some other 500; "never_live" is workers.dev's plain-text 404 for a route that is not live yet. While
+# ${STUB_DIR}/not_live_count holds a number above 0, that 404 is answered first and the number is decremented.
+set -euxo pipefail
+
+url=""
+output=""
+write_out=""
+user_agent=""
+while [[ "$#" -gt 0 ]]; do
+  case "${1}" in
+    --output) output="${2}" && shift ;;
+    --user-agent) user_agent="${2}" && shift ;;
+    --write-out) write_out="${2}" && shift ;;
+    --proto | --max-time | --variable | --expand-header) shift ;;
+    http://* | https://*) url="${1}" ;;
+  esac
+  shift
+done
+
+if [[ "${url}" == https://api.cloudflare.com/* ]]; then
+  printf 'curl subdomain\n' >>"${STUB_DIR}/calls"
+  [[ "${CLOUDFLARE_API_TOKEN-}" == "stub-api-token" ]] || exit 2
+  cat "${STUB_DIR}/subdomain_response"
+  exit 0
+fi
+
+printf '%s user_agent=%s\n' "${url}" "${user_agent}" >>"${STUB_DIR}/probes"
+state="$(cat "${STUB_DIR}/rp_state")"
+not_live="$(cat "${STUB_DIR}/not_live_count" 2>/dev/null || printf '0')"
+if [[ "${not_live}" -gt 0 ]]; then
+  printf '%s\n' "$((not_live - 1))" >"${STUB_DIR}/not_live_count"
+  state="never_live"
+fi
+case "${state}" in
+  ok) status="200" && content_type="text/html; charset=UTF-8" && body="<!doctype html>" ;;
+  unconfigured) status="500" && content_type="text/plain; charset=UTF-8" && body="The relying party is misconfigured." ;;
+  never_live) status="404" && content_type="text/plain" && body="Not Found" ;;
+  *) status="500" && content_type="text/plain; charset=UTF-8" && body="Internal Server Error" ;;
+esac
+[[ -z "${output}" ]] || printf '%s' "${body}" >"${output}"
+detail=""
+[[ "${write_out}" != *content_type* ]] || detail="${content_type}"
+printf '%s %s' "${status}" "${detail}"

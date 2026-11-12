@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# A fake openssl for the sample relying party's script tests: `rand -base64 32` prints a fixed, public test value (the
+# base64 of "stub-session-key-32-bytes-long!!"), so no test generates a key. Anything else fails.
+#
+# No -x, like the real openssl: xtrace would print the key to the caller's stderr, and the tests check that the
+# secrets script never puts the session key there.
+set -euo pipefail
+
+[[ "$*" == "rand -base64 32" ]] || exit 1
+printf '%s\n' "c3R1Yi1zZXNzaW9uLWtleS0zMi1ieXRlcy1sb25nISE="

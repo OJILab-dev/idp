@@ -58,9 +58,10 @@ IdP の Worker には管理用のエンドポイントや管理 UI を置きま�
 | [packages/core/](packages/core) | 共有コア。利用者向け（`user`）、管理系（`admin`）、共通（`shared`）のユースケースとドメインの規則 |
 | [packages/d1-adapter/](packages/d1-adapter) | 共有コアのデータベースのポートを D1 で実装するアダプタと、その適合テスト |
 | [contract/](contract) | 実装に依存しない契約。D1 のマイグレーション（`migrations`）、管理 API の仕様（`openapi`）、テストベクタ（`testdata`）、スキーマのテスト（`test`） |
+| [examples/rp-sample/](examples/rp-sample) | RP のサンプル（別の Worker）。認可コードフロー（PKCE、`state`、`nonce`、`iss` の確認、`client_secret_basic`）、ID トークンの検証、`/userinfo`、暗号化した Cookie のセッション、RP だけのログアウト。IdP からは import しない |
 | [cmd/idpctl/](cmd/idpctl) | Go の管理 CLI。管理 API のクライアントは `contract/openapi/admin.json` から生成する |
 | [infra/](infra) | Terraform と、そのオフラインのテスト。今はゾーンを引く data source と、デプロイの設定ファイルの検証だけを持ち、ゾーンに資源を置かない（管理者のクライアント証明書と mTLS の割り当ては[ホスティングのモード](docs/design/hosting-modes.md)の実装の順番の 7 で外した）。ゾーンのルールセット（WAF、リダイレクト、レート制限）は持たず、HTTPS へのリダイレクト、TLS のバージョン、管理者の認証、レート制限は Worker が行う（[ドメインの置き場所](docs/design/domain-placement.md)の決定 ③） |
-| [scripts/](scripts) | ブートストラップのスクリプト（state のバケット、D1、マイグレーション、署名鍵と管理者の鍵の生成、Terraform の実行）と、2 つの Worker のデプロイのスクリプト（`deploy.sh`） |
+| [scripts/](scripts) | ブートストラップのスクリプト（state のバケット、D1、マイグレーション、署名鍵と管理者の鍵の生成、Terraform の実行）と、2 つの Worker のデプロイのスクリプト（`deploy.sh`）。RP のサンプルのデプロイと秘密の設定のスクリプト（`deploy-rp-sample.sh`、`set-rp-sample-secrets.sh`）も置く |
 | [deployments/](deployments) | デプロイごとの設定ファイル（`<デプロイの名前>.tfvars.json`）とその雛形 |
 | [docs/](docs) | 設計思想、設計ドキュメント、デプロイの手順 |
 | [.github/workflows/](.github/workflows) | PR の CI（`ci.yml`）と、main へのマージと手動の起動で動くデプロイ（`deploy.yml`） |
