@@ -45,15 +45,24 @@ usage() {
 }
 
 # Prints "<status> <detail>" of one request without following redirects, writing the body to a file. The detail is
-# the curl write-out variable named by the third argument (content_type or redirect_url); the arguments after it go
-# to curl before the URL (headers). Only the URL's own scheme is allowed, so an http probe is never upgraded and an
-# https probe never downgraded. Retries while the host does not answer yet (000) or the edge reports an origin error
-# (52x): a new custom domain needs its DNS record and certificate before it answers.
+# the curl write-out variable named by the third argument (content_type or redirect_url); the arguments after the
+# fourth go to curl before the URL (headers). Only the URL's own scheme is allowed, so an http probe is never upgraded
+# and an https probe never downgraded. Retries while the host does not answer yet (000) or the edge reports an origin
+# error (52x): a new custom domain needs its DNS record and certificate before it answers. With the fourth argument
+# "new_route" (and the content_type detail), it also retries workers.dev's plain-text 404 for a Worker whose route is
+# not live yet (is_route_not_live_yet, scripts/lib.sh); "live_route" judges every 404 at once. Whatever the last
+# attempt answered is printed, so a route that never goes live fails its check as any other wrong answer.
 http_probe() {
   local url="${1}"
   local body="${2}"
   local detail="${3}"
-  shift 3
+  local route="${4}"
+  shift 4
+  case "${route}" in
+    new_route) [[ "${detail}" == "content_type" ]] || fail "http_probe: new_route needs the content_type detail" ;;
+    live_route) ;;
+    *) fail "http_probe: unknown route state ${route}" ;;
+  esac
   local scheme="${url%%://*}"
   local attempt
   local result=""
@@ -62,9 +71,16 @@ http_probe() {
       --output "${body}" --write-out "%{http_code} %{${detail}}" "$@" "${url}" || true)"
     case "${result}" in
       000* | 52[0-9]*) note "attempt ${attempt}: ${url} answered ${result%% *}; retrying" ;;
-      *) break ;;
+      *)
+        if [[ "${route}" == "new_route" ]] && is_route_not_live_yet "${result%% *}" "${result#* }"; then
+          note "attempt ${attempt}: ${url} answered ${result}, as workers.dev does before a new Worker's route is live; retrying"
+        else
+          break
+        fi
+        ;;
     esac
-    sleep 10
+    # No wait after the last attempt: its answer is judged at once.
+    [[ "${attempt}" == "12" ]] || sleep 10
   done
   printf '%s\n' "${result}"
 }
@@ -74,7 +90,9 @@ check_issuer() {
   local before_signing_key="${2}"
   local workdir="${3}"
   local result
-  result="$(http_probe "${issuer}/.well-known/openid-configuration" "${workdir}/discovery.json" content_type)"
+  # The first probe of the IdP Worker after cf deploy, so its workers.dev route may not be live yet; the later ones
+  # (JWKS, plain http) run once discovery has answered.
+  result="$(http_probe "${issuer}/.well-known/openid-configuration" "${workdir}/discovery.json" content_type new_route)"
   if [[ "${before_signing_key}" == "true" ]]; then
     # The Worker answers on its host over https and fails closed without a key (bootstrap stage 5).
     [[ "${result%% *}" == "500" ]] || fail "expected the IdP Worker to refuse with 500 before the signing key, got ${result}"
@@ -86,7 +104,7 @@ check_issuer() {
   [[ "${result%% *}" == "200" ]] || fail "discovery at ${issuer} answered ${result}"
   jq -e --arg issuer "${issuer}" '.issuer == $issuer and .jwks_uri == ($issuer + "/jwks")' "${workdir}/discovery.json" >/dev/null ||
     fail "the discovery document does not name ${issuer} and its /jwks"
-  result="$(http_probe "${issuer}/jwks" "${workdir}/jwks.json" content_type)"
+  result="$(http_probe "${issuer}/jwks" "${workdir}/jwks.json" content_type live_route)"
   [[ "${result%% *}" == "200" ]] || fail "JWKS at ${issuer}/jwks answered ${result}"
   jq -e '.keys | type == "array" and length > 0' "${workdir}/jwks.json" >/dev/null || fail "the JWKS has no key"
   note "discovery and JWKS answer on ${issuer}; kids: $(jq -c '[.keys[].kid]' "${workdir}/jwks.json")"
@@ -103,7 +121,8 @@ probe_plain_http() {
   local expected="https://${issuer_host}${PROBE_HTTP_PATH}"
   local result
   local answered_by
-  result="$(http_probe "http://${issuer_host}${PROBE_HTTP_PATH}" "${workdir}/http.body" redirect_url "$@")"
+  # live_route: the IdP Worker's own refusal is a plain-text 404, which must be judged, not retried.
+  result="$(http_probe "http://${issuer_host}${PROBE_HTTP_PATH}" "${workdir}/http.body" redirect_url live_route "$@")"
   answered_by="$(plain_http_verdict "${mode}" "${expectation}" "${result%% *}" "${result#* }" "${expected}")" ||
     fail "plain http on ${issuer_host} (${expectation}) answered ${result}; the IdP Worker must answer 308 to ${expected} without credentials and 404 with them (a 301 in the custom_domain mode means a zone rule such as Always Use HTTPS answers first)"
   note "plain http on ${issuer_host} (${expectation}): ${result%% *}, answered by the ${answered_by}"
@@ -123,7 +142,8 @@ check_admin_gate() {
   local admin_host="${1}"
   local workdir="${2}"
   local result
-  result="$(http_probe "https://${admin_host}/" "${workdir}/admin.body" content_type)"
+  # The only probe of the admin Worker, deployed seconds earlier: its workers.dev route may not be live yet.
+  result="$(http_probe "https://${admin_host}/" "${workdir}/admin.body" content_type new_route)"
   is_admin_forbidden "${result%% *}" "${result#* }" "${workdir}/admin.body" ||
     fail "an unsigned request to ${admin_host} answered ${result}, not the admin Worker's forbidden with no reason"
   note "the admin Worker refuses an unsigned request on ${admin_host} with forbidden"

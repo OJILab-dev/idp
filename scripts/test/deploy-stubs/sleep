@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# A fake sleep for the deploy tests: the probes' retries are counted in ${STUB_DIR}/sleeps instead of waited for, so a
+# check that runs out of attempts fails at once.
+set -euxo pipefail
+
+printf 'sleep %s\n' "$*" >>"${STUB_DIR}/sleeps"
