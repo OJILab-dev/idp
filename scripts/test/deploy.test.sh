@@ -84,8 +84,8 @@ make_tree() {
   printf '%s\n' "${HEAD_SHA}" >"${stub}/git_main"
   printf '%s\n' "${ACCOUNT_ID}" >"${stub}/account_id"
   printf '%s\n' "${ACCOUNT_ID}" >"${stub}/op/fields/account_id"
-  # Wrapped in result, the shape scripts/lib.sh's d1 lookups read.
-  jq -nc --arg id "${D1_ID}" '{result: [{name: "idp-test", uuid: $id}, {name: "idp-test-2", uuid: "other"}]}' >"${stub}/d1_list"
+  # A bare array, the shape the pinned cf prints for `d1 list` (the wrapped API shape is covered in lib.test.sh).
+  jq -nc --arg id "${D1_ID}" '[{name: "idp-test", uuid: $id}, {name: "idp-test-2", uuid: "other"}]' >"${stub}/d1_list"
   local enabled="false"
   [[ "${mode}" == "workers_dev" ]] && enabled="true"
   jq -nc --argjson enabled "${enabled}" '{subdomain: {enabled: $enabled, previews_enabled: false}}' >"${stub}/workers_idp.json"
@@ -290,6 +290,12 @@ test_stops_before_any_change() {
   printf '{"result":[]}' >"${tree}/stub/d1_list"
   run_ci "${tree}" deploy.sh --ci test
   assert_equal "a missing D1 database stops before any change" "" "$(changes_of "${tree}")"
+  rm -rf "${tree}"
+
+  tree="$(make_tree custom_domain)"
+  printf '[]' >"${tree}/stub/d1_list"
+  run_ci "${tree}" deploy.sh --ci test
+  assert_equal "a missing D1 database (bare array) stops before any change" "" "$(changes_of "${tree}")"
   rm -rf "${tree}"
 
   tree="$(make_tree custom_domain)"
