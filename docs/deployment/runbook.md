@@ -62,6 +62,7 @@
 - main への push で、`IDP_DEPLOYMENT` にあるすべてのデプロイが、その 1 つのコミットから動く。手動の起動（main からだけ）は、そのうちの 1 つだけを動かし、段階 5 では「署名鍵の前」を付ける。
 - 順番は、Terraform の `init` と `apply`（`scripts/terraform.sh --ci`）、入力の検証、2 つの Worker のビルド、D1 のマイグレーション（`0004` を含む）、IdP の Worker、管理用の Worker、外からの確認で、最初の失敗で止まる。
 - 外からの確認が失敗したときは、2 つの Worker はすでにデプロイされている。どちらの Worker も、確かめた振る舞いが崩れても、要求を処理せずに拒否する側に倒れる。原因を直して main にもう一度マージする。
+- 新しく作った Worker の `workers.dev` のホストは、最初の `cf deploy` の直後しばらく、Worker ではなく `workers.dev` 自身の `text/plain` の 404 を返す（easyidp の最初のデプロイで、管理用の Worker のホストが 1 秒後に 404、1 分後には期待どおりの 403 を返した）。外からの確認は、discovery と管理用の Worker の最初の要求でだけ、この 404 を待って同じ回数と間隔（10 秒おきに 12 回まで）でやり直し、それでも 404 なら失敗にする。平文の HTTP の確認は IdP の Worker 自身の 404 を確かめるので、待たない。待っても失敗したときは、しばらく置いてから再実行するか、もう一度マージする。
 - `custom_domain` で、平文の HTTP に 301 が返って確認が失敗したときは、ゾーンの「Always Use HTTPS」かリダイレクトのルールが IdP の Worker より先に答えている。IdP はゾーンの設定を持たないので、ゾーンの持ち主と相談する（そのルールは、資格情報を持つ平文の要求も https へ送り直させる）。
 - `IDP_DEPLOYMENT` を空にすると、workflow は認証情報を使う job を含めて何も動かさない。デプロイを止めたいときも、こうする。
 - デプロイの job は、そのコミットが今の main の先頭でなければ、認証情報を読む前に止まる（続けてマージしたときの古い実行と、古い実行の再実行）。その失敗は正常で、新しい実行がデプロイする。前の版に戻したいときは、古い実行を再実行せず、戻す変更を PR でマージする。
@@ -95,6 +96,7 @@
 - `IDP` の Service Binding の `exportName` が、名前付きのエントリーポイントへのバインディングとして API に届き、IdP の Worker の最初のデプロイの直後から解決すること（段階 5）
 - デプロイ用のトークン（Workers の編集の権限）で、Cloudflare API の「Get a Workers Subdomain」を読めること（`workers.dev` のモードの CI のデプロイ）
 - `workers.dev` が平文の HTTP の要求を Worker に届けるか、自分で https へリダイレクトするか（`workers.dev` のモードの外からの確認は、どちらも受け付けて、どちらが答えたかを記録する）
+- 新しい Worker の `workers.dev` のルートが有効になるまでの時間が、いつも外からの確認の待ち（約 2 分）に収まること、その間の 404 がいつも `text/plain` であること（一度だけ観測した。`custom_domain` のホストで同じことが起きるかも確かめていない）
 - 1Password の `load-secrets-action` が、Workload Identity と `export-env: false` で、Environment の変数を変数と同じ名前の step の出力として出すこと（Terraform とデプロイの step が、役割の名前の出力を道具の読む名前に写す）
 - `pnpm install --ignore-scripts` の後の `cf build` が、Takumi Runner でも成功すること（手元では Vite plugin 自身のビルドで確かめた）
 - GitHub Environment の変数と secret（`OP_WORKLOAD_ID`、`OP_ENVIRONMENT_ID`、`OP_INTEGRATION_KEY`）が、デプロイが 2 つ以上のときに、リポジトリのものより優先されること

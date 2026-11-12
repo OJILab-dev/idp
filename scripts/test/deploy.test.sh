@@ -51,7 +51,7 @@ make_tree() {
   mkdir -p "${tree}/scripts" "${tree}/deployments" "${tree}/bin" "${tree}/stub/op/fields"
   cp "${REPO_ROOT}/scripts/lib.sh" "${REPO_ROOT}/scripts/deploy.sh" "${REPO_ROOT}/scripts/terraform.sh" "${tree}/scripts/"
   cp "${TEST_DIR}/deploy-stubs/pnpm" "${TEST_DIR}/deploy-stubs/curl" "${TEST_DIR}/deploy-stubs/git" \
-    "${TEST_DIR}/deploy-stubs/terraform" "${TEST_DIR}/stubs/op" "${tree}/bin/"
+    "${TEST_DIR}/deploy-stubs/terraform" "${TEST_DIR}/deploy-stubs/sleep" "${TEST_DIR}/stubs/op" "${tree}/bin/"
   local hosting
   local issuer_host
   local admin_host
@@ -78,6 +78,7 @@ make_tree() {
   local stub="${tree}/stub"
   : >"${stub}/calls"
   : >"${stub}/probes"
+  : >"${stub}/sleeps"
   : >"${stub}/git_status"
   : >"${stub}/op/calls"
   printf '%s\n' "${HEAD_SHA}" >"${stub}/git_head"
@@ -168,6 +169,7 @@ test_custom_domain_ci_deploy() {
   # workers.dev's bot protection refuses library default User-Agents before the Worker (hosting-modes.md 5.2).
   assert_equal "custom_domain CI: every probe names itself" "0" "$(grep -c 'user_agent= ' "${tree}/stub/probes" || true)"
   assert_equal "custom_domain CI: op is never called" "" "$(cat "${tree}/stub/op/calls")"
+  assert_equal "custom_domain CI: a healthy deployment waits for nothing" "" "$(cat "${tree}/stub/sleeps")"
   rm -rf "${tree}"
 }
 
@@ -239,6 +241,63 @@ test_workers_dev_setting_check() {
   jq -nc '{subdomain: {enabled: true, previews_enabled: true}}' >"${tree}/stub/workers_idp.json"
   run_ci "${tree}" deploy.sh --ci test
   assert_equal "workers_dev: preview URLs on the IdP Worker fail" "1" "$(status_of "${tree}")"
+  rm -rf "${tree}"
+}
+
+# The number of probes of one URL, and of the waits between all the probes.
+probes_of() {
+  grep -c "^${2} " "${1}/stub/probes" || true
+}
+
+waits_of() {
+  grep -c '^sleep 10$' "${1}/stub/sleeps" || true
+}
+
+# Right after the first cf deploy, workers.dev answered a new Worker's host with its own plain-text 404 for a short
+# while (easyidp, 2026-11-12). The discovery and admin probes keep retrying it within the bounded attempts, and fail
+# as before once those run out.
+test_new_routes_are_waited_for() {
+  local tree
+  local discovery="https://idp.team-1.workers.dev/.well-known/openid-configuration"
+  local admin="https://idp-admin.team-1.workers.dev/"
+
+  tree="$(make_tree workers_dev)"
+  printf '3\n' >"${tree}/stub/issuer_pending"
+  printf '2\n' >"${tree}/stub/admin_pending"
+  run_ci "${tree}" deploy.sh --ci test
+  assert_equal "new routes: the deploy passes once both answer" "0" "$(status_of "${tree}")"
+  assert_equal "new routes: discovery is probed until it answers" "4" "$(probes_of "${tree}" "${discovery}")"
+  assert_equal "new routes: the admin gate is probed until it answers" "3" "$(probes_of "${tree}" "${admin}")"
+  assert_equal "new routes: one wait per retry" "5" "$(waits_of "${tree}")"
+  rm -rf "${tree}"
+
+  # The first deploy, before the signing key: the configuration 500 is still recognised after the wait.
+  tree="$(make_tree workers_dev)"
+  printf '2\n' >"${tree}/stub/issuer_pending"
+  printf 'before_key\n' >"${tree}/stub/idp_state"
+  run_ci "${tree}" deploy.sh --ci --before-signing-key test
+  assert_equal "new routes before the key: the deploy passes" "0" "$(status_of "${tree}")"
+  assert_equal "new routes before the key: discovery is probed until it answers" "3" "$(probes_of "${tree}" "${discovery}")"
+  rm -rf "${tree}"
+
+  tree="$(make_tree workers_dev)"
+  printf 'forever\n' >"${tree}/stub/issuer_pending"
+  run_ci "${tree}" deploy.sh --ci test
+  assert_equal "issuer never live: the deploy fails" "1" "$(status_of "${tree}")"
+  assert_equal "issuer never live: discovery gets the bounded attempts" "12" "$(probes_of "${tree}" "${discovery}")"
+  assert_equal "issuer never live: no wait after the last attempt" "11" "$(waits_of "${tree}")"
+  assert_equal "issuer never live: the check stops there" "0" "$(probes_of "${tree}" "${admin}")"
+  assert_equal "issuer never live: the failure names the 404" "1" \
+    "$(grep -c "^error: discovery at https://idp.team-1.workers.dev answered 404 text/plain" "${tree}/err" || true)"
+  rm -rf "${tree}"
+
+  tree="$(make_tree workers_dev)"
+  printf 'forever\n' >"${tree}/stub/admin_pending"
+  run_ci "${tree}" deploy.sh --ci test
+  assert_equal "admin never live: the deploy fails" "1" "$(status_of "${tree}")"
+  assert_equal "admin never live: the gate gets the bounded attempts" "12" "$(probes_of "${tree}" "${admin}")"
+  assert_equal "admin never live: the failure names the 404" "1" \
+    "$(grep -c "^error: an unsigned request to idp-admin.team-1.workers.dev answered 404 text/plain" "${tree}/err" || true)"
   rm -rf "${tree}"
 }
 
@@ -448,6 +507,7 @@ test_workers_dev_ci_deploy
 test_plain_http_checks
 test_admin_gate_check
 test_workers_dev_setting_check
+test_new_routes_are_waited_for
 test_before_signing_key
 test_stops_before_any_change
 test_ci_refuses_an_older_commit

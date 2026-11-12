@@ -511,6 +511,18 @@ test_is_admin_forbidden() {
   rm -f "${body}"
 }
 
+# workers.dev answered a freshly created Worker's host with a plain-text 404 for a short while after the first
+# cf deploy (easyidp, 2026-11-12); the probes of a path the Worker always serves keep retrying it.
+test_is_route_not_live_yet() {
+  assert_succeeds "the edge's 404 for a new Worker" is_route_not_live_yet 404 "text/plain; charset=UTF-8"
+  assert_succeeds "plain text without a charset" is_route_not_live_yet 404 "text/plain"
+  assert_fails "a 404 in problem details" is_route_not_live_yet 404 "application/problem+json"
+  assert_fails "a 404 in JSON" is_route_not_live_yet 404 "application/json"
+  assert_fails "a 404 with no content type" is_route_not_live_yet 404 ""
+  assert_fails "another status in plain text" is_route_not_live_yet 500 "text/plain; charset=UTF-8"
+  assert_fails "the gate's forbidden" is_route_not_live_yet 403 "application/problem+json"
+}
+
 # A throwaway origin (bare) and a clone of its main, so require_reviewed_checkout runs against real git offline.
 make_reviewed_clone() {
   local root="${1}"
@@ -680,6 +692,7 @@ test_write_admin_signing_key_row
 test_verify_workers_dev_subdomain_from_env
 test_plain_http_verdict
 test_is_admin_forbidden
+test_is_route_not_live_yet
 test_require_reviewed_checkout
 test_require_main_head
 test_ci_deploy_matrix

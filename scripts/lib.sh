@@ -422,6 +422,18 @@ is_admin_forbidden() {
     "${body}" >/dev/null 2>&1
 }
 
+# Succeeds when a response looks like workers.dev's answer for a Worker whose route is not live yet: right after the
+# first cf deploy of a new Worker, its workers.dev host answered GET with a 404 in text/plain for under a minute, then
+# the Worker's own answer (easyidp, 2026-11-12). The status and content type alone are the discriminator, so it is
+# only meaningful for a path where the Worker itself never answers a plain-text 404: the IdP Worker's discovery (200
+# JSON, or the configuration 500 before the signing key) and the admin Worker's gate (403 problem details). The IdP
+# Worker's own 404 is text/plain too (apps/worker/src/app.ts), so the plain-http probes must not use this.
+is_route_not_live_yet() {
+  local status="${1}"
+  local content_type="${2}"
+  [[ "${status}" == "404" && "${content_type}" == text/plain* ]]
+}
+
 # Prints the deploy workflow's matrix for a list of deployment names separated by whitespace (the repository
 # variable IDP_DEPLOYMENT): a JSON array of {deployment, environment}, environment being github_deploy_environment.
 # Every file goes through deployment_config_path, so a missing, mixed, or stale file stops the workflow before any
