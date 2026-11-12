@@ -43,8 +43,9 @@ GITHUB_TOKEN="$(gh auth token)" mise run actions:check
 Cloudflare の操作には、ルートの `package.json` で固定した `cf` CLI を `pnpm exec cf …` で使います。グローバルに入れた `cf` に頼ってはいけません。
 `cf` のバージョンは範囲ではなく完全なバージョンで指定し、`package.json` と `pnpm-lock.yaml` をまとめてコミットします。
 公開から 14 日たっていない版は、`pnpm-workspace.yaml` の `minimumReleaseAge` で入れられません。この設定と `allowBuilds` を緩めてはいけません。
-`cf auth login` は運用者が実行します。エージェントは Cloudflare の認証情報を作成、読み出し、受け渡ししてはいけません。
-運用者がすでに認証した `cf` と `op` のセッションの下で、エージェントがレビュー済みの生成スクリプトを実行することは許されます。その場合も、エージェント自身が Cloudflare の認証情報や秘密を作成、読み出し、表示、受け渡ししてはいけません（値はスクリプトの中で `cf` と `op` の間だけを流れます）。
+`cf auth login` は運用者が実行します。エージェントは `cf auth login` を実行してはいけません。
+運用者がすでに認証した `cf` と `op` のセッションの下で、エージェントがレビュー済みの生成スクリプトを実行することは許されます。その場合も、秘密の値をコンテキストに読み込み、表示し、コマンドの引数や xtrace に出してはいけません（値はスクリプトの中のパイプで `cf`、Cloudflare API、`op` の間だけを流れます）。
+同じ条件の下で、エージェントはブートストラップの前提の認証情報（役割ごとの API トークン、state のバケットの R2 の認証情報、1Password の Vault のアイテム、CI 用の 1Password Environment）を準備してよいです。方法と、運用者だけが行うこと（R2 の有効化、`workers.dev` のサブドメインの作成、Environment への秘密の値の取り込み、署名鍵と管理者の鍵の生成）は [エージェントによる認証情報の準備](docs/deployment/agent-setup.md) に従います。
 
 ## Repository settings
 
