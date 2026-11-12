@@ -64,7 +64,9 @@ IdP は RP-Initiated Logout などの OIDC のログアウト仕様を v1 では
 
 - workers\_dev のモードでは、IdP（`idp.<sub>.workers.dev`）とこのサンプル（`rp-sample.<sub>.workers.dev`）は同じサイトになる（`workers.dev` は Public Suffix List にあり、`<sub>.workers.dev` が登録可能なドメインになる）。`SameSite` の Cookie の属性はサイトの間の送信しか止めないので、このサンプルは状態を変える `POST` で同一オリジンを確かめ、すべての Cookie を `__Host-` にしてホストに縛る。
 - このサンプルの Worker を編集できる人は、同じアカウントの IdP の Worker も編集できる。サンプルを置くことで、IdP を変更できる人が増えないようにする。
-- Cloudflare は、Worker から同じアカウントの workers.dev のホストへの `fetch` を拒否することがある（エラー 1042）。そうなると discovery、トークンエンドポイント、JWKS、`/userinfo` に届かず、サインインは 502 で失敗する。実際に起きるかは、最初のデプロイで確かめる（未確認）。今は回避の仕組みを持たない。
+- 互換性フラグ `global_fetch_strictly_public` を有効にする（`cloudflare.config.ts`）。最初のデプロイ（2026-11-13、easyidp）では、このフラグがないとサンプルから同じアカウントの IdP の workers.dev のホストへの `fetch` が失敗し、外からは discovery が正常に返るのに、`/login` は 502（「IdP の応答を確かめられませんでした。」）を返した。Cloudflare の文書は、Worker から Worker への `fetch` にはサービスバインディングかこのフラグが要るとしている。フラグを使うと、`fetch` は公開のインターネットを通り、第三者の RP と同じ経路で IdP に届く。
+- サービスバインディングは使わない。バインディングの要求は公開のインターネットを通らないので、IdP が接続元の IP（`CF-Connecting-IP`）で数えるレート制限と、`request.cf.tlsVersion` で確かめる TLS の版が、普通のクライアントと同じには働かない。また、参照用の RP が IdP と同じアカウントにあることを前提にしてしまう。
+- IdP への `fetch` が失敗すると、Workers Logs にエンドポイントの名前と HTTP のステータス（`fetch` 自体が失敗したときはエラーの種類）だけを記録する。応答の本文、トークン、秘密は記録しない。
 - IdP への `fetch` は、すべて `User-Agent: idp-rp-sample/1.0` を名乗る。workers.dev のブラウザの完全性チェックが、ライブラリの既定の User-Agent を Worker に届く前に拒否するため（[ブートストラップ](../../docs/deployment/bootstrap.md)）。
 - IdP のレート制限（接続元の IP ごと）は、このサンプルからの `fetch` も数える。サンプルは discovery と JWKS を isolate の中で 5 分キャッシュし、1 回のサインインあたりの IdP への要求を減らす。
 

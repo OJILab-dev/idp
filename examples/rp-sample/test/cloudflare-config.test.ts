@@ -26,6 +26,12 @@ describe("examples/rp-sample cloudflare.config.ts", () => {
     });
   });
 
+  it("reaches the IdP over the public Internet, as a third-party RP would, not through a service binding", () => {
+    const worker = workerConfig(DEPLOY);
+    expect(worker.compatibilityFlags).toContain("global_fetch_strictly_public");
+    expect(JSON.stringify(worker)).not.toMatch(/"service"/);
+  });
+
   it("keeps the callback's code and state out of Workers Logs", () => {
     expect(workerConfig(DEPLOY).observability?.redactQueryString).toBe(true);
   });
