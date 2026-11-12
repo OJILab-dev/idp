@@ -70,7 +70,7 @@ main() {
   local id
   local version
   id="$(d1_database_id "${name}")"
-  version="$(cf_cli d1 get "${id}" | jq -er '(.result // .) | .version')"
+  version="$(d1_database_version "${id}")"
   [[ "${version}" == "production" ]] || fail "D1 database ${name} is on the ${version} backend, not production"
   note "D1 database ${name} is on the production backend"
 }

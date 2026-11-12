@@ -270,6 +270,20 @@ read_account_id() {
   printf '%s\n' "${account_id}"
 }
 
+# jq definitions that read a cf result. The pinned cf prints a result bare (`d1 list` an array, `accounts get` an
+# object), while the API wraps it in {"result": ...}; both are read. `(.result // .)` is not enough: on an array,
+# `.result` is an error rather than null. Any other shape is an error too, so that a changed output stops a script
+# instead of being read as "no database" and leading to a create.
+readonly CF_JQ_RESULT='
+  def cf_array:
+    if type == "array" then .
+    elif type == "object" and (.result | type) == "array" then .result
+    else error("cf printed no array") end;
+  def cf_object:
+    (if type == "object" and has("result") then .result else . end)
+    | if type == "object" then . else error("cf printed no object") end;
+'
+
 # Runs the repository-pinned cf (never a global one, AGENT.md) against IDP_ACCOUNT_ID. The operator's
 # `cf auth login` session can span several accounts, so every call names the account explicitly.
 cf_cli() {
@@ -279,7 +293,7 @@ cf_cli() {
 # Stops unless cf acts on the deployment's account. Called before any change.
 verify_cf_account() {
   local actual
-  actual="$(cf_cli accounts get | jq -er '(.result // .) | .id')" ||
+  actual="$(cf_cli accounts get | jq -er "${CF_JQ_RESULT}"' cf_object | .id')" ||
     fail "cannot read the account through cf; the operator runs cf auth login first"
   [[ "${actual}" == "${IDP_ACCOUNT_ID}" ]] || fail "cf is not acting on the deployment's account"
 }
@@ -287,16 +301,23 @@ verify_cf_account() {
 # Prints how many D1 databases have exactly this name. `d1 list --name` is a search, so the match is exact here.
 d1_database_count() {
   local name="${1}"
-  cf_cli d1 list --name "${name}" | jq -er --arg name "${name}" '[(.result // .)[] | select(.name == $name)] | length'
+  cf_cli d1 list --name "${name}" |
+    jq -er --arg name "${name}" "${CF_JQ_RESULT}"' [cf_array[] | select(.name == $name)] | length'
 }
 
 # Prints the ID of the D1 database with this name. The ID is looked up every time and never written down
 # (docs/design/deployment.md, 直書きの禁止).
 d1_database_id() {
   local name="${1}"
-  cf_cli d1 list --name "${name}" | jq -er --arg name "${name}" '
-    [(.result // .)[] | select(.name == $name)]
+  cf_cli d1 list --name "${name}" | jq -er --arg name "${name}" "${CF_JQ_RESULT}"'
+    [cf_array[] | select(.name == $name)]
     | if length == 1 then .[0].uuid else error("expected exactly one D1 database named \($name)") end'
+}
+
+# Prints the backend of the D1 database with this ID ("Get D1 Database", version), e.g. "production".
+d1_database_version() {
+  local id="${1}"
+  cf_cli d1 get "${id}" | jq -er "${CF_JQ_RESULT}"' cf_object | .version'
 }
 
 # Like cf_cli, but runs cf in a Worker's project directory (apps/<name>), where cf build and cf deploy look for

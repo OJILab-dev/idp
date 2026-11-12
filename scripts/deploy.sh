@@ -138,7 +138,7 @@ check_workers_dev_setting() {
   local enabled="false"
   [[ "${mode}" == "workers_dev" ]] && enabled="true"
   cf_cli workers get "${worker}" |
-    jq -e --argjson enabled "${enabled}" '(.result // .) | .subdomain.enabled == $enabled and .subdomain.previews_enabled == false' >/dev/null ||
+    jq -e --argjson enabled "${enabled}" "${CF_JQ_RESULT}"' cf_object | .subdomain.enabled == $enabled and .subdomain.previews_enabled == false' >/dev/null ||
     fail "${worker} must have workers.dev $([[ "${enabled}" == "true" ]] && printf on || printf off) and preview URLs off"
   note "${worker}: workers.dev ${enabled}, preview URLs off"
 }

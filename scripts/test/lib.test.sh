@@ -605,6 +605,58 @@ ${second}" | jq length)"
   rm -f "${first_config}" "${second_config}"
 }
 
+# Runs the rest of the arguments in a subshell where cf_cli prints ${1} whatever it is asked, so the lookups of
+# lib.sh see one cf output without pnpm or Cloudflare.
+with_cf_output() {
+  local output="${1}"
+  shift
+  (
+    # Called by the lib.sh function in "$@", which shellcheck cannot follow.
+    # shellcheck disable=SC2329
+    cf_cli() {
+      printf '%s\n' "${output}"
+    }
+    IDP_ACCOUNT_ID="0123456789abcdef0123456789abcdef"
+    "$@"
+  )
+}
+
+# The pinned cf prints a result bare (`d1 list` an array, `accounts get` and `d1 get` an object); the API wraps it in
+# {"result": ...}. Both shapes are read, and any other shape stops the script instead of matching nothing.
+test_cf_output_shapes() {
+  local bare_list='[{"name":"idp","uuid":"id-1"},{"name":"idp-2","uuid":"id-2"}]'
+  local wrapped_list='{"success":true,"result":[{"name":"idp","uuid":"id-1"},{"name":"idp-2","uuid":"id-2"}]}'
+  assert_equal "d1 count reads a bare array" "1" "$(with_cf_output "${bare_list}" d1_database_count idp)"
+  assert_equal "d1 count reads a wrapped array" "1" "$(with_cf_output "${wrapped_list}" d1_database_count idp)"
+  assert_equal "d1 count reads an empty bare array" "0" "$(with_cf_output '[]' d1_database_count idp)"
+  assert_equal "d1 id reads a bare array" "id-1" "$(with_cf_output "${bare_list}" d1_database_id idp)"
+  assert_equal "d1 id reads a wrapped array" "id-1" "$(with_cf_output "${wrapped_list}" d1_database_id idp)"
+  assert_fails "d1 id rejects a missing database" with_cf_output '[]' d1_database_id idp
+  local output
+  for output in '{}' '{"result":null}' '{"result":{}}' '"idp"' 'null' '1' 'not json'; do
+    assert_fails "d1 count rejects ${output}" with_cf_output "${output}" d1_database_count idp
+    assert_fails "d1 id rejects ${output}" with_cf_output "${output}" d1_database_id idp
+  done
+
+  assert_equal "d1 backend reads a bare object" "production" \
+    "$(with_cf_output '{"uuid":"id-1","version":"production"}' d1_database_version id-1)"
+  assert_equal "d1 backend reads a wrapped object" "production" \
+    "$(with_cf_output '{"result":{"uuid":"id-1","version":"production"}}' d1_database_version id-1)"
+  for output in '[{"version":"production"}]' '{"result":null}' '{"result":[]}' '{}' 'null' 'not json'; do
+    assert_fails "d1 backend rejects ${output}" with_cf_output "${output}" d1_database_version id-1
+  done
+
+  assert_equal "account check reads a bare object" "ok" \
+    "$(with_cf_output '{"id":"0123456789abcdef0123456789abcdef"}' verify_cf_account && printf ok)"
+  assert_equal "account check reads a wrapped object" "ok" \
+    "$(with_cf_output '{"result":{"id":"0123456789abcdef0123456789abcdef"}}' verify_cf_account && printf ok)"
+  assert_fails "account check rejects another account" with_cf_output '{"id":"ffffffffffffffffffffffffffffffff"}' verify_cf_account
+  for output in '[{"id":"0123456789abcdef0123456789abcdef"}]' '{"result":null}' 'null'; do
+    assert_fails "account check rejects ${output}" with_cf_output "${output}" verify_cf_account
+  done
+}
+
+test_cf_output_shapes
 test_kid_matches_rfc8037
 test_private_jwk_from_pkcs8
 test_public_jwk_has_no_private_member
