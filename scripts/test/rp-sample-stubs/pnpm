@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# A fake pnpm for the sample relying party's script tests: only `pnpm --dir <dir> exec cf <args>`, the way
+# scripts/lib.sh runs the pinned cf. It never reaches Cloudflare. Each cf call appends "cf <dir name> <args>" to
+# ${STUB_DIR}/calls. A build writes the RP_SAMPLE_* environment to ${STUB_DIR}/build_env and fails when the project
+# still holds an earlier build's .cloudflare output. `workers secrets update <name>` writes the request body it reads
+# on stdin to ${STUB_DIR}/secret_<name>.json (the tests use fake values only). Answers come from files in
+# ${STUB_DIR}: workers_<name>.json for `workers get <name>`, account_id for `accounts get`.
+set -euxo pipefail
+
+[[ "${1-}" == "--dir" && "${3-}" == "exec" && "${4-}" == "cf" ]] || exit 1
+project_dir="${2}"
+dir="$(basename "${project_dir}")"
+shift 4
+printf 'cf %s %s\n' "${dir}" "$*" >>"${STUB_DIR}/calls"
+[[ "${CLOUDFLARE_ACCOUNT_ID-}" =~ ^[0-9a-f]{32}$ ]] || exit 3
+
+case "${1}" in
+  build)
+    [[ ! -e "${project_dir}/.cloudflare" ]] || exit 7
+    env | grep '^RP_SAMPLE_' | sort >"${STUB_DIR}/build_env"
+    ;;
+  deploy) ;;
+  workers)
+    case "${2-}" in
+      get) cat "${STUB_DIR}/workers_${3}.json" ;;
+      secrets)
+        [[ "${3-}" == "update" && "${5-}" == "--worker" && "${7-}" == "--type" && "${9-}" == "--body" && "${10-}" == "@/dev/stdin" ]] || exit 1
+        cat >"${STUB_DIR}/secret_${4}.json"
+        printf '{"name":"%s","type":"secret_text"}\n' "${4}"
+        ;;
+      *) exit 1 ;;
+    esac
+    ;;
+  accounts)
+    jq -n --arg id "$(cat "${STUB_DIR}/account_id")" '{id: $id}'
+    ;;
+  *)
+    exit 1
+    ;;
+esac

@@ -1,6 +1,8 @@
 packages:
   - packages/*
   - apps/*
+  # Sample relying parties: deployed separately from the IdP, never imported by it (eslint.config.js).
+  - examples/*
 
 # Install only versions published at least 14 days (20160 minutes) ago, transitive ones included.
 minimumReleaseAge: 20160
