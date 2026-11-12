@@ -36,7 +36,28 @@ describe("checkAuthorizationResponse", () => {
     expect(check(query)).toBe(expected);
   });
 
-  it("refuses repeated parameters, which could be read differently by different parsers", () => {
+  it("ignores a repeated parameter it does not use (RFC 6749 §4.1.2: unrecognized parameters are ignored)", () => {
+    const params = new URLSearchParams([
+      ["code", "c"],
+      ["state", STATE],
+      ["iss", ISSUER],
+      ["session_state", "a"],
+      ["session_state", "b"],
+    ]);
+    expect(checkAuthorizationResponse(params, STATE, ISSUER).code).toBe("c");
+  });
+
+  it.each(["state", "code", "error"])("refuses a repeated %s, which could be read differently by different parsers", (name) => {
+    const params = new URLSearchParams([
+      ["code", "c"],
+      ["state", STATE],
+      ["iss", ISSUER],
+      [name, name === "state" ? STATE : "x"],
+    ]);
+    expect(() => checkAuthorizationResponse(params, STATE, ISSUER)).toThrow(CallbackError);
+  });
+
+  it("refuses a repeated iss", () => {
     const params = new URLSearchParams([
       ["code", "c"],
       ["state", STATE],

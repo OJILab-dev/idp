@@ -96,6 +96,17 @@ describe("GET /login", () => {
     expect(params.get("state")).not.toBe(params.get("nonce"));
   });
 
+  it("retains a query already in the authorization endpoint (RFC 6749 §3.1)", async () => {
+    const r = await rig({ discovery: { authorization_endpoint: `${ISSUER}/authorize?tenant=a&locale=ja` } });
+    const { authorization, callback, flow } = await startLogin(r);
+    expect(authorization.searchParams.get("tenant")).toBe("a");
+    expect(authorization.searchParams.get("locale")).toBe("ja");
+    expect(authorization.searchParams.get("response_type")).toBe("code");
+    expect(authorization.searchParams.get("code_challenge_method")).toBe("S256");
+    const response = await call(r, `${callback.pathname}${callback.search}`, { cookies: { [FLOW_COOKIE]: flow } });
+    expect(response.status).toBe(303);
+  });
+
   it("keeps state, nonce, and the verifier in a short-lived, sealed __Host- cookie", async () => {
     const r = await rig();
     const login = await call(r, "/login");
@@ -327,7 +338,9 @@ describe("the session", () => {
   it("is ignored when tampered with", async () => {
     const r = await rig();
     const session = await signIn(r);
-    const tampered = `${session.slice(0, -2)}${session.endsWith("A") ? "B" : "A"}${session.slice(-1)}`;
+    // The second-to-last character always carries 6 bits of the tag; replace it with a different character.
+    const tampered = `${session.slice(0, -2)}${session.at(-2) === "A" ? "B" : "A"}${session.slice(-1)}`;
+    expect(tampered).not.toBe(session);
     const html = await (await call(r, "/", { cookies: { [SESSION_COOKIE]: tampered } })).text();
     expect(html).toContain('href="/login"');
   });

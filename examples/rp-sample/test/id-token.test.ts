@@ -91,10 +91,14 @@ describe("verifyIdToken", () => {
     ["RS256 against an Ed25519 key", { alg: "RS256" }, "header"],
     ["an embedded jwk", { jwk: { kty: "OKP" } }, "header"],
     ["a jku", { jku: "https://evil.example/jwks" }, "header"],
+    ["an x5u", { x5u: "https://evil.example/cert.pem" }, "header"],
+    ["an x5c", { x5c: ["MIIB"] }, "header"],
+    // RFC 7515 §4.1.11: a crit this RP does not understand (it understands none) makes the JWS invalid.
     ["crit", { crit: ["exp"] }, "header"],
     ["another typ", { typ: "at+jwt" }, "header"],
+    ["a non-string typ", { typ: 1 }, "header"],
     ["an unknown kid", { kid: "rotated-away" }, "unknown_kid"],
-    ["no kid", { kid: undefined }, "header"],
+    ["a non-string kid", { kid: 1 }, "header"],
   ])("refuses a header with %s", async (_name, header, expected) => {
     // An undefined member is dropped by JSON.stringify, so { kid: undefined } signs a header without kid.
     const signed = await idp.sign(idp.idTokenClaims(NONCE), header);
@@ -103,6 +107,32 @@ describe("verifyIdToken", () => {
 
   it.each(["", "a.b", "a.b.c.d", "!!!.!!!.!!!", "e30.e30.AAAA"])("refuses the malformed token %j", async (value) => {
     expect(await reason(verifyIdToken(value, EXPECTED, keys))).not.toBe("accepted");
+  });
+
+  it.each<[string, JsonObject]>([
+    // RFC 7515 §4: header parameters that are not understood MUST be ignored.
+    ["an x5t", { x5t: "dGh1bWJwcmludA" }],
+    ["a private member", { "https://example.com/hint": "x" }],
+    // RFC 7515 §4.1.9: typ is case-insensitive, and "application/" may be omitted.
+    ["typ jwt in lower case", { typ: "jwt" }],
+    ["typ application/JWT", { typ: "application/JWT" }],
+    ["no typ", { typ: undefined }],
+  ])("accepts a header with %s", async (_name, header) => {
+    await expect(verifyIdToken(await idp.sign(idp.idTokenClaims(NONCE), header), EXPECTED, keys)).resolves.toMatchObject({ sub: SUB });
+  });
+
+  // OIDC Core §10.1: kid is required only when the JWKS holds more than one usable key.
+  it("accepts a token without kid when the JWKS has exactly one usable Ed25519 signing key", async () => {
+    // An undefined member is dropped by JSON.stringify, so { kid: undefined } signs a header without kid.
+    const signed = await idp.sign(idp.idTokenClaims(NONCE), { kid: undefined });
+    const withUnusable = [...keys, { kty: "RSA", kid: "rsa", n: "AQAB", e: "AQAB" }];
+    await expect(verifyIdToken(signed, EXPECTED, withUnusable)).resolves.toMatchObject({ sub: SUB });
+  });
+
+  it("refuses a token without kid when the JWKS has more than one usable key", async () => {
+    const signed = await idp.sign(idp.idTokenClaims(NONCE), { kid: undefined });
+    const twoKeys = [...keys, { ...(keys[0] as JsonObject), kid: "second" }];
+    expect(await reason(verifyIdToken(signed, EXPECTED, twoKeys))).toBe("unknown_kid");
   });
 
   it("refuses a JWKS entry that is not an Ed25519 signing key, even under the right kid", async () => {

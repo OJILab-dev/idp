@@ -15,7 +15,7 @@
 | `GET /callback` | `state` を確かめ、`iss` パラメータが issuer と一致することを確かめる（RFC 9207 §2.4。IdP は `authorization_response_iss_parameter_supported` を広告するので、`iss` のない応答も拒否する）。confidential client として `client_secret_basic` でコードを交換し、ID トークンを検証してから `/userinfo` を呼び、セッションを作る |
 | `POST /logout` | この RP のセッションだけを消す。`Sec-Fetch-Site` が `same-origin` か、それがなければ `Origin` がこの RP のオリジンと一致するリクエストだけを受け付ける |
 
-ID トークンの検証は OIDC Core 1.0 §3.1.3.7 に従います（要件ごとの対応は「標準への準拠」の節）。ヘッダーは `typ`、`alg`、`kid` だけを受け付け、`alg` は `Ed25519` だけにし（RFC 9864。`EdDSA` は受け付けない）、JWKS から `kid` で `kty: OKP`、`crv: Ed25519` の署名用の鍵を 1 つ選んで署名を確かめます。そのうえで `iss`（完全一致）、`aud`（client\_id だけ）、`exp`、`iat`（どちらも 60 秒の時刻のずれを許す）、`nonce` を確かめます。`/userinfo` の `sub` が ID トークンの `sub` と違えば使いません（OIDC Core §5.3.2）。
+ID トークンの検証は OIDC Core 1.0 §3.1.3.7 に従います（要件ごとの対応は「標準への準拠」の節）。ヘッダーの知らないメンバーは無視し（RFC 7515 §4）、`crit` と鍵を運ぶメンバー（`jwk`、`jku`、`x5u`、`x5c`）は拒否します。`alg` は `Ed25519` だけにし（RFC 9864。`EdDSA` は受け付けない）、JWKS から `kty: OKP`、`crv: Ed25519` の署名用の鍵を 1 つ選んで（`kid` があればその鍵、なければ使える鍵がちょうど 1 つのときだけ）署名を確かめます。そのうえで `iss`（完全一致）、`aud`（client\_id だけ）、`exp`、`iat`（どちらも 60 秒の時刻のずれを許す）、`nonce` を確かめます。`/userinfo` の `sub` が ID トークンの `sub` と違えば使いません（OIDC Core §5.3.2）。
 
 セッションは `__Host-` Cookie（HttpOnly、Secure、SameSite=Lax、Path=/）に、Worker Secret の鍵で AES-256-GCM により暗号化して置きます。Cookie の名前を追加データに含めるので、ログイン途中の Cookie をセッションとして使い回すことはできません。期限は 1 時間で、延長しません。保存するのは画面に出す ID トークンのクレームと `/userinfo` の応答だけで、トークンそのものは保存しません。
 
@@ -76,7 +76,7 @@ IdP は RP-Initiated Logout などの OIDC のログアウト仕様を v1 では
 
 ## 標準への準拠
 
-実際の RP の参考にするので、RP の側に課される MUST と SHALL はすべて満たし、安く満たせる SHOULD も満たします。下の表は要件ごとに、実装の場所と、それを確かめるテスト（ファイルとテスト名の一部）を示します。ファイルは `src/` と `test/` からの相対パスです。RFC 6265bis の節番号は draft-ietf-httpbis-rfc6265bis のものです。
+実際の RP の参考にするので、RP の側に課される MUST と SHALL はすべて満たし、安く満たせる SHOULD も満たします。下の表は要件ごとに、実装の場所と、それを確かめるテスト（ファイルとテスト名の一部）を示します。ファイルは `src/` と `test/` からの相対パスです。RFC 6265bis は draft-ietf-httpbis-rfc6265bis-22 の節番号で、OIDC Core 1.0 は「OpenID Connect Core 1.0 incorporating errata set 2」の文言です。
 
 ### 署名アルゴリズムの名前
 
@@ -96,10 +96,15 @@ IdP は discovery の `id_token_signing_alg_values_supported` に `Ed25519` を�
 | OIDC Core 1.0 | §3.1.3.7 の 1 | 暗号化した ID トークンは、登録時に暗号化を求めた場合だけ復号する | 暗号化を登録しないので、5 つの部分からなる JWE は形式の誤りとして拒否する（`id-token.ts`） | `id-token.test.ts`「refuses an encrypted ID token」 |
 | OIDC Core 1.0 | §3.1.3.7 の 2 | `iss` は discovery の issuer と完全に一致する（MUST） | `id-token.ts` | `id-token.test.ts`「another issuer」「an issuer with a trailing slash」 |
 | OIDC Core 1.0 | §3.1.3.7 の 3 | `aud` が client\_id を含み、信頼しない audience を含まないことを確かめる（MUST） | `id-token.ts`（`audienceMatches`。client\_id だけの文字列か、それだけの配列） | `id-token.test.ts`「another audience」「an audience array with another client」「accepts an aud array that holds the client_id alone」 |
-| OIDC Core 1.0 | §3.1.3.7 の 4 | `aud` が複数なら `azp` を確かめるべき（SHOULD） | 複数の `aud` はそれ自体を拒否する（3 より厳しい）。信頼する audience はこの client だけなので | `id-token.test.ts`「an audience array with another client」 |
-| OIDC Core 1.0 | §3.1.3.7 の 5 | `azp` があれば client\_id と一致することを確かめるべき（SHOULD） | `id-token.ts`（`audienceMatches`） | `id-token.test.ts`「an azp naming another client」「accepts an azp that names this client」 |
-| OIDC Core 1.0 | §3.1.3.7 の 6 | 署名を JWS に従い、ヘッダーの `alg` で検証する（TLS で代えてもよい（MAY）が、このサンプルは常に検証する） | `id-token.ts`（`kid` で JWKS の鍵を 1 つ選び、Ed25519 で検証） | `id-token.test.ts`「refuses a bad signature」「refuses a token whose payload was changed after signing」 |
-| OIDC Core 1.0 | §3.1.3.7 の 7 | `alg` は登録した `id_token_signed_response_alg` であるべき（SHOULD） | `id-token.ts`（`Ed25519` だけ。ヘッダーは `typ`、`alg`、`kid` だけを受け付ける） | `id-token.test.ts`「the deprecated EdDSA identifier」「alg none」「RS256 against an Ed25519 key」「an embedded jwk」「a jku」「crit」 |
+| OIDC Core 1.0（errata set 2） | §3.1.3.7 の 4 | ID トークンが複数の audience を持つ、または `azp` を含むなら、その使い方を定める拡張に従って `azp` を検証すべき（SHOULD） | 拡張を使わないので、複数の `aud` はそれ自体を拒否する（3 のとおり、信頼する audience はこの client だけ） | `id-token.test.ts`「an audience array with another client」 |
+| OIDC Core 1.0（errata set 2） | §3.1.3.7 の 5 | `azp` があれば、client\_id と一致することを確かめてよい（MAY） | 確かめる。`id-token.ts`（`audienceMatches`） | `id-token.test.ts`「an azp naming another client」「accepts an azp that names this client」 |
+| OIDC Core 1.0 | §3.1.3.7 の 6 | 署名を JWS に従い、ヘッダーの `alg` で検証する（TLS で代えてもよい（MAY）が、このサンプルは常に検証する） | `id-token.ts`（JWKS の鍵を 1 つ選び、Ed25519 で検証） | `id-token.test.ts`「refuses a bad signature」「refuses a token whose payload was changed after signing」 |
+| OIDC Core 1.0 | §3.1.3.7 の 7 | `alg` は登録した `id_token_signed_response_alg` であるべき（SHOULD） | `id-token.ts`（`Ed25519` だけ） | `id-token.test.ts`「the deprecated EdDSA identifier」「alg none」「RS256 against an Ed25519 key」 |
+| OIDC Core 1.0 | §10.1 | JWKS に使える鍵が複数あるときは `kid` が必要。1 つだけなら `kid` なしでよい | `id-token.ts`（`kid` があればその鍵、なければ使える Ed25519 の署名用の鍵がちょうど 1 つのときだけ受け付ける） | `id-token.test.ts`「accepts a token without kid when the JWKS has exactly one usable Ed25519 signing key」「refuses a token without kid when the JWKS has more than one usable key」「an unknown kid」 |
+| RFC 7515 | §4 | 理解しないヘッダーのパラメータは無視しなければならない（MUST） | `id-token.ts`（知らないメンバーは無視する） | `id-token.test.ts`「accepts a header with an x5t」「a private member」 |
+| RFC 7515 | §4.1.11 | 理解しない拡張を `crit` に挙げた JWS は無効（MUST）。このサンプルは拡張を理解しないので `crit` は常に拒否する | `id-token.ts`（`REFUSED_HEADER_MEMBERS`） | `id-token.test.ts`「refuses a header with crit」 |
+| RFC 7515、RFC 8725 | RFC 7515 §4.1.3〜§4.1.6、RFC 8725 §3.1 | 鍵はトークンからでなく IdP の JWKS からだけ取る（鍵の注入への備え）。`jwk`、`jku`、`x5u`、`x5c` を持つヘッダーは拒否する | `id-token.ts`（`REFUSED_HEADER_MEMBERS`） | `id-token.test.ts`「an embedded jwk」「a jku」「an x5u」「an x5c」 |
+| RFC 7515、RFC 7519 | RFC 7515 §4.1.9、RFC 7519 §5.1 | `typ` は大文字と小文字を区別せず比べ、`application/` は省略できる。`JWT` か `application/jwt` を受け付ける（省略も可） | `id-token.ts` | `id-token.test.ts`「typ jwt in lower case」「typ application/JWT」「no typ」「another typ」 |
 | OIDC Core 1.0 | §3.1.3.7 の 8 | MAC の `alg` なら client\_secret を鍵にする | 該当なし。HS256 などは 7 で拒否する | `id-token.test.ts`「RS256 against an Ed25519 key」（`Ed25519` 以外の拒否） |
 | OIDC Core 1.0 | §3.1.3.7 の 9 | 現在時刻は `exp` より前でなければならない（MUST）。小さなずれは許してよい | `id-token.ts`（60 秒） | `id-token.test.ts`「an expired token」「allows a small clock skew on exp and iat」 |
 | OIDC Core 1.0 | §3.1.3.7 の 10 | `iat` で、今から離れすぎたトークンを拒否してよい（MAY） | `id-token.ts`（未来は 60 秒まで、過去は 10 分まで） | `id-token.test.ts`「a token issued in the future」「a token issued long ago」 |
@@ -113,7 +118,9 @@ IdP は discovery の `id_token_signing_alg_values_supported` に `Ed25519` を�
 | OIDC Discovery 1.0 | §4.3 | 文書の `issuer` は取得に使った issuer と完全に一致しなければならず、違えば使ってはならない（MUST） | `idp.ts`（`discover`） | `app.test.ts`「refuses an IdP whose discovery names another issuer」 |
 | OIDC Discovery 1.0 | §3 | 必要な機能（`code`、S256、`client_secret_basic`、`Ed25519`、`iss` パラメータ）がなければ使わない | `idp.ts`（`discover`） | `app.test.ts`「refuses an IdP that does not support S256」 |
 | RFC 6749 | §2.3.1 | `client_secret_basic` は client\_id と secret をそれぞれ `application/x-www-form-urlencoded` で符号化してから Basic にする | `idp.ts`（`clientSecretBasic`。WHATWG の直列化） | `idp.test.ts`「form-urlencodes both halves before Base64」「encodes non-ASCII as UTF-8 percent-escapes」 |
-| RFC 6749 | §3.1 | パラメータは 2 回以上含めてはならない（MUST NOT） | `callback.ts`（繰り返しを拒否） | `callback.test.ts`「refuses repeated parameters」 |
+| RFC 6749 | §3.1 | 認可エンドポイントの URI にある query は、パラメータを足すときに保たなければならない（MUST） | `app.ts`（`/login` は `searchParams.set` で 1 つずつ足す） | `app.test.ts`「retains a query already in the authorization endpoint」 |
+| RFC 6749 | §3.1 | パラメータを 2 回以上含めてはならない（MUST NOT）。これは送る側の義務で、受け取る側の RP は、使うパラメータ（`state`、`iss`、`code`、`error`）の繰り返しだけを解釈の食い違いへの備えとして拒否する | `callback.ts`（`USED_PARAMETERS`） | `callback.test.ts`「refuses a repeated state」「refuses a repeated iss」 |
+| RFC 6749 | §4.1.2 | 認識しない応答のパラメータは無視しなければならない（MUST）。繰り返されていても無視する | `callback.ts` | `callback.test.ts`「ignores a repeated parameter it does not use」 |
 | RFC 6749 | §3.1.2.5 | リダイレクトの受け口は第三者のスクリプトを含めず、資格情報を URI から取り出して別の URI へ移すべき（SHOULD） | `app.ts`（`/callback` は 303 で `/` へ）、`index.ts`（CSP、`Referrer-Policy: no-referrer`） | `app.test.ts`「exchanges the code as a confidential client」「sets the security headers on every page」 |
 | RFC 6749 | §4.1.2 | 認可応答の `state` は送った値と完全に一致する。`code` は必須 | `callback.ts` | `callback.test.ts`「another state」「no state」「no code」「an empty code」 |
 | RFC 6749 | §4.1.2.1 | 認可のエラー応答の `error` を扱う | `callback.ts` | `callback.test.ts`「an error from the IdP」 |
@@ -126,14 +133,14 @@ IdP は discovery の `id_token_signing_alg_values_supported` に `Ed25519` を�
 | RFC 7636 | §4.2、§4.3 | `code_challenge` は S256 で、`code_challenge_method=S256` を送る | `pkce.ts`、`app.ts` | `pkce.test.ts`「RFC 7636 Appendix B test vector」、`app.test.ts`「redirects to the discovered authorization endpoint」 |
 | RFC 7636 | §4.5 | トークンリクエストに `code_verifier` を入れる | `idp.ts`（`redeem`） | `app.test.ts`「exchanges the code as a confidential client」（偽の IdP が S256 で照合する） |
 | RFC 9207 | §2.4 | `iss` を issuer と単純な文字列比較で確かめ、違えば拒否する（MUST）。メタデータが対応を示すなら `iss` のない応答も拒否する（MUST） | `callback.ts` | `callback.test.ts`「no iss」「another iss (a mix-up)」「an iss with a trailing slash」、`app.test.ts`「no iss (RFC 9207)」 |
-| RFC 9700 | §2.1.1 | 認可コードの注入を防ぐ。PKCE を使い、S256 を使う | `app.ts`、`idp.ts` | `app.test.ts`「redirects to the discovered authorization endpoint」 |
-| RFC 9700 | §2.1、§4.4 | 複数の AS を使う client は mix-up を防ぐ（RFC 9207 の `iss`） | `callback.ts`（AS は 1 つだが常に確かめる） | `callback.test.ts`「another iss (a mix-up)」 |
+| RFC 9700 | §2.1.1、§4.5.3.1 | 認可コードの注入を防がなければならない（MUST）。その仕組みとして、confidential client にも PKCE を推奨し（RECOMMENDED）、`code_challenge_method` は S256 を使うべき（SHOULD）。このサンプルは PKCE S256 と `nonce` の両方を使う | `app.ts`、`idp.ts` | `app.test.ts`「redirects to the discovered authorization endpoint」「an ID token with another nonce」 |
+| RFC 9700 | §2.1、§4.4.2.1 | 複数の AS を使う client は mix-up を防ぐ。issuer を使う防御は RFC 9207 の `iss` | `callback.ts`（AS は 1 つだが常に確かめる） | `callback.test.ts`「another iss (a mix-up)」 |
 | RFC 9700 | §4.2.4 | 認可応答の URL を Referer で漏らさない | `index.ts`（`Referrer-Policy: no-referrer`）、`app.ts`（`/callback` はすぐに 303） | `app.test.ts`「sets the security headers on every page」 |
-| RFC 9700 | §4.7 | CSRF を PKCE、`state`、`nonce` のどれかで防ぐ（3 つとも使う）。このサンプルは加えて、`state` を 1 回だけ使う | `app.ts`（`/callback` はフローの Cookie を最初に消す） | `app.test.ts`「exchanges the code as a confidential client」（フローの Cookie の `Max-Age=0`） |
-| RFC 9700 | §4.11 | client は開いたリダイレクタになってはならない | `app.ts`（リダイレクト先は固定か discovery の endpoint だけ） | `app.test.ts`「answers 404 on an unknown path」 |
-| RFC 6265bis | §4.1.3.2 | `__Host-` の Cookie は Secure、`Path=/`、Domain なし | `app.ts`（`COOKIE_OPTIONS`） | `app.test.ts`「keeps state, nonce, and the verifier in a short-lived, sealed __Host- cookie」「exchanges the code as a confidential client」 |
-| RFC 6265bis | §4.1.2.7、§8.8 | `SameSite=Lax`。IdP からのトップレベルの遷移で `/callback` にフローの Cookie が届き、サイトをまたぐ POST には届かない | `app.ts`（`COOKIE_OPTIONS`） | 同上 |
-| RFC 6265bis | §5.6 | 名前と値が 4096 オクテットを超える Cookie はブラウザが捨てる | `app.ts`（`MAX_COOKIE_OCTETS`） | `app.test.ts`「refuses a sign-in whose session would exceed 4096 octets」 |
+| RFC 9700 | §2.1、§4.7.1 | client は CSRF を防がなければならない（MUST）。PKCE、OIDC の `nonce`、1 回だけ使う `state` のどれでもよい（3 つとも使う） | `app.ts`（`/callback` はフローの Cookie を最初に消す） | `app.test.ts`「exchanges the code as a confidential client」（フローの Cookie の `Max-Age=0`）「another state」 |
+| RFC 9700 | §2.1、§4.11.1 | client は開いたリダイレクタになってはならない（MUST NOT） | `app.ts`（リダイレクト先は固定か discovery の endpoint だけ） | `app.test.ts`「answers 404 on an unknown path」 |
+| RFC 6265bis（-22） | §4.1.3.2 | `__Host-` の Cookie は Secure、`Path=/`、Domain なし | `app.ts`（`COOKIE_OPTIONS`） | `app.test.ts`「keeps state, nonce, and the verifier in a short-lived, sealed __Host- cookie」「exchanges the code as a confidential client」 |
+| RFC 6265bis（-22） | §4.1.2.7、§5.6.7.1、§8.8.2 | `SameSite=Lax` の Cookie は、サイトをまたぐトップレベルの安全な遷移（IdP から `/callback` への GET）には付き、サイトをまたぐ POST には付かない | `app.ts`（`COOKIE_OPTIONS`） | 同上 |
+| RFC 6265bis（-22） | §5.6 | 名前と値が 4096 オクテットを超える Cookie はブラウザが捨てる | `app.ts`（`MAX_COOKIE_OCTETS`） | `app.test.ts`「refuses a sign-in whose session would exceed 4096 octets」 |
 | RFC 9864、RFC 8037 | RFC 9864 §2.2、§4.1.2、§5、RFC 8037 §2 | `Ed25519` を受け付け、Deprecated の `EdDSA` は受け付けない。鍵は `kty: OKP`、`crv: Ed25519` | `id-token.ts`（`isEd25519SigningKey`） | `id-token.test.ts`「the deprecated EdDSA identifier」「refuses a JWKS entry that is not an Ed25519 signing key」 |
 
 ### 意図して実装しないもの

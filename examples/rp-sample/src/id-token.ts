@@ -1,6 +1,7 @@
 // ID token validation, OIDC Core 1.0 §3.1.3.7, for this IdP: Ed25519 only (RFC 9864 §2.2; the IdP never issues
-// the deprecated "EdDSA" nor RS256 to this client, docs/design/tokens.md), the key picked by kid from the JWKS and
-// bound to the algorithm before the signature is checked (RFC 8725 §3.1), then iss, aud, exp, iat, and nonce.
+// the deprecated "EdDSA" nor RS256 to this client, docs/design/tokens.md), the key picked from the JWKS only (by kid,
+// or the one usable key when there is no kid) and bound to the algorithm before the signature is checked
+// (RFC 8725 §3.1), then iss, aud, exp, iat, and nonce.
 import { base64urlDecode, parseJsonObject } from "./encoding.js";
 
 /** Allowed difference between this Worker's clock and the IdP's, in seconds. */
@@ -46,20 +47,23 @@ export class IdTokenError extends Error {
   }
 }
 
-// The IdP's header is exactly typ, alg, and kid; anything else (jwk, jku, x5u, crit, ...) could let the token pick
-// its own key or processing, so it is refused (tokens.md, 署名アルゴリズム).
-const HEADER_MEMBERS = new Set(["typ", "alg", "kid"]);
+// RFC 7515 §4: header parameters that are not understood MUST be ignored, so unknown members are. Two kinds are
+// refused instead: crit, because this RP understands no extension and §4.1.11 requires rejecting a crit it does not
+// understand; and the members that carry or point to a key (jwk, jku, x5u, x5c), because the key must come from the
+// IdP's JWKS only, never from the token (RFC 8725 §3.1, key injection hardening).
+const REFUSED_HEADER_MEMBERS = ["crit", "jwk", "jku", "x5u", "x5c"] as const;
 
 function decodeSegment(segment: string): Record<string, unknown> | undefined {
   const bytes = base64urlDecode(segment);
   return bytes === undefined ? undefined : parseJsonObject(new TextDecoder().decode(bytes));
 }
 
-function isEd25519SigningKey(key: unknown, kid: string): key is { readonly x: string } {
+// A usable key: an Ed25519 public signing key; with a kid, that kid.
+function isEd25519SigningKey(key: unknown, kid: string | undefined): key is { readonly x: string } {
   if (typeof key !== "object" || key === null) return false;
   const jwk = key as Record<string, unknown>;
   return (
-    jwk.kid === kid &&
+    (kid === undefined || jwk.kid === kid) &&
     jwk.kty === "OKP" &&
     jwk.crv === "Ed25519" &&
     typeof jwk.x === "string" &&
@@ -70,7 +74,8 @@ function isEd25519SigningKey(key: unknown, kid: string): key is { readonly x: st
 }
 
 function audienceMatches(aud: unknown, azp: unknown, clientId: string): aud is string | readonly string[] {
-  // §3.1.3.7 3 and 5: aud contains the client_id and no untrusted audience; with an azp, it must be this client.
+  // §3.1.3.7 3: aud contains the client_id and no untrusted audience (one audience only: this client trusts no
+  // other). §3.1.3.7 5 (errata set 2: MAY): an azp, when present, must be this client.
   if (azp !== undefined && azp !== clientId) return false;
   if (typeof aud === "string") return aud === clientId;
   return Array.isArray(aud) && aud.length === 1 && aud[0] === clientId;
@@ -83,8 +88,9 @@ function audienceMatches(aud: unknown, azp: unknown, clientId: string): aud is s
  * @param expected The issuer, client_id, nonce, and time to check against.
  * @param keys The `keys` of the IdP's JWKS, untrusted.
  * @returns The checked claims.
- * @throws {IdTokenError} The token is malformed, its header is not exactly the IdP's form, no Ed25519 signing key
- *   has its kid, the signature does not verify, or a claim does not match.
+ * @throws {IdTokenError} The token is malformed; its header names another alg or typ, carries crit or a key, or has
+ *   a non-string kid; not exactly one Ed25519 signing key matches its kid (or, without a kid, the JWKS); the
+ *   signature does not verify; or a claim does not match.
  */
 export async function verifyIdToken(token: string, expected: IdTokenExpectation, keys: readonly unknown[]): Promise<IdTokenClaims> {
   const segments = token.split(".");
@@ -95,15 +101,18 @@ export async function verifyIdToken(token: string, expected: IdTokenExpectation,
   const signature = base64urlDecode(signatureText);
   if (header === undefined || payload === undefined || signature === undefined) throw new IdTokenError("format");
 
+  const { alg, typ, kid } = header;
   if (
-    Object.keys(header).some((member) => !HEADER_MEMBERS.has(member)) ||
-    header.alg !== "Ed25519" ||
-    (header.typ !== undefined && header.typ !== "JWT") ||
-    typeof header.kid !== "string"
+    REFUSED_HEADER_MEMBERS.some((member) => member in header) ||
+    alg !== "Ed25519" ||
+    // RFC 7515 §4.1.9: typ is compared case-insensitively, and "application/" may be omitted (RFC 7519 §5.1: "JWT").
+    (typ !== undefined && (typeof typ !== "string" || !["jwt", "application/jwt"].includes(typ.toLowerCase()))) ||
+    (kid !== undefined && typeof kid !== "string")
   ) {
     throw new IdTokenError("header");
   }
-  const kid = header.kid;
+  // OIDC Core §10.1: kid is required only when the JWKS holds more than one usable key. Without a kid, the token is
+  // accepted only against a JWKS with exactly one usable Ed25519 signing key; with one, exactly one key has that kid.
   const candidates = keys.filter((key) => isEd25519SigningKey(key, kid));
   const jwk = candidates.length === 1 ? candidates[0] : undefined;
   if (jwk === undefined) throw new IdTokenError("unknown_kid");

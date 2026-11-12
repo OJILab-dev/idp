@@ -20,7 +20,9 @@ export class CallbackError extends Error {
 }
 
 // RFC 6749 §4.1.2.1: error codes are %x20-21 / %x23-5B / %x5D-7E; this IdP only uses lowercase codes with "_".
-const ERROR_CODE = /^[a-z_]{1,64}$/;
+const USED_PARAMETERS = ["state", "iss", "code", "error"] as const;
+
+const ERROR_CODE =/^[a-z_]{1,64}$/;
 
 function constantTimeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -40,8 +42,9 @@ function constantTimeEqual(a: string, b: string): boolean {
  *   code.
  */
 export function checkAuthorizationResponse(params: URLSearchParams, state: string, issuer: string): { readonly code: string } {
-  const names = [...params.keys()];
-  if (new Set(names).size !== names.length) throw new CallbackError("repeated");
+  // RFC 6749 §3.1 forbids the sender to repeat a parameter, and §4.1.2 requires the client to ignore parameters it
+  // does not recognise; so only a repeated parameter this RP reads is refused, as it could be read either way.
+  if (USED_PARAMETERS.some((name) => params.getAll(name).length > 1)) throw new CallbackError("repeated");
   if (!constantTimeEqual(params.get("state") ?? "", state)) throw new CallbackError("state");
   // Simple string comparison, no normalisation (RFC 9207 §2.4). The IdP advertises
   // authorization_response_iss_parameter_supported, so a response without iss is refused too.

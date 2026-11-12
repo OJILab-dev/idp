@@ -126,7 +126,8 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
     const flow = await seal(config.sessionKey, FLOW_COOKIE, { state, nonce, verifier }, options.now() + FLOW_SECONDS);
     setCookie(c, FLOW_COOKIE, flow, { ...COOKIE_OPTIONS, maxAge: FLOW_SECONDS });
     const authorization = new URL(discovery.authorizationEndpoint);
-    authorization.search = new URLSearchParams({
+    // RFC 6749 §3.1: a query already in the endpoint URI MUST be retained, so each parameter is added to it.
+    const params: Readonly<Record<string, string>> = {
       response_type: "code",
       client_id: config.clientId,
       redirect_uri: config.redirectUri,
@@ -135,7 +136,8 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
       nonce,
       code_challenge: await pkceChallenge(verifier),
       code_challenge_method: "S256",
-    }).toString();
+    };
+    for (const [name, value] of Object.entries(params)) authorization.searchParams.set(name, value);
     log({ route: "login", result: "redirected" });
     return c.redirect(authorization.href, 302);
   });
