@@ -78,7 +78,7 @@
    - `DEPLOY_CLOUDFLARE_API_TOKEN`：デプロイ用の API トークン（[デプロイと設定](../design/deployment.md)の API トークン。`workers_dev` では、アカウントの `workers.dev` のサブドメインを読める権限も要る）
    - `TERRAFORM_CLOUDFLARE_API_TOKEN`：Terraform 用の API トークン
    - `R2_ACCESS_KEY_ID` と `R2_SECRET_ACCESS_KEY`：state のバケットの R2 の認証情報
-4. その Environment に GitHub Actions の destination を作り、このリポジトリ、workflow のパス `.github/workflows/deploy.yml`、ブランチ `main`、手順 2 の GitHub Environment に限る（OIDC の信頼の条件。[1Password Environments と GitHub Actions](secret.md)）。
+4. その Environment に GitHub Actions の destination を作り、このリポジトリ、workflow の名前 `Deploy`（`.github/workflows/deploy.yml` の先頭の `name:`。ファイルのパスではない）、ブランチ `main`、手順 2 の GitHub Environment に限る（OIDC の信頼の条件。[1Password Environments と GitHub Actions](secret.md)）。
 5. デプロイが 1 つなら、`setup-1password-integration.sh` で `OP_WORKLOAD_ID`、`OP_ENVIRONMENT_ID`、`OP_INTEGRATION_KEY` をリポジトリに登録する。デプロイが 2 つ以上なら、デプロイごとの値を、手順 2 の GitHub Environment の変数と secret として同じ名前で置く（GitHub Environment のものがリポジトリのものより優先される）。
 6. 段階 5 の直前に、リポジトリの変数 `IDP_DEPLOYMENT` にデプロイの名前を足す（空白で区切って並べる）。手動の起動も `IDP_DEPLOYMENT` にあるデプロイしか選べない。足した後の main への push からは、そのデプロイも動く。段階 5 と 5b の間に main へマージすると、署名鍵がないので外からの確認で失敗する（デプロイそのものは済み、Worker は要求を拒否するだけ）ので、その間はマージしない。
 

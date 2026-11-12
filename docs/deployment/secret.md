@@ -147,20 +147,26 @@ Integration Keyが漏洩した場合:
 destinationはrepository名だけで許可せず、少なくとも次を固定します。
 
 - Organizationとrepository
-- deploy workflowのpath
+- deploy workflowの名前（workflowのYAMLの先頭の`name:`。IdPでは`Deploy`。destinationのworkflowの条件はファイルのpathではなくこの名前）
 - `main` branch
 - GitHub Environment `production`（IdPでは、deployment設定ファイルのデプロイ用のGitHub Environmentの名前）
 
 例外として、IdPのPRの`terraform plan`に使う読み取り専用のEnvironmentのdestinationは、`main` branch、deploy workflow、GitHub Environment `production`の代わりに、次を固定します。
 
 - Organizationとrepository
-- plan workflowのpath
+- plan workflowの名前（`name:`）
 - 同じrepositoryのbranchからの`pull_request` eventだけ（forkからのPRには渡さない）
 - GitHub Environment `production`を使わない
 - EnvironmentのCloudflare API Tokenに、D1の権限を読み取りも含めて一切持たせない
 
-workflow pathの固定は、そのcredentialで何が動くかを限りません。同じrepositoryのPRはplan workflowもTerraformのコードも書き換えられるため、残るリスクはこのcredentialで読めるものの機密性です。条件と理由は[デプロイと設定](../design/deployment.md)の「PR の `terraform plan` の認証情報（例外）」を参照してください。
+workflowの名前の固定は、そのcredentialで何が動くかを限りません。同じrepositoryのPRはplan workflowもTerraformのコードも書き換えられるため、残るリスクはこのcredentialで読めるものの機密性です。条件と理由は[デプロイと設定](../design/deployment.md)の「PR の `terraform plan` の認証情報（例外）」を参照してください。
 これらの条件で限定できない場合は、PRの`terraform plan`をやめます。
 
-workflow fileをrenameするとdestination条件と一致しなくなります。
-renameと条件更新は同じ移行作業として扱います。
+destinationのworkflowの条件はworkflowの名前（YAMLの先頭の`name:`）で、ファイルのpathではありません。
+workflowの`name:`を変えるとdestination条件と一致しなくなります（ファイルのrenameだけでは変わりません）。
+deploy workflowの`name:`は、それを条件にするすべてのdestinationを同時に更新しない限り変えません。名前の変更と条件の更新は同じ移行作業として扱います。
+
+workflowの名前はrepositoryの中で一意ではありません。
+同じ`name:`を持つ別のworkflowを足すと、workflowの条件だけはそのworkflowでも満たされます。
+残りの条件（`main` branch、`main`に限ったGitHub Environment、repository）があるので、そのworkflowがcredentialを得るには`main`へマージされる必要があります。
+そのため、workflowの追加と変更を含むPRのレビューが、この条件を守る関門です。レビューでは、deploy workflowと同じ`name:`を持つworkflowがほかにないことを確かめます。
