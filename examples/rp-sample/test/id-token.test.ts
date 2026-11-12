@@ -39,6 +39,18 @@ describe("verifyIdToken", () => {
     await expect(verifyIdToken(await token({ aud: [CLIENT_ID] }), EXPECTED, keys)).resolves.toMatchObject({ sub: SUB });
   });
 
+  it("accepts an azp that names this client (OIDC Core §3.1.3.7 5)", async () => {
+    await expect(verifyIdToken(await token({ azp: CLIENT_ID }), EXPECTED, keys)).resolves.toMatchObject({ sub: SUB });
+  });
+
+  it("ignores at_hash: OPTIONAL in the code flow and not validated by this RP (§3.1.3.6, §3.1.3.8)", async () => {
+    await expect(verifyIdToken(await token({ at_hash: "not-checked" }), EXPECTED, keys)).resolves.toMatchObject({ sub: SUB });
+  });
+
+  it("refuses an encrypted ID token (five segments, JWE): this client registered no encryption (§3.1.3.7 1)", async () => {
+    expect(await reason(verifyIdToken("a.b.c.d.e", EXPECTED, keys))).toBe("format");
+  });
+
   it("allows a small clock skew on exp and iat", async () => {
     await expect(verifyIdToken(await token({ exp: NOW - 30 }), EXPECTED, keys)).resolves.toMatchObject({ sub: SUB });
     await expect(verifyIdToken(await token({ iat: NOW + 30 }), EXPECTED, keys)).resolves.toMatchObject({ sub: SUB });
