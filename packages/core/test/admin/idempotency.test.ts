@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { IDEMPOTENCY_TTL_SECONDS, canonicalJson, executeOperation, requestHash } from "../../src/admin/index.js";
+import { sha256Base64url } from "@idp/jwk-thumbprint";
+import { IDEMPOTENCY_TTL_SECONDS, executeOperation, requestHash } from "../../src/admin/index.js";
 import { groupCreate } from "../../src/admin/groups.js";
 import { userCreate, userDisable } from "../../src/admin/users.js";
 import { randomToken, type Database } from "../../src/shared/index.js";
@@ -117,7 +118,8 @@ describe("Idempotency-Key", () => {
 
 describe("request hashing", () => {
   it("ignores member order and absent members", async () => {
-    expect(canonicalJson({ b: 1, a: [{ d: 2, c: "x" }], e: undefined })).toBe('{"a":[{"c":"x","d":2}],"b":1}');
+    // The same text as before the RFC 8785 package, so stored request hashes still match.
+    expect(await requestHash({ b: 1, a: [{ d: 2, c: "x" }], e: undefined })).toBe(await sha256Base64url('{"a":[{"c":"x","d":2}],"b":1}'));
     expect(await requestHash({ a: 1, b: 2 })).toBe(await requestHash({ b: 2, a: 1 }));
     expect(await requestHash({ a: 1 })).not.toBe(await requestHash({ a: 2 }));
   });
