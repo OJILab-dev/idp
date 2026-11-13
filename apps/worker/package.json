@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@idp/cloudflare": "workspace:*",
     "@idp/core": "workspace:*",
-    "@idp/d1-adapter": "workspace:*",
     "hono": "4.13.13"
   },
   "devDependencies": {

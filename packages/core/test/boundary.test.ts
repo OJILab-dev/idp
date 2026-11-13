@@ -16,8 +16,8 @@ describe("user-facing code cannot import the admin modules", () => {
     ["apps/worker/src/probe.ts", 'import "@idp/core/admin/users";'],
     ["packages/core/src/user/probe.ts", 'import "../admin/index.js";'],
     ["packages/core/src/shared/probe.ts", 'import "../admin/index.js";'],
-    ["apps/worker/src/probe.ts", 'import "@idp/d1-adapter/admin";'],
-    ["apps/worker/src/probe.ts", 'import "../../../packages/d1-adapter/src/admin.js";'],
+    ["apps/worker/src/probe.ts", 'import "@idp/cloudflare/d1/admin";'],
+    ["apps/worker/src/probe.ts", 'import "../../../packages/cloudflare/src/d1/admin.js";'],
   ])("%s rejects %s", async (file, code) => {
     expect(await lintAs(file, code)).toContain("no-restricted-imports");
   });
@@ -41,7 +41,7 @@ describe("standards packages import only web standards and their declared standa
     'import "hono";',
     'import "@idp/core/user";',
     'import "@idp/cloudflare/d1";',
-    'import "@idp/d1-adapter";',
+    'import "@idp/cloudflare/workers/tls";',
     'import "../../core/src/user/index.js";',
   ])("packages/base64url/src rejects %s", async (code) => {
     expect(await lintAs("packages/base64url/src/probe.ts", code)).toContain("no-restricted-imports");
@@ -60,5 +60,33 @@ describe("standards packages import only web standards and their declared standa
 
   it("the sample relying party cannot import a standards package", async () => {
     expect(await lintAs("examples/rp-sample/src/probe.ts", 'import "@idp/base64url";')).toContain("no-restricted-imports");
+  });
+});
+
+// The core never depends on the platform, and the subpaths of @idp/cloudflare import each other only along declared
+// edges (docs/design/packages.md, "@idp/cloudflare の規則").
+describe("@idp/cloudflare boundaries", () => {
+  it.each([
+    ["packages/core/src/admin/probe.ts", 'import "@idp/cloudflare/d1";'],
+    ["packages/core/src/user/probe.ts", 'import "@idp/cloudflare/workers/tls";'],
+    ["packages/core/src/user/probe.ts", 'import "../../../cloudflare/src/d1/index.js";'],
+    ["packages/cloudflare/src/d1/probe.ts", 'import "@idp/cloudflare/workers/tls";'],
+    ["packages/cloudflare/src/d1/probe.ts", 'import "../workers/tls/index.js";'],
+    ["packages/cloudflare/src/workers/tls/probe.ts", 'import "@idp/core/shared";'],
+    ["packages/cloudflare/src/workers/tls/probe.ts", 'import "@idp/cloudflare/d1";'],
+    ["packages/cloudflare/src/workers/tls/probe.ts", 'import "../../d1/index.js";'],
+  ])("%s rejects %s", async (file, code) => {
+    expect(await lintAs(file, code)).toContain("no-restricted-imports");
+  });
+
+  it.each([
+    ["packages/cloudflare/src/d1/probe.ts", 'import "@idp/core/shared";'],
+    ["packages/cloudflare/src/d1/probe.ts", 'import "@idp/base64url";'],
+    ["packages/cloudflare/src/d1/probe.ts", 'import "./d1.js";'],
+    ["apps/worker/src/probe.ts", 'import "@idp/cloudflare/d1";'],
+    ["apps/worker/src/probe.ts", 'import "@idp/cloudflare/workers/tls";'],
+    ["apps/admin-worker/src/probe.ts", 'import "@idp/cloudflare/d1/admin";'],
+  ])("%s allows %s", async (file, code) => {
+    expect(await lintAs(file, code)).not.toContain("no-restricted-imports");
   });
 });

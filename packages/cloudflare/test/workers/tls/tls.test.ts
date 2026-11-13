@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isAcceptedTlsVersion } from "../src/shared/index.js";
+import { isAcceptedTlsVersion } from "../../../src/workers/tls/index.js";
 
 describe("isAcceptedTlsVersion", () => {
   it.each(["TLSv1.2", "TLSv1.3"])("accepts %s", (tlsVersion) => {

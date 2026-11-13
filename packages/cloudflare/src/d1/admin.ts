@@ -1,4 +1,4 @@
-// The D1 adapters of the admin-only ports. A separate entry point (`@idp/d1-adapter/admin`) from the Database
+// The D1 adapters of the admin-only ports. A separate entry point (`@idp/cloudflare/d1/admin`) from the Database
 // adapter, because the IdP Worker imports the package too and must never bundle the admin modules of the core
 // (eslint.config.js bans this entry from the IdP Worker).
 import { AdminNonceStoreError, adminNonceClaimStatements, type AdminNonceClaim, type AdminNonceStore } from "@idp/core/admin";

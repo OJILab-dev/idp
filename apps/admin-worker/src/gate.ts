@@ -3,8 +3,8 @@
 // IP; the body size; the RFC 9421 signature against the ADMIN_SIGNING_KEYS allowlist; and the nonce. The admin is
 // decided only by the allowlisted key that verified the signature, never by anything the request names.
 import { AdminNonceStoreError, verifyAdminSignature, type AdminIdentity, type AdminSignatureRefusal } from "@idp/core/admin";
-import { isAcceptedTlsVersion } from "@idp/core/shared";
-import { createD1AdminNonceStore } from "@idp/d1-adapter/admin";
+import { createD1AdminNonceStore } from "@idp/cloudflare/d1/admin";
+import { isAcceptedTlsVersion } from "@idp/cloudflare/workers/tls";
 import type { AdminConfig } from "./config.js";
 
 /**
