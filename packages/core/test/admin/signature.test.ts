@@ -9,7 +9,7 @@ import {
   type AdminSigningKey,
   type AdminSignatureRequest,
 } from "../../src/admin/signature.js";
-import { parseDictionary } from "../../src/admin/structured-fields.js";
+import { parseDictionary } from "@idp/structured-fields";
 import { EXPECTED_REFUSALS, makeTestKeys, materialize, signBase, toHeaders, type TestKeys } from "../admin-signature-fixture.js";
 import { vectors, type VerifyCase } from "../vectors.js";
 

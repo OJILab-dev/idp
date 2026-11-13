@@ -120,6 +120,9 @@ importers:
       '@idp/jws':
         specifier: workspace:*
         version: link:../jws
+      '@idp/structured-fields':
+        specifier: workspace:*
+        version: link:../structured-fields
       '@idp/webauthn':
         specifier: workspace:*
         version: link:../webauthn
@@ -153,6 +156,8 @@ importers:
       '@idp/base64url':
         specifier: workspace:*
         version: link:../base64url
+
+  packages/structured-fields: {}
 
   packages/webauthn:
     dependencies:
