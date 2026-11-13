@@ -62,6 +62,23 @@ export function classifyRedirectUri(value: string): RedirectUriKind | null {
   return labels.length >= 2 && labels.every((label) => DOMAIN_LABEL.test(label)) ? "custom-scheme" : null;
 }
 
+/** The post-logout redirect URI rules as a noun phrase, for the OpenAPI description and validation messages. */
+export const POST_LOGOUT_REDIRECT_URI_RULES =
+  "an absolute https URI in canonical form, compared exactly, with no fragment, userinfo, localhost host, or state query parameter (the IdP appends the request's state)";
+
+/**
+ * Checks whether a client may register a URI as an RP-Initiated Logout post-logout redirect URI (docs/design/clients.md):
+ * the https form of the redirect URI rules, for every client type, and no `state` query parameter, because the IdP
+ * appends the request's `state` to the registered query (RP-Initiated Logout 1.0 §3) and two values would let the RP
+ * read a fixed one. The admin Worker and the audit log check use this one function.
+ *
+ * @param value The untrusted URI.
+ * @returns Whether the URI may be registered.
+ */
+export function isPostLogoutRedirectUriRegistrable(value: string): boolean {
+  return classifyRedirectUri(value) === "https" && !new URL(value).searchParams.has("state");
+}
+
 /**
  * Checks whether a client of the given type may register a redirect URI (docs/design/clients.md): confidential
  * clients only https, public clients any of the three forms.

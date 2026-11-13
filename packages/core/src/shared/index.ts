@@ -35,4 +35,12 @@ export { MAX_PASSKEYS_PER_USER } from "./limits.js";
 export { passkeyBelowLimitCondition, passkeyRevocableCondition, userEnabledCondition } from "./passkey-rules.js";
 export { PROBLEM_KINDS, isProblemKind, type ProblemKind } from "./problems.js";
 export { ACCEPTED_TLS_VERSIONS, isAcceptedTlsVersion } from "./tls.js";
-export { LOOPBACK_REDIRECT_HOSTS, classifyRedirectUri, isRedirectUriAllowed, type ClientType, type RedirectUriKind } from "./redirect-uri-registration.js";
+export {
+  LOOPBACK_REDIRECT_HOSTS,
+  POST_LOGOUT_REDIRECT_URI_RULES,
+  classifyRedirectUri,
+  isPostLogoutRedirectUriRegistrable,
+  isRedirectUriAllowed,
+  type ClientType,
+  type RedirectUriKind,
+} from "./redirect-uri-registration.js";

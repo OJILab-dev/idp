@@ -450,6 +450,18 @@ func TestUsageErrors(t *testing.T) {
 	}
 }
 
+// TestHelpStatesThePostLogoutRedirectRule keeps the registration rule the admin
+// Worker enforces visible where the operator types the URI.
+func TestHelpStatesThePostLogoutRedirectRule(t *testing.T) {
+	h := newHarness(t, fixed(200, emptyPage))
+	for _, op := range []string{"client_create", "client_set_post_logout_redirects"} {
+		got := h.runWith(map[string]string{}, op, "-h")
+		if out := got.stdout + got.stderr; !strings.Contains(out, "state") || !strings.Contains(out, "fragment") {
+			t.Errorf("%s -h does not state the post-logout redirect URI rule:\n%s", op, out)
+		}
+	}
+}
+
 func TestHelpListsEveryOperation(t *testing.T) {
 	h := newHarness(t, fixed(200, emptyPage))
 	got := h.runWith(map[string]string{}, "help")
