@@ -5,7 +5,7 @@
 import { InvalidBase64urlError, base64urlDecode, base64urlEncode } from "@idp/base64url";
 import type { Issuer } from "../../shared/index.js";
 import { InvalidCborError, decodeCbor, decodeCborPrefix } from "@idp/cbor";
-import { COSE_ALGORITHMS, InvalidCoseKeyError, importCosePublicKey, verifyCoseSignature } from "./cose.js";
+import { InvalidCoseKeyError, importCosePublicKey, verifyCoseSignature } from "@idp/cose-key";
 
 /** Thrown when a response is malformed or fails a verification step; the message names the step for the logs. */
 export class WebAuthnVerificationError extends Error {
@@ -355,9 +355,3 @@ export async function verifyAuthentication(
   if ((stored !== 0 || data.signCount !== 0) && data.signCount <= stored) fail("sign count did not increase");
   return { signCount: data.signCount, backupState: (data.flags & FLAG_BS) !== 0 };
 }
-
-/** The `pubKeyCredParams` every creation request offers. */
-export const PUB_KEY_CRED_PARAMS: readonly { readonly type: "public-key"; readonly alg: number }[] = COSE_ALGORITHMS.map((alg) => ({
-  type: "public-key" as const,
-  alg,
-}));
