@@ -7,7 +7,7 @@ import { ADMIN_WORKER_NAME, IDP_WORKER_NAME, checkHostingHosts, parseHostingMode
  * The workers.dev subdomain of the account the workers_dev run stands in for. Any one DNS label would do; this one is
  * not an account the project owns.
  */
-export const WORKERS_DEV_SUBDOMAIN = "e2e-fork";
+const WORKERS_DEV_SUBDOMAIN = "e2e-fork";
 
 /** The hosts of one run. */
 export type E2eHosting = {

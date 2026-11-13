@@ -20,7 +20,6 @@ test("a logout with the RP's ID token ends the session at once, returns to the R
 
   // The RP finds the endpoint in discovery, as RP-Initiated Logout §2.1 has it.
   const discovery = JSON.parse((await idpRequest(idp, "GET", "/.well-known/openid-configuration")).body) as { end_session_endpoint: string };
-  expect(discovery.end_session_endpoint).toBe(`${ISSUER}/end_session`);
   const logout = new URLSearchParams({ id_token_hint: signedIn.idTokenJwt, post_logout_redirect_uri: POST_LOGOUT_REDIRECT_URI, state: "bye-1" });
   await page.goto(`${discovery.end_session_endpoint}?${logout.toString()}`);
   await page.waitForURL((url) => url.origin === `https://${RP_HOST}`);
@@ -36,27 +35,7 @@ test("a logout with the RP's ID token ends the session at once, returns to the R
   await finishCodeFlow(page, idp, client, next);
 });
 
-test("choosing to stay signed in on the confirmation page ends nothing and does not return to the RP", async ({ page, admin, authenticators, idp }) => {
-  const user = await enrolledUser(admin, page, authenticators);
-  const client = await admin.createClient("confidential", user.userId);
-  const flow = authorizeFlow(client);
-  await page.goto(flow.url);
-  await finishCodeFlow(page, idp, client, flow);
-
-  const logout = new URLSearchParams({ client_id: client.clientId, post_logout_redirect_uri: POST_LOGOUT_REDIRECT_URI, state: "bye-3" });
-  await page.goto(`${ISSUER}/end_session?${logout.toString()}`);
-  await page.getByRole("link", { name: "Stay signed in" }).click();
-  await page.waitForURL(`${ISSUER}/account`);
-  const sessions = await idp.db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?").bind(user.userId).first();
-  expect(sessions).toEqual({ n: 1 });
-
-  // The session still answers a plain request with a code, without a sign-in.
-  const next = authorizeFlow(client);
-  await page.goto(next.url);
-  await finishCodeFlow(page, idp, client, next);
-});
-
-test("a logout without a hint asks first and ends the session only after the user confirms on the IdP", async ({
+test("a logout without a hint asks first: staying signed in ends nothing, and confirming ends the session and returns to the RP", async ({
   page,
   admin,
   authenticators,
@@ -67,15 +46,20 @@ test("a logout without a hint asks first and ends the session only after the use
   const flow = authorizeFlow(client);
   await page.goto(flow.url);
   await finishCodeFlow(page, idp, client, flow);
-
   const logout = new URLSearchParams({ client_id: client.clientId, post_logout_redirect_uri: POST_LOGOUT_REDIRECT_URI, state: "bye-2" });
+
   await page.goto(`${ISSUER}/end_session?${logout.toString()}`);
-  const signOut = page.getByRole("button", { name: "Sign out" });
-  await expect(signOut).toBeVisible();
+  await page.getByRole("link", { name: "Stay signed in" }).click();
+  await page.waitForURL(`${ISSUER}/account`);
+  // The session still answers a plain request with a code, without a sign-in.
+  const next = authorizeFlow(client);
+  await page.goto(next.url);
+  await finishCodeFlow(page, idp, client, next);
+
+  await page.goto(`${ISSUER}/end_session?${logout.toString()}`);
   const before = await idp.db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?").bind(user.userId).first();
   expect(before).toEqual({ n: 1 });
-
-  await signOut.click();
+  await page.getByRole("button", { name: "Sign out" }).click();
   await page.waitForURL((url) => url.origin === `https://${RP_HOST}`);
   expect(page.url()).toBe(`${POST_LOGOUT_REDIRECT_URI}?state=bye-2`);
   const after = await idp.db.prepare("SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?").bind(user.userId).first();

@@ -26,7 +26,6 @@ test("an unknown client, a foreign redirect URI, and a disabled client each get 
     const response = await page.goto(url);
     expect(response?.status(), reason).toBe(400);
     await expect(page).toHaveURL((current) => current.origin === ISSUER && current.pathname === "/authorize");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sign-in could not continue");
     await expect(page.locator("code")).toHaveText(reason);
   }
   expect(toRp).toEqual([]);

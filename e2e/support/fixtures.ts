@@ -130,15 +130,16 @@ const CONDITIONAL_GRACE_MS = 1_000;
  * and the verify request follows the click.
  *
  * @param credentials The passkeys {@link detach} took away; attached again before the click.
+ * @returns The ID of the authenticator that now holds them.
  * @throws {Error} The page signs in before the click, or not after it.
  */
-export async function signInWithButton(page: Page, authenticators: Authenticators, credentials: readonly VirtualCredential[]): Promise<void> {
+export async function signInWithButton(page: Page, authenticators: Authenticators, credentials: readonly VirtualCredential[]): Promise<string> {
   await expectSignInPage(page);
   const verifies: string[] = [];
   page.on("request", (request) => {
     if (new URL(request.url()).pathname === "/webauthn/auth/verify") verifies.push(request.url());
   });
-  await attach(authenticators, credentials);
+  const authenticatorId = await attach(authenticators, credentials);
   await page.waitForTimeout(CONDITIONAL_GRACE_MS);
   expect(verifies, "a sign-in before the click").toEqual([]);
   await expectSignInPage(page);
@@ -146,6 +147,7 @@ export async function signInWithButton(page: Page, authenticators: Authenticator
   const verify = page.waitForRequest((request) => new URL(request.url()).pathname === "/webauthn/auth/verify");
   await page.getByRole("button", { name: en.signin_button }).click();
   await verify;
+  return authenticatorId;
 }
 
 /**

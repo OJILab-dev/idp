@@ -16,9 +16,10 @@ function idpDocuments(page: Page): string[] {
   return paths;
 }
 
-test("prompt=login asks for the passkey again although the session is live", async ({ page, admin, authenticators, idp }) => {
+test("prompt=login and a public client each ask for the passkey again although the session is live", async ({ page, admin, authenticators, idp }) => {
   const user = await enrolledUser(admin, page, authenticators);
   const client = await admin.createClient("confidential", user.userId);
+  const publicClient = await admin.createClient("public", user.userId);
   const first = authorizeFlow(client);
   await page.goto(first.url);
   await finishCodeFlow(page, idp, client, first);
@@ -33,21 +34,13 @@ test("prompt=login asks for the passkey again although the session is live", asy
   const passkeys = await detach(authenticators, user.authenticatorId);
   const login = authorizeFlow(client, { prompt: "login" });
   await page.goto(login.url);
-  await signInWithButton(page, authenticators, passkeys);
+  const holder = await signInWithButton(page, authenticators, passkeys);
   await finishCodeFlow(page, idp, client, login);
-});
 
-test("a public client always asks for the passkey", async ({ page, admin, authenticators, idp }) => {
-  const user = await enrolledUser(admin, page, authenticators);
-  const confidential = await admin.createClient("confidential", user.userId);
-  const publicClient = await admin.createClient("public", user.userId);
-  const first = authorizeFlow(confidential);
-  await page.goto(first.url);
-  await finishCodeFlow(page, idp, confidential, first);
-
-  const passkeys = await detach(authenticators, user.authenticatorId);
+  // A public client asks again too, even right after a fresh sign-in.
+  const again = await detach(authenticators, holder);
   const flow = authorizeFlow(publicClient);
   await page.goto(flow.url);
-  await signInWithButton(page, authenticators, passkeys);
+  await signInWithButton(page, authenticators, again);
   await finishCodeFlow(page, idp, publicClient, flow);
 });
