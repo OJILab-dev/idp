@@ -2,7 +2,7 @@
 // security property: every parameter is validated before anything is used (§4), the session ends without asking only
 // for a hint from the current session (§2, §6), and a redirect goes only to a URI the client registered (§3). The HTTP
 // layer only renders the returned decision.
-import { isClientId } from "../identifiers/index.js";
+import { isClientId } from "@idp/core/identifiers";
 import { redirectLocation } from "./authorize.js";
 import { loadLogoutClient } from "./clients.js";
 import type { OidcDeps } from "./deps.js";

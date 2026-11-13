@@ -1,7 +1,7 @@
 // The HTTP layer of RP-Initiated Logout 1.0 (authentication.md, "RP からのログアウト"): the routes read the request,
 // render the core's decision, and clear the cookie; the branches themselves are tested in the core.
 import { describe, expect, it } from "vitest";
-import { buildIdTokenClaims, loadSigningKeys, signIdToken, type IdTokenClaims } from "../../../packages/core/src/user/index.js";
+import { buildIdTokenClaims, loadSigningKeys, signIdToken, type IdTokenClaims } from "../src/domain/index.js";
 import { CLIENT, CREDENTIAL, ISSUER, NOW, USER, call, seedAccess, setCookies, testSigningKey, useFixture, type Fixture } from "./fixture.js";
 
 const SESSION = "__Host-session";

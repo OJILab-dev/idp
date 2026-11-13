@@ -2,9 +2,9 @@
 // rules (docs/design/authentication.md): the user is enabled, is below the passkey limit, and the credential ID is
 // not registered to anyone. Each rule is a condition of the INSERT itself, and the audit row carries the same
 // condition in the statement before it, so the row exists exactly when the passkey was stored.
-import { auditSuccessStatement } from "../../audit/index.js";
-import { passkeyBelowLimitCondition, userEnabledCondition } from "../../passkeys/index.js";
-import type { SqlCondition, SqlStatement } from "../../db/index.js";
+import { auditSuccessStatement } from "@idp/core/audit";
+import { passkeyBelowLimitCondition, userEnabledCondition } from "@idp/core/passkeys";
+import type { SqlCondition, SqlStatement } from "@idp/core/db";
 import type { PasskeyDeps } from "../deps.js";
 import { allOf, condition } from "./ceremony.js";
 import type { VerifiedRegistration } from "@idp/webauthn";

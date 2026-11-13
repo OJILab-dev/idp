@@ -10,7 +10,7 @@ import {
   userinfo,
   type GrantedScope,
   type SigningKeySet,
-} from "../src/user/index.js";
+} from "../../src/domain/index.js";
 import { generateEd25519Jwk } from "./keys.js";
 import { createFixture, issuer, type Fixture } from "./oidc-fixture.js";
 

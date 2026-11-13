@@ -9,7 +9,7 @@ import {
   type EndSessionVia,
   type IdTokenClaims,
   type SigningKeySet,
-} from "../src/user/index.js";
+} from "../../src/domain/index.js";
 import { generateEd25519Jwk } from "./keys.js";
 import { createFixture, issuer, NOW, sharedEd25519Keys, type Fixture } from "./oidc-fixture.js";
 

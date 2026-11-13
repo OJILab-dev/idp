@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createJwsSignature } from "@idp/jws";
-import { loadSigningKeys } from "../src/user/index.js";
-import { vectors } from "./vectors.js";
+import { loadSigningKeys } from "../../src/domain/index.js";
+import { vectors } from "../../../../packages/core/test/vectors.js";
 
 // The contract's JWS vectors, signed with a key loaded the way the Worker loads its Secret
 // (docs/design/packages.md, coupling 10). The JWS behaviour itself is tested in packages/jws.

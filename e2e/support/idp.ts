@@ -9,7 +9,7 @@ import { adminWorkerConfig } from "../../apps/admin-worker/cloudflare.config.js"
 import { generateTestAdminKey, signingKeysJson, type TestAdminKey } from "../../apps/admin-worker/test/signer.js";
 import { workerConfig } from "../../apps/worker/cloudflare.config.js";
 import { migrationNames, readMigration, splitStatements } from "../../contract/test/d1.js";
-import { generateEd25519Jwk } from "../../packages/core/test/keys.js";
+import { generateEd25519Jwk } from "../../apps/worker/test/domain/keys.js";
 import { ADMIN_WORKER_DIR, ASSETS_DIR, WORKER_DIR } from "./build.js";
 import { HOSTING } from "./hosting.js";
 import type { TestCertificate } from "./tls.js";

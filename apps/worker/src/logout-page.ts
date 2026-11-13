@@ -1,7 +1,7 @@
 // The pages of RP-Initiated Logout 1.0 (docs/design/authentication.md, "RP からのログアウト"): the confirmation, the
 // signed-out page, and the error page. They render the core's decision, so they are drawn here rather than served as
 // static assets. Every value that comes from the request is HTML-escaped; the rest comes from the dictionaries.
-import type { EndSessionErrorReason, UiLocale } from "@idp/core/user";
+import type { EndSessionErrorReason, UiLocale } from "./domain/index.js";
 
 /** Why the logout error page is shown: the core's reasons, plus a confirmation that failed the same-origin check. */
 export type LogoutErrorReason = EndSessionErrorReason | "cross_origin_request";

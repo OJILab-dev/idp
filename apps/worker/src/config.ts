@@ -5,7 +5,7 @@ import { createD1Database } from "@idp/cloudflare/d1";
 import { InvalidHostingError, checkHostingHosts, parseHostingMode } from "@idp/core/hosting";
 import { InvalidIssuerError, parseIssuer, type Issuer } from "@idp/core/issuer";
 import type { Database } from "@idp/core/db";
-import { InvalidSigningKeyConfigError, loadSigningKeys, type SigningKeySet } from "@idp/core/user";
+import { InvalidSigningKeyConfigError, loadSigningKeys, type SigningKeySet } from "./domain/index.js";
 
 /** The bindings, variables, and Secrets the deployment gives the IdP Worker. Every member is untrusted until parsed. */
 export type Env = {

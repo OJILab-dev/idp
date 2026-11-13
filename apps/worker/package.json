@@ -3,14 +3,21 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@idp/accept-language": "workspace:*",
+    "@idp/base64url": "workspace:*",
     "@idp/cloudflare": "workspace:*",
     "@idp/core": "workspace:*",
+    "@idp/cose-key": "workspace:*",
+    "@idp/jwk-thumbprint": "workspace:*",
+    "@idp/jws": "workspace:*",
+    "@idp/oauth-native-apps": "workspace:*",
+    "@idp/oidc-discovery": "workspace:*",
+    "@idp/pkce": "workspace:*",
+    "@idp/webauthn": "workspace:*",
     "hono": "4.13.13"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "2.0.0-beta.v.4",
-    "@idp/base64url": "workspace:*",
-    "@idp/jwk-thumbprint": "workspace:*",
     "vite": "8.3.5"
   }
 }

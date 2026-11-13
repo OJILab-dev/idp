@@ -1,14 +1,14 @@
 // A local D1 with migration 0001 applied, seeded through plain SQL, plus a settable clock and a counting random
 // source, so the OIDC use cases run against the real schema and every token they mint is predictable.
-import { createD1Database } from "../../cloudflare/src/d1/index.js";
-import { createTestD1, type TestD1 } from "../../../contract/test/d1.js";
+import { createD1Database } from "@idp/cloudflare/d1";
+import { createTestD1, type TestD1 } from "../../../../contract/test/d1.js";
 import { base64urlEncode } from "@idp/base64url";
 import { sha256Base64url } from "@idp/jwk-thumbprint";
-import { parseIssuer } from "../src/issuer/index.js";
-import type { Database, SqlStatement, SqlValue } from "../src/db/index.js";
-import { loadSigningKeys, type Clock, type OidcDeps, type RandomSource, type SigningKeySet } from "../src/user/index.js";
+import { parseIssuer } from "@idp/core/issuer";
+import type { Database, SqlStatement, SqlValue } from "@idp/core/db";
+import { loadSigningKeys, type Clock, type OidcDeps, type RandomSource, type SigningKeySet } from "../../src/domain/index.js";
 import { generateEd25519Jwk, generateRsaJwk } from "./keys.js";
-import { vectors } from "./vectors.js";
+import { vectors } from "../../../../packages/core/test/vectors.js";
 
 export const NOW = 1_800_000_000;
 export const issuer = parseIssuer("https://idp.example.com");

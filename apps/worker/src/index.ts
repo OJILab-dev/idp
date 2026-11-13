@@ -1,6 +1,6 @@
 // The IdP Worker: the OIDC endpoints and the /webauthn/* API. The three pages (sign-in, enrollment, account) are
 // static assets, served through the Worker, which runs first on every request (docs/design/free-tier.md).
-import { cryptoRandomSource, systemClock } from "@idp/core/user";
+import { cryptoRandomSource, systemClock } from "./domain/index.js";
 import { createApp, type AppOptions } from "./app.js";
 import type { Env } from "./config.js";
 import { withSecurityHeaders } from "./http.js";
