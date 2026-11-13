@@ -44,7 +44,7 @@ export function base64urlEncode(bytes: Uint8Array): string {
  * @throws {InvalidBase64urlError} The string has padding, a character outside the URL-safe alphabet (including
  *   '+', '/', and whitespace), a length that is 1 modulo 4, or non-zero trailing bits.
  */
-export function base64urlDecode(encoded: string): Uint8Array {
+export function base64urlDecode(encoded: string): Uint8Array<ArrayBuffer> {
   if (encoded.length % 4 === 1) {
     throw new InvalidBase64urlError("base64url length is 1 modulo 4");
   }

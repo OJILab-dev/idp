@@ -120,6 +120,9 @@ importers:
       '@idp/jwk-thumbprint':
         specifier: workspace:*
         version: link:../jwk-thumbprint
+      '@idp/jws':
+        specifier: workspace:*
+        version: link:../jws
       zod:
         specifier: 4.6.7
         version: 4.6.7
@@ -140,6 +143,12 @@ importers:
         version: link:../core
 
   packages/jwk-thumbprint:
+    dependencies:
+      '@idp/base64url':
+        specifier: workspace:*
+        version: link:../base64url
+
+  packages/jws:
     dependencies:
       '@idp/base64url':
         specifier: workspace:*

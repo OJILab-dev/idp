@@ -6,11 +6,10 @@ import { sha256Base64url } from "@idp/jwk-thumbprint";
 import { isClientId, isRandomTokenFormat, type Issuer, type SqlRow } from "../shared/index.js";
 import { CorruptRowError, loadClient, type RegisteredClient } from "./clients.js";
 import type { OidcDeps } from "./deps.js";
-import { InvalidTokenError } from "./jws.js";
 import { asUiLocale, selectUiLocale, type UiLocale } from "./locale.js";
 import { isRegisteredRedirectUri } from "./redirect-uri.js";
 import { findActiveSession, hasAccess, type ActiveSession } from "./sessions.js";
-import { verifyIdTokenHint, type GrantedScope } from "./tokens.js";
+import { InvalidTokenError, verifyIdTokenHint, type GrantedScope } from "./tokens.js";
 
 /** How long a saved authorize request lives: the 10-minute challenge plus time to load the page. */
 export const AUTHORIZE_REQUEST_LIFETIME_SECONDS = 900;
