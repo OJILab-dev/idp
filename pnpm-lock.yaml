@@ -44,12 +44,33 @@ importers:
 
   apps/admin-worker:
     dependencies:
+      '@idp/base64url':
+        specifier: workspace:*
+        version: link:../../packages/base64url
       '@idp/cloudflare':
         specifier: workspace:*
         version: link:../../packages/cloudflare
       '@idp/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@idp/digest-fields':
+        specifier: workspace:*
+        version: link:../../packages/digest-fields
+      '@idp/http-message-signatures':
+        specifier: workspace:*
+        version: link:../../packages/http-message-signatures
+      '@idp/json-canonicalization':
+        specifier: workspace:*
+        version: link:../../packages/json-canonicalization
+      '@idp/jwk-thumbprint':
+        specifier: workspace:*
+        version: link:../../packages/jwk-thumbprint
+      '@idp/problem-details':
+        specifier: workspace:*
+        version: link:../../packages/problem-details
+      '@idp/structured-fields':
+        specifier: workspace:*
+        version: link:../../packages/structured-fields
       hono:
         specifier: 4.13.13
         version: 4.13.13
@@ -125,15 +146,6 @@ importers:
       '@idp/cose-key':
         specifier: workspace:*
         version: link:../cose-key
-      '@idp/digest-fields':
-        specifier: workspace:*
-        version: link:../digest-fields
-      '@idp/http-message-signatures':
-        specifier: workspace:*
-        version: link:../http-message-signatures
-      '@idp/json-canonicalization':
-        specifier: workspace:*
-        version: link:../json-canonicalization
       '@idp/jwk-thumbprint':
         specifier: workspace:*
         version: link:../jwk-thumbprint
@@ -149,18 +161,9 @@ importers:
       '@idp/pkce':
         specifier: workspace:*
         version: link:../pkce
-      '@idp/problem-details':
-        specifier: workspace:*
-        version: link:../problem-details
-      '@idp/structured-fields':
-        specifier: workspace:*
-        version: link:../structured-fields
       '@idp/webauthn':
         specifier: workspace:*
         version: link:../webauthn
-      zod:
-        specifier: 4.6.7
-        version: 4.6.7
 
   packages/cose-key:
     dependencies:

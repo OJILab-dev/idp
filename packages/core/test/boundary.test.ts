@@ -15,6 +15,7 @@ describe("core module boundaries", () => {
   it.each([
     ["apps/worker/src/probe.ts", 'import "@idp/core/admin";'],
     ["apps/worker/src/probe.ts", 'import "@idp/core/admin/users";'],
+    ["apps/worker/src/probe.ts", 'import "../../admin-worker/src/domain/index.js";'],
     ["packages/core/src/user/probe.ts", 'import "../admin/index.js";'],
     ["packages/core/src/audit/probe.ts", 'import "../admin/index.js";'],
     ["packages/core/src/db/probe.ts", 'import "../user/index.js";'],
@@ -28,7 +29,7 @@ describe("core module boundaries", () => {
     ["apps/worker/src/probe.ts", 'import "@idp/core/db";'],
     ["packages/core/src/user/probe.ts", 'import "../audit/index.js";'],
     ["packages/core/src/audit/probe.ts", 'import "../db/index.js";'],
-    ["apps/admin-worker/src/probe.ts", 'import "@idp/core/admin";'],
+    ["apps/admin-worker/src/probe.ts", 'import "./domain/index.js";'],
   ])("%s allows %s", async (file, code) => {
     expect(await lintAs(file, code)).not.toContain("no-restricted-imports");
   });
@@ -70,7 +71,7 @@ describe("standards packages import only web standards and their declared standa
 // edges (docs/design/packages.md, "@idp/cloudflare の規則").
 describe("@idp/cloudflare boundaries", () => {
   it.each([
-    ["packages/core/src/admin/probe.ts", 'import "@idp/cloudflare/d1";'],
+    ["packages/core/src/audit/probe.ts", 'import "@idp/cloudflare/d1";'],
     ["packages/core/src/user/probe.ts", 'import "@idp/cloudflare/workers/tls";'],
     ["packages/core/src/user/probe.ts", 'import "../../../cloudflare/src/d1/index.js";'],
     ["packages/cloudflare/src/d1/probe.ts", 'import "@idp/cloudflare/workers/tls";'],

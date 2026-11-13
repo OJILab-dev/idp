@@ -48,6 +48,10 @@ export const adminImportBan = {
         "**/core/src/admin",
         "**/core/src/admin/*",
         "**/admin/*",
+        // The admin use cases live in the admin Worker.
+        "@idp/admin-worker",
+        "@idp/admin-worker/*",
+        "**/admin-worker/**",
       ],
       message: "User-facing code must not depend on the admin modules (docs/design/technology.md).",
     },

@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PROBLEM_KINDS } from "@idp/core/problems";
-import { OPERATION_NAMES } from "@idp/core/admin";
+import { OPERATION_NAMES } from "../src/domain/index.js";
 import { buildOpenApiDocument, renderOpenApi } from "../src/openapi.js";
 
 const SPEC_PATH = join(import.meta.dirname, "..", "..", "..", "contract", "openapi", "admin.json");

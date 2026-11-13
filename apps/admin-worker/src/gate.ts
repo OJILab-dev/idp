@@ -2,7 +2,7 @@
 // cheapest first and the only D1 write last: the host, scheme, and TLS version; the Rate Limiting binding per client
 // IP; the body size; the RFC 9421 signature against the ADMIN_SIGNING_KEYS allowlist; and the nonce. The admin is
 // decided only by the allowlisted key that verified the signature, never by anything the request names.
-import { AdminNonceStoreError, createAdminNonceStore, verifyAdminSignature, type AdminIdentity, type AdminSignatureRefusal } from "@idp/core/admin";
+import { AdminNonceStoreError, createAdminNonceStore, verifyAdminSignature, type AdminIdentity, type AdminSignatureRefusal } from "./domain/index.js";
 import { createD1Database } from "@idp/cloudflare/d1";
 import { isAcceptedTlsVersion } from "@idp/cloudflare/workers/tls";
 import type { AdminConfig } from "./config.js";
