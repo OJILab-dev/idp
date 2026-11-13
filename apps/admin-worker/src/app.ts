@@ -16,14 +16,10 @@ import {
 import { createD1Database } from "@idp/cloudflare/d1";
 import { adminConfig, InvalidConfigError, type AdminConfig, type Env } from "./config.js";
 import { admitRequest } from "./gate.js";
-import { rs256Enabled } from "./rs256.js";
 import { inputField, pathParams, ROUTES, type Route } from "./routes.js";
 
 /** What the gate hands to the routes: the configuration, the admin, the clock, and the body it already read. */
 type AppEnv = { Bindings: Env; Variables: { config: AdminConfig; admin: AdminIdentity; now: number; body: Uint8Array } };
-
-// The two operations that may name RS256; only they pay for the discovery subrequest.
-const NAMES_ALGORITHM = new Set(["client_create", "client_set_id_token_alg"]);
 
 // One structured line per request (docs/design/deployment.md, "ログ"); never a body, token, or secret.
 function log(fields: Readonly<Record<string, unknown>>): void {
@@ -172,9 +168,7 @@ async function handle(c: Context<AppEnv>, route: Route): Promise<Response> {
     admin,
     writerVersion: config.writerVersion,
     now: () => now,
-    rs256Enabled: NAMES_ALGORITHM.has(operation.name)
-      ? await rs256Enabled(config.idp, config.issuer, (reason) => log({ ...line, operation: operation.name, rs256: reason }))
-      : false,
+    rs256Enabled: config.rs256Enabled,
     issuer: config.issuer,
     onFailureAuditError: (error) => log({ ...line, operation: operation.name, failure_audit_error: describe(error) }),
   };

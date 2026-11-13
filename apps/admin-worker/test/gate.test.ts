@@ -17,7 +17,6 @@ async function expectForbiddenWithoutWrites(fx: Fixture, response: Response): Pr
   expect(body).toEqual(FORBIDDEN);
   expect(await auditRows(fx)).toEqual([]);
   expect(await nonceCount(fx)).toBe(0);
-  expect(fx.idpCalls).toEqual([]);
 }
 
 function createUser(options: Parameters<typeof call>[3] = {}): Promise<Response> {

@@ -197,6 +197,12 @@ variable "admin_rate_limit_namespace_id" {
   }
 }
 
+variable "rs256_enabled" {
+  description = "Whether RS256 ID tokens are enabled, the one source of truth for both Workers (docs/design/tokens.md). true requires the RSA key Secret on the IdP Worker, which otherwise refuses every request; false leaves any RSA Secret unread. Terraform does not use it; the deploy passes it to both Workers and checks discovery against it."
+  type        = bool
+  nullable    = false
+}
+
 variable "state_bucket_name" {
   description = "Name of the R2 bucket for Terraform state. scripts/bootstrap-state-bucket.sh creates it before the first init."
   type        = string

@@ -17,7 +17,16 @@ export type Env = {
    * only has to agree with the issuer's host, so a configuration that mixes the modes refuses every request.
    */
   readonly HOSTING_MODE?: string;
-  /** Worker Secrets, each a private JWK as JSON (docs/design/tokens.md, "署名鍵"). Only the Ed25519 current is required. */
+  /**
+   * Whether RS256 ID tokens are enabled, `true` or `false`, from rs256_enabled of the deployment file. It is the
+   * source of truth: `true` requires a valid RSA current key, and anything else leaves the RSA slots unread. Unset
+   * means disabled; any other value refuses every request.
+   */
+  readonly RS256_ENABLED?: string;
+  /**
+   * Worker Secrets, each a private JWK as JSON (docs/design/tokens.md, "署名鍵"). The Ed25519 current is always
+   * required; the RSA current is required, and the RSA slots are read at all, only when RS256_ENABLED is `true`.
+   */
   readonly SIGNING_KEY_ED25519_CURRENT?: string;
   readonly SIGNING_KEY_ED25519_PREVIOUS?: string;
   readonly SIGNING_KEY_RSA_CURRENT?: string;
@@ -46,6 +55,12 @@ export class InvalidConfigError extends Error {
   override readonly name = "InvalidConfigError";
 }
 
+function parseRs256Enabled(value: string | undefined): boolean {
+  if (value === undefined || value === "false") return false;
+  if (value === "true") return true;
+  throw new InvalidConfigError("RS256_ENABLED must be true or false");
+}
+
 function isD1Binding(value: unknown): value is D1Database {
   return typeof value === "object" && value !== null && ["prepare", "batch"].every((m) => typeof (value as Record<string, unknown>)[m] === "function");
 }
@@ -65,7 +80,8 @@ function isRateLimitBinding(value: unknown): value is RateLimit {
  * @returns The configuration.
  * @throws {InvalidConfigError} The D1 binding is missing, the Rate Limiting binding is missing, the assets binding is missing,
  *   the issuer is invalid, the hosting mode is missing or does not match the issuer's host,
- *   the signing keys are invalid, or the version metadata has no version ID.
+ *   RS256_ENABLED is set to something other than `true` or `false`, RS256_ENABLED is `true` without an RSA current
+ *   key, the signing keys are invalid, or the version metadata has no version ID.
  */
 export async function parseWorkerConfig(env: Env): Promise<WorkerConfig> {
   if (!isD1Binding(env.DB)) throw new InvalidConfigError("DB is not a D1 binding");
@@ -91,19 +107,24 @@ export async function parseWorkerConfig(env: Env): Promise<WorkerConfig> {
     if (!(error instanceof InvalidHostingError)) throw error;
     throw new InvalidConfigError(`HOSTING_MODE does not match ISSUER: ${error.message}`, { cause: error });
   }
+  const rs256 = parseRs256Enabled(env.RS256_ENABLED);
   let keys: SigningKeySet;
   try {
     keys = await loadSigningKeys({
       ed25519Current: env.SIGNING_KEY_ED25519_CURRENT,
       ed25519Previous: env.SIGNING_KEY_ED25519_PREVIOUS,
-      rsaCurrent: env.SIGNING_KEY_RSA_CURRENT,
-      rsaPrevious: env.SIGNING_KEY_RSA_PREVIOUS,
+      // While RS256 is disabled an RSA Secret left in place is not read, so it is neither published nor advertised.
+      rsaCurrent: rs256 ? env.SIGNING_KEY_RSA_CURRENT : undefined,
+      rsaPrevious: rs256 ? env.SIGNING_KEY_RSA_PREVIOUS : undefined,
     });
   } catch (error) {
     // The core's message names only the slot and the rule; it never quotes key material.
     if (!(error instanceof InvalidSigningKeyConfigError)) throw error;
     throw new InvalidConfigError(`signing keys: ${error.message}`);
   }
+  // The admin Worker accepts RS256 clients on the same setting, so RS256 enabled without a key to sign with would
+  // register clients whose tokens can never be issued; the deployment is refused instead.
+  if (rs256 && keys.rsa === undefined) throw new InvalidConfigError("RS256_ENABLED is true but SIGNING_KEY_RSA_CURRENT is not set");
   return { db: createD1Database(env.DB), issuer, keys, writerVersion: `idp@${versionId}`, rateLimiter: env.RATE_LIMITER, assets: env.ASSETS };
 }
 

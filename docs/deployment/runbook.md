@@ -93,7 +93,6 @@
 - `op item create` が、標準入力から JSON のテンプレートを受け取ること（段階 3 と 4a。スクリプトは作った後に秘密でないフィールドを読み返して確かめる）
 - `cf build` と `cf deploy --prebuilt --message` が、それぞれの Worker のディレクトリで、宣言した Vite plugin でビルドし、ビルドの成果物と静的なページをそのまま上げること（段階 5。手元では Vite plugin 自身のビルドで、2 つの Worker の成果物と設定が期待どおりになることだけを確かめた）
 - `cf workers get <Worker の名前>` の応答の `subdomain.enabled` と `subdomain.previews_enabled` が、`workers.dev` とプレビューの URL の有効と無効を表すこと（段階 5 の外からの確認）
-- `IDP` の Service Binding の `exportName` が、名前付きのエントリーポイントへのバインディングとして API に届き、IdP の Worker の最初のデプロイの直後から解決すること（段階 5）
 - デプロイ用のトークン（Workers の編集の権限）で、Cloudflare API の「Get a Workers Subdomain」を読めること（`workers.dev` のモードの CI のデプロイ）
 - `workers.dev` が平文の HTTP の要求を Worker に届けるか、自分で https へリダイレクトするか（`workers.dev` のモードの外からの確認は、どちらも受け付けて、どちらが答えたかを記録する）
 - 新しい Worker の `workers.dev` のルートが有効になるまでの時間が、いつも外からの確認の待ち（約 2 分）に収まること、その間の 404 がいつも `text/plain` であること（一度だけ観測した。`custom_domain` のホストで同じことが起きるかも確かめていない）

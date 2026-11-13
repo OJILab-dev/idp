@@ -29,18 +29,9 @@ export function keys(): TestKeys {
   return testKeys;
 }
 
-/** The discovery document the fake IdP Worker returns; `algs` decides whether RS256 is enabled. */
-export function discovery(algs: readonly string[]): unknown {
-  return { issuer: ISSUER, id_token_signing_alg_values_supported: algs };
-}
-
 /** The state of one test. */
 export type Fixture = {
   readonly d1: TestD1;
-  /** What the fake IdP Worker's internal entrypoint returns from discovery(); it may throw. */
-  idpResponse: () => unknown;
-  /** The RPC methods the fake IdP Worker received, in order. */
-  readonly idpCalls: string[];
   /** The keys the fake Rate Limiting binding was called with, in order. */
   readonly limiterKeys: string[];
   /** What the fake Rate Limiting binding answers; it may throw. */
@@ -57,24 +48,15 @@ export function useFixture(): () => Fixture {
   let f: Fixture | undefined;
   beforeEach(async () => {
     const d1 = await createTestD1();
-    const idpCalls: string[] = [];
     const limiterKeys: string[] = [];
     const state: Fixture = {
       d1,
-      idpResponse: () => discovery(["EdDSA"]),
-      idpCalls,
       limiterKeys,
       limiterAnswer: () => ({ success: true }),
       env: () => env,
     };
     const env: Env = {
       DB: d1.db,
-      IDP: {
-        discovery: async () => {
-          idpCalls.push("discovery");
-          return state.idpResponse();
-        },
-      },
       ISSUER,
       ADMIN_HOST,
       HOSTING_MODE: "custom_domain",

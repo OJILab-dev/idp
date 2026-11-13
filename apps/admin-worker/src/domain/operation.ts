@@ -78,8 +78,8 @@ export type AdminContext = {
   /** The current time in UNIX seconds; read once per operation. */
   readonly now: () => number;
   /**
-   * Whether RS256 ID tokens are enabled. The caller derives it from the IdP Worker's discovery and passes false when
-   * it cannot tell (fail-closed, docs/design/idpctl.md).
+   * Whether RS256 ID tokens are enabled. The caller derives it from the deployment's RS256 setting and passes false
+   * when the setting is unset or malformed (fail-closed, docs/design/idpctl.md).
    */
   readonly rs256Enabled: boolean;
   /** The issuer, from which enrollment links are built. */

@@ -5,7 +5,7 @@
 import { bindings, defineConfig, type WorkerConfig as CloudflareWorkerConfig } from "cf/config";
 // @idp/hosting and @idp/issuer point straight at their modules, not at an index: cf evaluates this file with
 // Node's own loader, which does not map an index's `.js` specifiers to `.ts`. Both modules import nothing themselves.
-import { ADMIN_WORKER_NAME, IDP_WORKER_NAME, checkHostingHosts, parseHostingMode } from "@idp/hosting";
+import { ADMIN_WORKER_NAME, checkHostingHosts, parseHostingMode } from "@idp/hosting";
 import { parseIssuer } from "@idp/issuer";
 
 /** The deploy script's environment; every value is untrusted until checked. */
@@ -19,6 +19,8 @@ export type AdminDeployEnv = {
   readonly IDP_ADMIN_RATE_LIMIT_NAMESPACE_ID?: string | undefined;
   /** admin_signing_keys of the deployment settings file, as a JSON array (hosting-modes.md 3.7). */
   readonly IDP_ADMIN_SIGNING_KEYS?: string | undefined;
+  /** rs256_enabled of the deployment settings file, `true` or `false`; the IdP Worker gets the same value. */
+  readonly IDP_RS256_ENABLED?: string | undefined;
 };
 
 const D1_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -66,7 +68,8 @@ function signingKeys(value: string | undefined): string {
  * @throws {InvalidIssuerError} IDP_ISSUER is unset or not exactly `https://<host>`.
  * @throws {Error} IDP_ADMIN_HOST is not a canonical host or equals the issuer host; IDP_D1_DATABASE_ID is not a D1
  *   database UUID; IDP_ADMIN_RATE_LIMIT_NAMESPACE_ID is not a positive integer; or IDP_ADMIN_SIGNING_KEYS is not a
- *   non-empty array of rows of exactly keyid, name, and public_key.
+ *   non-empty array of rows of exactly keyid, name, and public_key; or IDP_RS256_ENABLED is neither `true` nor
+ *   `false`.
  */
 export function adminWorkerConfig(env: AdminDeployEnv): CloudflareWorkerConfig {
   const mode = parseHostingMode(env.IDP_HOSTING_MODE);
@@ -82,6 +85,9 @@ export function adminWorkerConfig(env: AdminDeployEnv): CloudflareWorkerConfig {
   const namespace = env.IDP_ADMIN_RATE_LIMIT_NAMESPACE_ID;
   if (namespace === undefined || !NAMESPACE_ID.test(namespace)) throw new Error("IDP_ADMIN_RATE_LIMIT_NAMESPACE_ID is not a positive integer");
   const allowlist = signingKeys(env.IDP_ADMIN_SIGNING_KEYS);
+  // No default, as for the IdP Worker: both Workers must be built from the same explicit choice.
+  const rs256 = env.IDP_RS256_ENABLED;
+  if (rs256 !== "true" && rs256 !== "false") throw new Error("IDP_RS256_ENABLED must be true or false");
   return {
     name: ADMIN_WORKER_NAME,
     compatibilityDate: "2026-10-01",
@@ -105,7 +111,8 @@ export function adminWorkerConfig(env: AdminDeployEnv): CloudflareWorkerConfig {
       CF_VERSION_METADATA: bindings.versionMetadata(),
       // Counted per client IP before the signature is parsed; the Worker refuses every request without it.
       RATE_LIMITER: bindings.rateLimit({ namespace, simple: { limit: ADMIN_RATE_LIMIT.limit, period: ADMIN_RATE_LIMIT.period } }),
-      IDP: bindings.worker({ worker: IDP_WORKER_NAME, exportName: "IdpInternal" }),
+      // Decides whether a client may be registered with RS256 ID tokens; the Worker treats any other value as false.
+      RS256_ENABLED: bindings.text(rs256),
     },
   };
 }

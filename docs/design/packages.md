@@ -471,7 +471,7 @@ Zod を使うのは `admin/` の入力と出力のスキーマだけで、標準
 | `apps/worker/test/webauthn.test.ts`、`apps/worker/test/fixture.ts` | base64url を `@idp/base64url`、`sha256Base64url` を `@idp/jwk-thumbprint`、パスキーの上限を `core/src/passkeys/`、ソフトウェアの認証器を `packages/webauthn/test/support/` から |
 | `apps/admin-worker/src/gate.ts` | `isAcceptedTlsVersion` を `@idp/cloudflare/workers/tls` から |
 | `apps/worker`、`apps/admin-worker` の D1 のアダプタを使うファイル | `@idp/d1-adapter` を `@idp/cloudflare/d1` に、`@idp/d1-adapter/admin` を `@idp/cloudflare/d1/admin` に |
-| `apps/admin-worker/src/config.ts`、`src/rs256.ts`、`test/rs256-idp.test.ts` | ホスティングと issuer を `@idp/core/hosting` と `@idp/core/issuer` から |
+| `apps/admin-worker/src/config.ts` | ホスティングと issuer を `@idp/core/hosting` と `@idp/core/issuer` から |
 | `apps/admin-worker/src/openapi.ts`、`test/openapi.test.ts` | `PROBLEM_KINDS` と `ProblemKind` を `@idp/core/problems` から |
 | `apps/admin-worker/cloudflare.config.ts` | `apps/worker/cloudflare.config.ts` と同じ |
 | `apps/worker/package.json`、`apps/admin-worker/package.json` | `@idp/d1-adapter` を `@idp/cloudflare` に置き換える。`apps/worker` はテストのために `@idp/base64url` と `@idp/jwk-thumbprint` も足す |

@@ -9,6 +9,7 @@
 # ${STUB_DIR}/probes, one call per line. The model follows the files in ${STUB_DIR}:
 # - issuer_host and admin_host name the two hosts.
 # - idp_state: "ok" serves discovery and JWKS; "before_key" refuses everything with the configuration 500.
+# - discovery_algs: the JSON array discovery serves as id_token_signing_alg_values_supported.
 # - http_state: "worker" is the IdP Worker's own answer (308 to https without credentials, 404 with an Authorization
 #   header or a __Host- cookie); "edge301" is a 301 to https for every plain http request.
 # - admin_state: "forbidden" is the gate's one refusal body; "leaky" adds a reason to it.
@@ -84,7 +85,8 @@ elif [[ "${host}" == "$(cat "${STUB_DIR}/issuer_host")" ]]; then
     case "${path}" in
       /.well-known/openid-configuration*)
         status="200" && content_type="application/json"
-        body="$(jq -nc --arg issuer "https://${host}" '{issuer: $issuer, jwks_uri: ($issuer + "/jwks")}')"
+        body="$(jq -nc --arg issuer "https://${host}" --slurpfile algs "${STUB_DIR}/discovery_algs" \
+          '{issuer: $issuer, jwks_uri: ($issuer + "/jwks"), id_token_signing_alg_values_supported: $algs[0]}')"
         ;;
       /jwks) status="200" && content_type="application/json" && body='{"keys":[{"kid":"stub-kid"}]}' ;;
       *) status="404" ;;

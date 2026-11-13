@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { adminWorkerConfig } from "../cloudflare.config.js";
-import { workerConfig as idpWorkerConfig } from "../../worker/cloudflare.config.js";
 
 const D1_ID = "0f6b6c3e-5d0a-4a7e-9a35-6f1f4f6c2b11";
 // A public, published P-384 key (RFC 6979 Appendix A.2.6) and a keyid of the right form; the build only checks the
@@ -14,6 +13,7 @@ const DEPLOY = {
   IDP_D1_DATABASE_ID: D1_ID,
   IDP_ADMIN_RATE_LIMIT_NAMESPACE_ID: "1002",
   IDP_ADMIN_SIGNING_KEYS: KEYS,
+  IDP_RS256_ENABLED: "false",
 } as const;
 
 describe("the admin Worker's cloudflare.config.ts", () => {
@@ -35,20 +35,6 @@ describe("the admin Worker's cloudflare.config.ts", () => {
     expect(worker.workersDev).toBe(true);
     expect(worker.previewUrls).toBe(false);
     expect(worker.env).toMatchObject({ HOSTING_MODE: { type: "text", value: "workers_dev" } });
-  });
-
-  // The deploy script deploys the IdP Worker first, so the binding's target must be an entrypoint that the IdP
-  // Worker's own configuration exports; a renamed export would otherwise only fail at `cf deploy`.
-  it("binds an entrypoint that the IdP Worker's configuration exports", () => {
-    const idp = idpWorkerConfig({
-      IDP_HOSTING_MODE: DEPLOY.IDP_HOSTING_MODE,
-      IDP_ISSUER: DEPLOY.IDP_ISSUER,
-      IDP_D1_DATABASE_ID: D1_ID,
-      IDP_RATE_LIMIT_NAMESPACE_ID: "1001",
-    });
-    const binding = adminWorkerConfig(DEPLOY).env?.["IDP"];
-    expect(binding).toMatchObject({ type: "worker", worker: idp.name, exportName: "IdpInternal" });
-    expect(Object.keys(idp.exports ?? {})).toContain("IdpInternal");
   });
 
   // cf evaluates this file with Node's own loader, which does not map a `.js` specifier to the `.ts` file.
@@ -80,6 +66,7 @@ describe("the admin Worker's cloudflare.config.ts", () => {
     ["an empty signing-key list", { ...DEPLOY, IDP_ADMIN_SIGNING_KEYS: "[]" }],
     ["signing keys that are not JSON", { ...DEPLOY, IDP_ADMIN_SIGNING_KEYS: "[" }],
     ["a signing-key row with another member", { ...DEPLOY, IDP_ADMIN_SIGNING_KEYS: JSON.stringify([{ keyid: "a".repeat(64), name: "a", public_key: "x", alg: "x" }]) }],
+    ["no RS256 setting", { ...DEPLOY, IDP_RS256_ENABLED: undefined }],
   ])("refuses to build with %s", (_name, env) => {
     expect(() => adminWorkerConfig(env)).toThrow();
   });

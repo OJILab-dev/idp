@@ -27,7 +27,8 @@ usage() {
     "workers.dev subdomain), looks up the D1 database by name, builds both Workers with cf build, applies" \
     "contract/migrations, deploys the IdP Worker and then the admin Worker with cf deploy --prebuilt, and checks" \
     "them from outside:" \
-    "  - discovery and JWKS over https on the issuer host" \
+    "  - discovery and JWKS over https on the issuer host, and RS256 in discovery's" \
+    "    id_token_signing_alg_values_supported exactly when rs256_enabled is true" \
     "  - plain http on the issuer host: the IdP Worker's 308 to https without credentials, and its 404 with an" \
     "    Authorization header or a __Host- cookie (in the workers_dev mode, workers.dev's own redirect is accepted)" \
     "  - the admin Worker's forbidden, with no reason, for an unsigned request" \
@@ -88,7 +89,8 @@ http_probe() {
 check_issuer() {
   local issuer="${1}"
   local before_signing_key="${2}"
-  local workdir="${3}"
+  local rs256_enabled="${3}"
+  local workdir="${4}"
   local result
   # The first probe of the IdP Worker after cf deploy, so its workers.dev route may not be live yet; the later ones
   # (JWKS, plain http) run once discovery has answered.
@@ -104,6 +106,13 @@ check_issuer() {
   [[ "${result%% *}" == "200" ]] || fail "discovery at ${issuer} answered ${result}"
   jq -e --arg issuer "${issuer}" '.issuer == $issuer and .jwks_uri == ($issuer + "/jwks")' "${workdir}/discovery.json" >/dev/null ||
     fail "the discovery document does not name ${issuer} and its /jwks"
+  # rs256_enabled reaches both Workers as a plain variable: the admin Worker accepts RS256 clients on it alone, so the
+  # IdP Worker must advertise RS256 exactly when it is true (docs/design/tokens.md, "署名鍵").
+  jq -e --argjson enabled "${rs256_enabled}" \
+    '.id_token_signing_alg_values_supported | type == "array" and (index("RS256") != null) == $enabled' \
+    "${workdir}/discovery.json" >/dev/null ||
+    fail "discovery at ${issuer} must list RS256 in id_token_signing_alg_values_supported exactly when rs256_enabled is true (it is ${rs256_enabled})"
+  note "discovery advertises RS256 exactly as rs256_enabled (${rs256_enabled}) says"
   result="$(http_probe "${issuer}/jwks" "${workdir}/jwks.json" content_type live_route)"
   [[ "${result%% *}" == "200" ]] || fail "JWKS at ${issuer}/jwks answered ${result}"
   jq -e '.keys | type == "array" and length > 0' "${workdir}/jwks.json" >/dev/null || fail "the JWKS has no key"
@@ -198,6 +207,7 @@ main() {
   local namespace
   local admin_namespace
   local signing_keys
+  local rs256_enabled
   config="$(deployment_config_path "${deployment}")"
   mode="$(hosting_mode "${config}")"
   # The only way to the hosts: workers_dev derives them from workers_dev_subdomain (hosting-modes.md 1.3).
@@ -209,6 +219,7 @@ main() {
   # The full row check (keyid = SHA-256 of a P-384 key); the admin config checks only the shape.
   check_admin_signing_keys "${config}"
   signing_keys="$(jq -c '.admin_signing_keys' "${config}")"
+  rs256_enabled="$(config_boolean "${config}" rs256_enabled)"
 
   if [[ "${ci}" == "true" ]]; then
     # The value is checked by name only: printenv's output is discarded, so xtrace never shows the token.
@@ -249,6 +260,7 @@ main() {
   export IDP_RATE_LIMIT_NAMESPACE_ID="${namespace}"
   export IDP_ADMIN_RATE_LIMIT_NAMESPACE_ID="${admin_namespace}"
   export IDP_ADMIN_SIGNING_KEYS="${signing_keys}"
+  export IDP_RS256_ENABLED="${rs256_enabled}"
 
   # Ignored, so the clean-checkout check cannot see it: an earlier build's output must not be what gets deployed.
   rm -rf "${IDP_REPO_ROOT}/apps/worker/.cloudflare" "${IDP_REPO_ROOT}/apps/admin-worker/.cloudflare"
@@ -262,8 +274,6 @@ main() {
 
   local message
   message="deploy $(git -C "${IDP_REPO_ROOT}" rev-parse HEAD)"
-  # The IdP Worker first: the admin Worker's IDP Service Binding targets its IdpInternal entrypoint, which must exist
-  # in the deployed version before a binding to it is created.
   cf_cli_in apps/worker deploy --prebuilt --message "${message}"
   cf_cli_in apps/admin-worker deploy --prebuilt --message "${message}"
 
@@ -271,7 +281,7 @@ main() {
   workdir="$(mktemp -d)"
   # shellcheck disable=SC2064 # Expand now: workdir is local and gone when the trap runs.
   trap "rm -rf '${workdir}'" EXIT
-  check_issuer "${IDP_ISSUER}" "${before_signing_key}" "${workdir}"
+  check_issuer "${IDP_ISSUER}" "${before_signing_key}" "${rs256_enabled}" "${workdir}"
   if [[ "${before_signing_key}" == "true" ]]; then
     note "plain-http checks skipped: the IdP Worker answers 500 to everything until the signing key is registered"
   else

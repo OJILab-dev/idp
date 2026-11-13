@@ -2,7 +2,7 @@
 // calls one core operation, and problems, Idempotency-Key, paging, and secrets pass through unchanged.
 import { describe, expect, it } from "vitest";
 import type { Env } from "../src/index.js";
-import { auditRows, call, discovery, expectProblem, idempotent, newKey, useFixture, type Fixture } from "./fixture.js";
+import { auditRows, call, expectProblem, idempotent, newKey, useFixture, type Fixture } from "./fixture.js";
 
 const f = useFixture();
 
@@ -18,10 +18,11 @@ async function createGroup(fx: Fixture, name = "Family"): Promise<string> {
   return ((await res.json()) as { group_id: string }).group_id;
 }
 
-async function createClient(fx: Fixture, body: Record<string, unknown> = {}): Promise<Response> {
+async function createClient(fx: Fixture, body: Record<string, unknown> = {}, env?: Env): Promise<Response> {
   return call(fx, "POST", "/v1/clients", {
     body: { client_id: "grafana", name: "Grafana", client_type: "public", redirect_uris: ["https://grafana.example.com/cb"], ...body },
     headers: idempotent(),
+    ...(env === undefined ? {} : { env }),
   });
 }
 
@@ -198,44 +199,19 @@ describe("clients", () => {
     await expectProblem(refused, "validation-failed", 400);
   });
 
-  describe("RS256 enablement from the IdP Worker's discovery", () => {
-    it("refuses RS256 when discovery does not list it", async () => {
-      await expectProblem(await createClient(f(), { id_token_alg: "RS256" }), "algorithm-disabled", 409);
-      expect(f().idpCalls).toEqual(["discovery"]);
-    });
-
-    it("accepts RS256 when discovery lists it", async () => {
-      f().idpResponse = () => discovery(["EdDSA", "RS256"]);
-      expect((await createClient(f(), { id_token_alg: "RS256" })).status).toBe(201);
-      const set = await call(f(), "PUT", "/v1/clients/grafana/id-token-alg", { body: { id_token_alg: "Ed25519" } });
+  describe("RS256 enablement from the deployment setting", () => {
+    it("accepts RS256 when RS256_ENABLED is true", async () => {
+      const env: Env = { ...f().env(), RS256_ENABLED: "true" };
+      expect((await createClient(f(), { id_token_alg: "RS256" }, env)).status).toBe(201);
+      const set = await call(f(), "PUT", "/v1/clients/grafana/id-token-alg", { env, body: { id_token_alg: "Ed25519" } });
       expect(set.status).toBe(200);
     });
 
-    it.each([
-      ["a document that is not an object", () => "<html>"],
-      ["no document", () => null],
-      ["a different issuer", () => ({ issuer: "https://evil.example.com", id_token_signing_alg_values_supported: ["RS256"] })],
-      ["a list that is not an array", () => ({ issuer: "https://idp.example.com", id_token_signing_alg_values_supported: "RS256" })],
-      [
-        "a thrown RPC call (a misconfigured IdP Worker)",
-        () => {
-          throw new Error("unreachable");
-        },
-      ],
-    ])("treats %s as RS256 disabled (fail-closed)", async (_label, response) => {
-      expect((await createClient(f())).status).toBe(201);
-      f().idpResponse = response;
-      await expectProblem(await call(f(), "PUT", "/v1/clients/grafana/id-token-alg", { body: { id_token_alg: "RS256" } }), "algorithm-disabled", 409);
-    });
-
-    it("treats a missing IdP binding as RS256 disabled", async () => {
-      const env = { ...f().env(), IDP: undefined } as unknown as Env;
-      const res = await call(f(), "POST", "/v1/clients", {
-        env,
-        body: { client_id: "grafana", name: "G", client_type: "public", redirect_uris: ["https://g.example.com/cb"], id_token_alg: "RS256" },
-        headers: idempotent(),
-      });
-      await expectProblem(res, "algorithm-disabled", 409);
+    // Fail-closed: only the exact string true enables RS256; an absent or malformed setting refuses it.
+    it.each([undefined, "", "TRUE", "1", "yes"])("treats RS256_ENABLED %j as disabled", async (setting) => {
+      // The fixture's environment has no RS256_ENABLED, so undefined is the unset case.
+      const env: Env = setting === undefined ? f().env() : { ...f().env(), RS256_ENABLED: setting };
+      await expectProblem(await createClient(f(), { id_token_alg: "RS256" }, env), "algorithm-disabled", 409);
     });
   });
 });

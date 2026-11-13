@@ -28,7 +28,7 @@
 - [ ] JWT の `alg` は許可リスト（`Ed25519` と、RS256 を有効にしたときの `RS256`）で固定し、`typ` で ID トークンとアクセストークンを区別する
 - [ ] JWT の検証で `alg` と鍵の種類を結び付ける。`Ed25519` は `kty: OKP` / `crv: Ed25519` の鍵とだけ、`RS256` は RSA の鍵とだけ受け付け、`EdDSA`、`none`、鍵の種類と合わない `alg` は拒否する（RFC 8725 §3.1、RFC 9864 §4.1.2）
 - [ ] `/userinfo` は `alg` が `Ed25519` のアクセストークンだけを受け付ける。`id_token_hint` は `Ed25519` と `RS256` の ID トークンを受け付ける
-- [ ] discovery の `id_token_signing_alg_values_supported` と JWKS は設定された鍵から導き、RSA の鍵がないデプロイでは `RS256` を載せない。JWKS には公開鍵のメンバーと `kid`、`alg`、`use` だけを載せる
+- [ ] discovery の `id_token_signing_alg_values_supported` と JWKS は `rs256_enabled` とそれに従って読んだ鍵から導き、RS256 が無効なデプロイでは `RS256` も RSA の公開鍵も載せない。JWKS には公開鍵のメンバーと `kid`、`alg`、`use` だけを載せる
 - [ ] RS256 が無効な間は、管理用の Worker が client への `RS256` の登録を拒否する。`RS256` を登録した client があるのに RSA の鍵がなければ、その client へのトークンの発行を失敗させ、別のアルゴリズムで署名して返さない
 - [ ] クレームは要求されたスコープの分だけ返す
 - [ ] `/token` と `/userinfo` で、無効化されたユーザーとアクセス可否を再確認する（Pocket ID CVE-2026-43983 の教訓）
@@ -81,7 +81,7 @@
 - [ ] IdP の Worker は、issuer のホスト名以外へのリクエストを、スキームによらず処理せずに 404 で拒否する。リダイレクトの `Location` を要求のホスト名から作らない
 - [ ] IdP の Worker は、issuer のホスト名への平文の HTTP のリクエストのうち、`GET` か `HEAD` で `Authorization` と、名前が `__Host-` で始まる Cookie を持たないものだけを（サービスの親のドメインの Cookie は拒否の理由にしない）、設定した issuer の同じパスとクエリへ 308 でリダイレクトする。ほかの平文のリクエスト（`POST /token` を含む）は、処理せずに 404 で拒否する。平文の要求にはページも返さない
 - [ ] IdP の Worker と管理用の Worker は、`request.cf.tlsVersion` が `TLSv1.2` か `TLSv1.3` でないリクエスト（値がない、知らない値を含む）を、何も処理せずに拒否する。IdP の Worker では静的なページにも効く。ゾーンの TLS の最小バージョンは IdP が持たないので、エッジで TLS 1.0 と 1.1 の接続そのものは成立しうることを、RFC 8996 の例外として記録している（[ドメインの置き場所](domain-placement.md)の共存の設計の 3）
-- [ ] 管理用の Worker の `IDP` の Service Binding は IdP の Worker の内部のエントリポイント `IdpInternal` に向け、公開の経路の TLS とレート制限の確認を、ヘッダーやパスで外す仕組みを持たない。RSA の鍵があるときは、管理用の Worker が RS256 を有効と判断できる
+- [ ] 管理用の Worker は IdP の Worker へのバインディングを持たず、RS256 の client の登録を `RS256_ENABLED` がちょうど `true` のときだけ許す（ないか形が違えば拒否する）。IdP の Worker は `RS256_ENABLED` が `true` なのに RSA の鍵がなければすべてのリクエストを拒否し、`false` なら RSA の Secret を読まない。デプロイの後の確認は、discovery が `rs256_enabled` が `true` のときだけ `RS256` を載せていることを確かめる
 - [ ] IdP の Worker は、自分で答えるパス（静的なページ以外）で、接続元の IP ごとの Rate Limiting バインディング（管理用の Worker とは別の名前空間）の上限を超えたリクエストを 429 で拒否する。バインディングがない、呼び出しが失敗した、接続元の IP が取れない場合も、処理せずに拒否する（fail-closed）。IP をログにも D1 にも書かない
 - [ ] IdP の Terraform は、ゾーンのルールセット（WAF のカスタムルール、レート制限ルール、シングルリダイレクト）、ゾーン全体の設定、ゾーンの単一資源を持たない（[ドメインの置き場所](domain-placement.md)の決定 ③ と共存の設計の 2）。管理用のホスト名の mTLS の割り当ても管理者のクライアント証明書も持たない（[ホスティングのモード](hosting-modes.md)の実装の順番の 7 で外した）。デプロイの設定ファイルに廃止した入力（`admin_allowlist`、`admin_client_certificates`）が残っていれば、Terraform とスクリプトが処理を始める前に止まる（`infra/tests/main.tftest.hcl`、`scripts/test/lib.test.sh`、`scripts/test/generate-admin-key.test.sh`）
 - [ ] 2 つの Worker は、設定のホスティングのモード（`HOSTING_MODE`）と issuer と管理用のホスト名の形が合わなければ、すべての要求を拒否する（[ホスティングのモード](hosting-modes.md)の 1.4）

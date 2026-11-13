@@ -8,6 +8,7 @@ const DEPLOY = {
   IDP_ISSUER: "https://idp.example.com",
   IDP_D1_DATABASE_ID: D1_ID,
   IDP_RATE_LIMIT_NAMESPACE_ID: "1001",
+  IDP_RS256_ENABLED: "false",
 } as const;
 
 describe("cloudflare.config.ts", () => {
@@ -62,6 +63,9 @@ describe("cloudflare.config.ts", () => {
     ["no Rate Limiting namespace", { ...DEPLOY, IDP_RATE_LIMIT_NAMESPACE_ID: undefined }],
     ["a zero namespace", { ...DEPLOY, IDP_RATE_LIMIT_NAMESPACE_ID: "0" }],
     ["a namespace that is not a number", { ...DEPLOY, IDP_RATE_LIMIT_NAMESPACE_ID: "idp" }],
+    // No default: RS256 is offered only when the deployment file says so.
+    ["no RS256 setting", { ...DEPLOY, IDP_RS256_ENABLED: undefined }],
+    ["an RS256 setting that is not true or false", { ...DEPLOY, IDP_RS256_ENABLED: "1" }],
   ])("refuses to build with %s", (_name, env) => {
     expect(() => workerConfig(env)).toThrow();
   });

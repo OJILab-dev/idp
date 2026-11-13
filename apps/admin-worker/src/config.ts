@@ -5,29 +5,15 @@ import type { AdminSigningKey } from "./domain/index.js";
 import { InvalidHostingError, checkHostingHosts, parseHostingMode, type HostingMode } from "@idp/hosting";
 import { parseIssuer, type Issuer } from "@idp/issuer";
 
-/**
- * The IdP Worker's internal entrypoint (`IdpInternal`), reached over the `IDP` Service Binding by RPC. The public
- * fetch path is not used: a binding call carries no request.cf or client IP, so the IdP Worker's TLS and rate-limit
- * checks would refuse it.
- */
-export interface IdpInternalBinding {
-  /**
-   * Reads the IdP Worker's discovery document, computed by the same code as `/.well-known/openid-configuration`.
-   * Read-only and idempotent.
-   *
-   * @returns The document as structured-cloned data; untrusted until the caller checks its shape and issuer.
-   * @throws {Error} The IdP Worker's configuration is invalid or the call failed; the caller treats it as RS256
-   *   disabled.
-   */
-  discovery(): Promise<unknown>;
-}
-
 /** The bindings and variables the deployment gives the admin Worker. Every member is untrusted until parsed. */
 export type Env = {
   /** The D1 database the IdP Worker also binds. */
   readonly DB: D1Database;
-  /** A Service Binding to the IdP Worker's `IdpInternal` entrypoint, read only to learn whether RS256 is enabled. */
-  readonly IDP?: IdpInternalBinding;
+  /**
+   * Whether RS256 ID tokens are enabled: rs256_enabled of the deployment file, the same value the IdP Worker gets.
+   * Only the exact string `true` enables it; unset or any other value means disabled (fail-closed).
+   */
+  readonly RS256_ENABLED?: string;
   /** The issuer URL, the same value as the IdP Worker's; enrollment links are built from it. */
   readonly ISSUER?: string;
   /** The admin hostname, the only host this Worker answers on. */
@@ -45,7 +31,8 @@ export type Env = {
 /** The validated configuration. */
 export type AdminConfig = {
   readonly db: D1Database;
-  readonly idp: IdpInternalBinding | undefined;
+  /** Whether a client may be registered or switched to RS256 ID tokens. */
+  readonly rs256Enabled: boolean;
   readonly issuer: Issuer;
   readonly adminHost: string;
   readonly hostingMode: HostingMode;
@@ -175,11 +162,11 @@ export async function parseAdminConfig(env: Env): Promise<AdminConfig> {
   const signingKeys = await parseSigningKeys(env.ADMIN_SIGNING_KEYS);
   const versionId = env.CF_VERSION_METADATA?.id;
   if (typeof versionId !== "string" || versionId === "") throw new InvalidConfigError("CF_VERSION_METADATA has no version id");
-  // A missing IDP binding is not fatal: it only means RS256 cannot be confirmed, which already fails closed.
-  const idp = isBinding(env.IDP, ["discovery"]) ? env.IDP : undefined;
   return {
     db: env.DB,
-    idp,
+    // Not fatal when unset or malformed: it only refuses RS256, which is the safe answer. The IdP Worker refuses
+    // `true` without an RSA key, and the deploy checks that discovery advertises RS256 exactly when this is `true`.
+    rs256Enabled: env.RS256_ENABLED === "true",
     issuer,
     adminHost,
     hostingMode,
