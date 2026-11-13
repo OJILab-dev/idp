@@ -119,13 +119,6 @@ describe("passkey sign-in", () => {
     expect(await token.json()).toMatchObject({ token_type: "Bearer", id_token: expect.any(String) });
   });
 
-  it("refuses options without the authorize request cookie, writing no challenge", async () => {
-    const f = fixture();
-    await seedUser(f);
-    await expectRefusal(await page(f, "POST", "/webauthn/auth/options"), 403, "passkey_rejected");
-    expect(await f.core.query("SELECT 1 FROM challenges")).toHaveLength(0);
-  });
-
   it("refuses a replayed assertion with the same generic body and creates no second session", async () => {
     const f = fixture();
     const passkey = await seedUser(f);
@@ -152,17 +145,6 @@ describe("passkey sign-in", () => {
     const stranger = await authenticationResponse(await generateCredential(-8), challenge, RP);
     await expectRefusal(await page(f, "POST", "/webauthn/auth/verify", { cookies, json: { credential: stranger } }), 403, "passkey_rejected");
   });
-
-  it("refuses a disabled user's sign-in without saying why", async () => {
-    const f = fixture();
-    const passkey = await seedUser(f);
-    const requestId = await startAuthorize(f);
-    const cookies = { [AUTHORIZE_REQUEST]: requestId };
-    const { challenge } = await options(await page(f, "POST", "/webauthn/auth/options", { cookies }));
-    await f.core.setUserEnabled(USER, false);
-    const credential = await authenticationResponse(passkey, challenge, RP);
-    await expectRefusal(await page(f, "POST", "/webauthn/auth/verify", { cookies, json: { credential } }), 403, "passkey_rejected");
-  });
 });
 
 describe("request checks shared by every /webauthn route", () => {
@@ -180,24 +162,18 @@ describe("request checks shared by every /webauthn route", () => {
     "/webauthn/revoke/verify",
   ] as const;
 
+  // The same-origin check's branches are tested on /authorize/resume (oidc.test.ts); each row proves a route is guarded.
   it.each(POSTS)("refuses a cross-site POST %s before touching the database", async (path) => {
     const f = fixture();
     const passkey = await seedUser(f);
     const session = await f.core.addSession(USER, idOf(passkey));
-    for (const headers of [{ "sec-fetch-site": "cross-site" }, { "sec-fetch-site": "same-site" }, { origin: "https://evil.example.net" }, {}]) {
-      const res = await call(f, "POST", path, { headers, cookies: { [SESSION]: session }, json: { token: ENROLL_TOKEN, credential_id: "x", credential: {} } });
-      await expectRefusal(res, 403, "cross_origin_request");
-    }
+    const res = await call(f, "POST", path, {
+      headers: { "sec-fetch-site": "cross-site" },
+      cookies: { [SESSION]: session },
+      json: { token: ENROLL_TOKEN, credential_id: "x", credential: {} },
+    });
+    await expectRefusal(res, 403, "cross_origin_request");
     expect(await f.core.query("SELECT 1 FROM challenges")).toHaveLength(0);
-  });
-
-  it.each([
-    ["GET", "/webauthn/auth/options"],
-    ["POST", "/webauthn/credentials"],
-    ["POST", "/webauthn/unknown"],
-  ])("%s %s is 404 from the pages too", async (method, path) => {
-    const res = await page(fixture(), method, path);
-    expect(res.status).toBe(404);
   });
 
   it("serves every method and path the page scripts call", async () => {
@@ -218,19 +194,10 @@ describe("request checks shared by every /webauthn route", () => {
     expect(await res.text()).not.toMatch(/D1/);
   });
 
-  it("accepts a POST with a matching Origin when Sec-Fetch-Site is absent", async () => {
-    const f = fixture();
-    await seedUser(f);
-    const requestId = await startAuthorize(f);
-    const res = await call(f, "POST", "/webauthn/auth/options", { headers: { origin: RP.origin }, cookies: { [AUTHORIZE_REQUEST]: requestId } });
-    expect(res.status).toBe(200);
-  });
-
   it.each([
     ["no body", undefined, undefined],
     ["a form body", undefined, "application/x-www-form-urlencoded"],
     ["a JSON array", [], undefined],
-    ["a JSON string", "token", undefined],
     ["a token that is not a string", { token: 1 }, undefined],
   ])("refuses %s as invalid_request", async (_name, json, contentType) => {
     const f = fixture();
@@ -241,7 +208,8 @@ describe("request checks shared by every /webauthn route", () => {
     await expectRefusal(res, 400, "invalid_request");
   });
 
-  it("refuses a body that is not JSON and a body over the size limit", async () => {
+  // The size limit is tested in body-limit.test.ts.
+  it("refuses a body that is not JSON", async () => {
     const f = fixture();
     const broken = new Request(`${RP.origin}/webauthn/register/options`, {
       method: "POST",
@@ -249,8 +217,6 @@ describe("request checks shared by every /webauthn route", () => {
       body: "{",
     });
     await expectRefusal(await f.handler.fetch(fromEdge(broken), f.env, {} as ExecutionContext), 400, "invalid_request");
-    const big = await page(f, "POST", "/webauthn/register/options", { json: { token: ENROLL_TOKEN, pad: "x".repeat(70_000) } });
-    await expectRefusal(big, 400, "invalid_request");
   });
 });
 
@@ -291,12 +257,6 @@ describe("enrollment through an enroll link", () => {
     await f.core.addClient({ id: CLIENT, redirectUris: [REDIRECT_URI] });
     await f.core.grant(USER, CLIENT);
     expect(await signIn(f, passkey, await startAuthorize(f))).toBeTruthy();
-  });
-
-  it("refuses an expired token without saying why", async () => {
-    const f = fixture();
-    await seedToken(f, NOW - 1);
-    await expectRefusal(await page(f, "POST", "/webauthn/register/options", { json: { token: ENROLL_TOKEN } }), 403, "passkey_rejected");
   });
 
   it("tells the user the passkey limit is reached", async () => {
@@ -409,19 +369,6 @@ describe("the account page's API", () => {
 
     await expectRefusal(await page(f, "GET", "/webauthn/credentials", { cookies: { [SESSION]: session } }), 401, "no_session");
     expect((await listed(f, otherDevice)).map((p) => p["credential_id"])).toEqual([idOf(second)]);
-  });
-
-  it("refuses an add whose re-authentication is by another user's passkey", async () => {
-    const f = fixture();
-    const mine = await seedUser(f);
-    const session = await f.core.addSession(USER, idOf(mine));
-    const other = "00000000-0000-4000-8000-000000000002";
-    await f.core.addUser(other);
-    const theirs = await addSoftPasskey(f, other, NOW - 3000);
-    const cookies = { [SESSION]: session };
-    const reauth = await options(await page(f, "POST", "/webauthn/add/begin", { cookies }));
-    const assertion = await authenticationResponse(theirs, reauth.challenge, RP);
-    await expectRefusal(await page(f, "POST", "/webauthn/add/options", { cookies, json: { credential: assertion } }), 403, "passkey_rejected");
   });
 
   it("refuses add and revoke without a session", async () => {

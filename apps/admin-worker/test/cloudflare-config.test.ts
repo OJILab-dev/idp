@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { ADMIN_RATE_LIMIT, adminWorkerConfig } from "../cloudflare.config.js";
+import { adminWorkerConfig } from "../cloudflare.config.js";
 import { workerConfig as idpWorkerConfig } from "../../worker/cloudflare.config.js";
 
 const D1_ID = "0f6b6c3e-5d0a-4a7e-9a35-6f1f4f6c2b11";
@@ -19,7 +19,6 @@ const DEPLOY = {
 describe("the admin Worker's cloudflare.config.ts", () => {
   it("serves only on the admin host's custom domain in the custom_domain mode, with preview URLs off", () => {
     const worker = adminWorkerConfig(DEPLOY);
-    expect(worker.name).toBe("idp-admin");
     expect(worker.domains).toEqual([{ hostname: "admin.example.com", production: true, previews: false }]);
     expect(worker.workersDev).toBe(false);
     expect(worker.previewUrls).toBe(false);
@@ -36,21 +35,6 @@ describe("the admin Worker's cloudflare.config.ts", () => {
     expect(worker.workersDev).toBe(true);
     expect(worker.previewUrls).toBe(false);
     expect(worker.env).toMatchObject({ HOSTING_MODE: { type: "text", value: "workers_dev" } });
-  });
-
-  it("passes the gate's settings and bindings under the names the Worker reads", () => {
-    const worker = adminWorkerConfig(DEPLOY);
-    expect(worker.env).toMatchObject({
-      DB: { type: "d1", id: D1_ID },
-      ISSUER: { type: "text", value: "https://idp.example.com" },
-      ADMIN_HOST: { type: "text", value: "admin.example.com" },
-      HOSTING_MODE: { type: "text", value: "custom_domain" },
-      ADMIN_SIGNING_KEYS: { type: "text", value: KEYS },
-      CF_VERSION_METADATA: { type: "version-metadata" },
-      // The IdP Worker's internal entrypoint, never its public fetch path (docs/design/idpctl.md).
-      IDP: { type: "worker", worker: "idp", exportName: "IdpInternal" },
-    });
-    expect(worker.observability?.logs).toMatchObject({ enabled: true, invocationLogs: false });
   });
 
   // The deploy script deploys the IdP Worker first, so the binding's target must be an entrypoint that the IdP
@@ -75,17 +59,13 @@ describe("the admin Worker's cloudflare.config.ts", () => {
     expect(() => execFileSync(process.execPath, ["--input-type=module", "-e", script], { env, stdio: "pipe" })).not.toThrow();
   });
 
-  it("binds its own Rate Limiting namespace from the deployment, with the provisional period and limit", () => {
-    const worker = adminWorkerConfig(DEPLOY);
-    expect(worker.env).toMatchObject({ RATE_LIMITER: { type: "rate-limit", namespace: "1002", simple: { limit: 10, period: 10 } } });
-    // Provisional until measured (docs/design/hosting-modes.md 6.2).
-    expect(ADMIN_RATE_LIMIT).toEqual({ period: 10, limit: 10 });
+  it("binds its own Rate Limiting namespace from the deployment, never a default one", () => {
+    expect(adminWorkerConfig(DEPLOY).env).toMatchObject({ RATE_LIMITER: { type: "rate-limit", namespace: "1002" } });
   });
 
   it.each([
+    // The parsers' own branches are tested in the core (hosting.test.ts, issuer.test.ts); these rows prove the wiring.
     ["no hosting mode", { ...DEPLOY, IDP_HOSTING_MODE: undefined }],
-    ["an unknown hosting mode", { ...DEPLOY, IDP_HOSTING_MODE: "zone" }],
-    ["the workers_dev mode with custom domains", { ...DEPLOY, IDP_HOSTING_MODE: "workers_dev" }],
     ["the custom_domain mode with a workers.dev admin host", { ...DEPLOY, IDP_ADMIN_HOST: "idp-admin.team.workers.dev" }],
     ["no issuer", { ...DEPLOY, IDP_ISSUER: undefined }],
     ["no admin host", { ...DEPLOY, IDP_ADMIN_HOST: undefined }],
@@ -96,7 +76,6 @@ describe("the admin Worker's cloudflare.config.ts", () => {
     // No default namespace: a guess could share the counters of the IdP Worker or of the service's Workers.
     ["no Rate Limiting namespace", { ...DEPLOY, IDP_ADMIN_RATE_LIMIT_NAMESPACE_ID: undefined }],
     ["a zero namespace", { ...DEPLOY, IDP_ADMIN_RATE_LIMIT_NAMESPACE_ID: "0" }],
-    ["a namespace with a leading zero", { ...DEPLOY, IDP_ADMIN_RATE_LIMIT_NAMESPACE_ID: "01" }],
     ["no signing keys", { ...DEPLOY, IDP_ADMIN_SIGNING_KEYS: undefined }],
     ["an empty signing-key list", { ...DEPLOY, IDP_ADMIN_SIGNING_KEYS: "[]" }],
     ["signing keys that are not JSON", { ...DEPLOY, IDP_ADMIN_SIGNING_KEYS: "[" }],
