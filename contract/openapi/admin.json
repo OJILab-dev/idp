@@ -449,6 +449,13 @@
                               "type": "string"
                             }
                           },
+                          "post_logout_redirect_uris": {
+                            "readOnly": true,
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          },
                           "id_token_alg": {
                             "type": "string",
                             "enum": [
@@ -468,6 +475,7 @@
                           "client_type",
                           "enablement",
                           "redirect_uris",
+                          "post_logout_redirect_uris",
                           "id_token_alg",
                           "created_at"
                         ],
@@ -560,6 +568,14 @@
                   },
                   "redirect_uris": {
                     "minItems": 1,
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "post_logout_redirect_uris": {
+                    "default": [],
                     "maxItems": 10,
                     "type": "array",
                     "items": {
@@ -2422,6 +2438,102 @@
                   "required": [
                     "client_id",
                     "redirect_uris"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem400"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Problem409"
+          },
+          "500": {
+            "$ref": "#/components/responses/Problem500"
+          },
+          "default": {
+            "description": "An RFC 9457 problem; branch on `type`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/clients/{id}/post-logout-redirect-uris": {
+      "put": {
+        "operationId": "client_set_post_logout_redirects",
+        "x-operation-names": [
+          "client_set_post_logout_redirects"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "post_logout_redirect_uris": {
+                    "maxItems": 10,
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "post_logout_redirect_uris"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "readOnly": true,
+                  "type": "object",
+                  "properties": {
+                    "client_id": {
+                      "type": "string"
+                    },
+                    "post_logout_redirect_uris": {
+                      "readOnly": true,
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "client_id",
+                    "post_logout_redirect_uris"
                   ],
                   "additionalProperties": false
                 }

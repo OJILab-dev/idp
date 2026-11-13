@@ -9,6 +9,7 @@ export {
   type ClientRenameResult,
   type ClientRotateSecretResult,
   type ClientSetIdTokenAlgResult,
+  type ClientSetPostLogoutRedirectsResult,
   type ClientSetRedirectsResult,
   type ClientSummary,
   type IdTokenAlg,

@@ -38,7 +38,7 @@
 - `azp` は入れない（§2 で OPTIONAL。拡張を使わない実装は `azp` を使わないことが推奨されている）。
 - `at_hash` は入れない（§3.1.3.6 で認可コードフローでは OPTIONAL。implicit と hybrid のフローは提供しない）。
 - `acr` と `amr` は入れない（§2 で OPTIONAL）。RFC 8176 §2 の `amr` の値では、同期型と端末に固定のパスキーを 1 つの値で正しく表せない（`hwk` はハードウェアで守られた鍵の所持の証明で同期型には当てはまらず、`swk` はソフトウェアで守られた鍵の所持の証明で端末に固定の鍵を過小に表す）。値を BE / BS フラグで出し分けても、RP がそれで判断を変える予定はない。`claims` パラメータに対応しないので、`acr` を Essential として要求されることはない（§5.5.1.1 の場合は起きない）。`acr_values` は無視する。
-- `sid` は入れない（Core のクレームではなく、OIDC のログアウト仕様は実装しない）。
+- `sid` は入れない（Core のクレームではなく、`sid` を使う Front-Channel Logout と Back-Channel Logout は実装しない）。RP-Initiated Logout の `id_token_hint` が今のセッションのものかは、`sub` と `auth_time` をセッションと比べて確かめる（[認証フロー](authentication.md)の「RP からのログアウト」参照）。
 - `preferred_username` は入れない。§5.1 は RP がこの値の一意性に頼ってはならない（MUST NOT）とし、§5.7 は `name` と `preferred_username` を一意な識別子に使ってはならない（MUST NOT）としている。RP は `sub` で利用者を識別する。
 - `scope` のクレームは ID トークンに入れない。
 - アクセストークンには、RFC 9068 §2.2 で REQUIRED の `iss`、`exp`、`aud`、`sub`、`client_id`、`iat`、`jti` を入れ、`scope` も入れる（§2.2.3 で、認可リクエストに `scope` があれば入れるべき（SHOULD））。ヘッダーの `typ` は `at+jwt`（§2.1）。

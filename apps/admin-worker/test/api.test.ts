@@ -29,9 +29,9 @@ async function createClient(fx: Fixture, body: Record<string, unknown> = {}): Pr
 describe("the route table", () => {
   it("exposes every operation exactly once, enable and disable through one enablement-events endpoint", () => {
     const names = ROUTES.flatMap((r) => r.operations.map((o) => o.name)).sort();
-    expect(names).toHaveLength(29);
-    expect(new Set(names).size).toBe(29);
-    expect(ROUTES).toHaveLength(26);
+    expect(names).toHaveLength(30);
+    expect(new Set(names).size).toBe(30);
+    expect(ROUTES).toHaveLength(27);
     const switches = ROUTES.filter((r) => r.operations.length === 2)
       .map((r) => [r.operationId, r.method, r.path, r.operations.map((o) => o.name).sort()])
       .sort();
@@ -279,6 +279,19 @@ describe("clients", () => {
     expect(list.items.map((c) => c.client_id)).toEqual(["grafana"]);
     const disabled = await call(f(), "POST", "/v1/clients/grafana/enablement-events", { body: { enablement: "disabled" }, headers: idempotent() });
     expect(disabled.status).toBe(201);
+  });
+
+  it("registers post-logout redirect URIs at creation and replaces them", async () => {
+    expect((await createClient(f(), { post_logout_redirect_uris: ["https://grafana.example.com/bye"] })).status).toBe(201);
+    const set = await call(f(), "PUT", "/v1/clients/grafana/post-logout-redirect-uris", {
+      body: { post_logout_redirect_uris: ["https://g.example.com/bye"] },
+    });
+    expect(set.status).toBe(200);
+    expect(await set.json()).toEqual({ client_id: "grafana", post_logout_redirect_uris: ["https://g.example.com/bye"] });
+    const list = (await (await call(f(), "GET", "/v1/clients")).json()) as { items: { post_logout_redirect_uris: string[] }[] };
+    expect(list.items[0]?.post_logout_redirect_uris).toEqual(["https://g.example.com/bye"]);
+    const refused = await call(f(), "PUT", "/v1/clients/grafana/post-logout-redirect-uris", { body: { post_logout_redirect_uris: ["http://127.0.0.1/bye"] } });
+    await expectProblem(refused, "validation-failed", 400);
   });
 
   describe("RS256 enablement from the IdP Worker's discovery", () => {

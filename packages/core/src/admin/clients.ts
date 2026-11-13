@@ -1,7 +1,7 @@
 // RP management (docs/design/idpctl.md, docs/design/clients.md): register, rename, set redirect URIs, rotate the
 // secret, set the ID token algorithm, enable and disable, and list. Clients are never deleted, so a client ID is
 // never reused.
-import { clientCreateOutput, clientRenameOutput, clientRotateSecretOutput, clientSetIdTokenAlgOutput, clientSetRedirectsOutput, clientsListOutput } from "./outputs.js";
+import { clientCreateOutput, clientRenameOutput, clientRotateSecretOutput, clientSetIdTokenAlgOutput, clientSetPostLogoutRedirectsOutput, clientSetRedirectsOutput, clientsListOutput } from "./outputs.js";
 import { z } from "zod";
 import {
   classifyRedirectUri,
@@ -32,6 +32,17 @@ const redirectUrisSchema = z
   .max(MAX_REDIRECT_URIS)
   .refine((uris) => new Set(uris).size === uris.length, { message: "must not repeat a URI" });
 
+/** The most post-logout redirect URIs one client may register; the same bound as the redirect URIs. */
+export const MAX_POST_LOGOUT_REDIRECT_URIS = 10;
+
+// RP-Initiated Logout 1.0 §3.1 (authentication.md, "RP からのログアウト"): the https form of the redirect URI rules,
+// for every client type. A post-logout redirect carries no code, so the loopback and custom-scheme forms native apps
+// need are not admitted; zero URIs (no redirect) is allowed.
+const postLogoutRedirectUrisSchema = z
+  .array(z.string().refine((uri) => classifyRedirectUri(uri) === "https", { message: "must be an https URI without a fragment" }))
+  .max(MAX_POST_LOGOUT_REDIRECT_URIS)
+  .refine((uris) => new Set(uris).size === uris.length, { message: "must not repeat a URI" });
+
 function redirectTypeProblem(uris: readonly string[], clientType: ClientType): AdminProblem | undefined {
   const pointers = uris.flatMap((uri, i) => (isRedirectUriAllowed(uri, clientType) ? [] : [`/redirect_uris/${i}`]));
   if (pointers.length === 0) return undefined;
@@ -50,6 +61,7 @@ type ClientCreateInput = {
   readonly name: string;
   readonly client_type: ClientType;
   readonly redirect_uris: readonly string[];
+  readonly post_logout_redirect_uris: readonly string[];
   readonly id_token_alg: IdTokenAlg;
 };
 
@@ -77,6 +89,7 @@ export const clientCreate: WriteOperation<ClientCreateInput, ClientCreateResult>
       name: nameSchema,
       client_type: z.enum(["confidential", "public"]),
       redirect_uris: redirectUrisSchema,
+      post_logout_redirect_uris: postLogoutRedirectUrisSchema.default([]),
       id_token_alg: idTokenAlgSchema.default("Ed25519"),
     })
     .superRefine((value, ctx) => {
@@ -109,16 +122,32 @@ export const clientCreate: WriteOperation<ClientCreateInput, ClientCreateResult>
       writes: [
         {
           sql:
-            "INSERT INTO clients (id, name, client_type, secret_hash, redirect_uris_json, id_token_signed_response_alg, created_at) " +
-            `SELECT ?, ?, ?, ?, ?, ?, ? WHERE ${guard.sql}`,
-          params: [id, input.name, input.client_type, secretHash, JSON.stringify(input.redirect_uris), input.id_token_alg, now, ...guard.params],
+            "INSERT INTO clients (id, name, client_type, secret_hash, redirect_uris_json, post_logout_redirect_uris_json, " +
+            `id_token_signed_response_alg, created_at) SELECT ?, ?, ?, ?, ?, ?, ?, ? WHERE ${guard.sql}`,
+          params: [
+            id,
+            input.name,
+            input.client_type,
+            secretHash,
+            JSON.stringify(input.redirect_uris),
+            JSON.stringify(input.post_logout_redirect_uris),
+            input.id_token_alg,
+            now,
+            ...guard.params,
+          ],
         },
         {
           sql: `INSERT INTO client_enablement_events (client_id, enablement, occurred_at) SELECT ?, 'enabled', ? WHERE ${created.sql}`,
           params: [id, now, ...created.params],
         },
       ],
-      detail: { client_type: input.client_type, id_token_alg: input.id_token_alg, redirect_uris: input.redirect_uris },
+      // An empty post-logout list is the default, so it is recorded only when one was given (idpctl.md).
+      detail: {
+        client_type: input.client_type,
+        id_token_alg: input.id_token_alg,
+        redirect_uris: input.redirect_uris,
+        ...(input.post_logout_redirect_uris.length === 0 ? {} : { post_logout_redirect_uris: input.post_logout_redirect_uris }),
+      },
       secret: secret !== undefined,
       settle(probe) {
         if (probe["taken"] === 1) throw new AdminProblem("already-exists", "A client with this ID already exists");
@@ -218,6 +247,55 @@ export const clientSetRedirects: WriteOperation<
   },
 };
 
+/** The result of client_set_post_logout_redirects. */
+export type ClientSetPostLogoutRedirectsResult = { readonly client_id: string; readonly post_logout_redirect_uris: readonly string[] };
+
+/**
+ * client_set_post_logout_redirects: replaces the RP-Initiated Logout post-logout redirect URI list (https only, for
+ * every client type). An empty list stops post-logout redirects; the same list (same order) succeeds without writing.
+ * The new list is recorded, like the redirect URIs.
+ */
+export const clientSetPostLogoutRedirects: WriteOperation<
+  { readonly client_id: string; readonly post_logout_redirect_uris: readonly string[] },
+  ClientSetPostLogoutRedirectsResult
+> = {
+  name: "client_set_post_logout_redirects",
+  class: { access: "write", concern: "rp" },
+  establishesIdentity: false,
+  idempotent: false,
+  target: { kind: "client", field: "client_id" },
+  input: z.strictObject({ client_id: clientIdSchema, post_logout_redirect_uris: postLogoutRedirectUrisSchema }),
+  http: { method: "PUT", path: "/v1/clients/{id}/post-logout-redirect-uris", status: 200 },
+  output: clientSetPostLogoutRedirectsOutput,
+  async plan(_ctx, input) {
+    const id = input.client_id;
+    const json = JSON.stringify(input.post_logout_redirect_uris);
+    const guard = { sql: "EXISTS (SELECT 1 FROM clients WHERE id = ? AND post_logout_redirect_uris_json IS NOT ?)", params: [id, json] };
+    return {
+      target: `client:${id}`,
+      probe: {
+        sql:
+          "SELECT EXISTS (SELECT 1 FROM clients WHERE id = ?) AS found, " +
+          "EXISTS (SELECT 1 FROM clients WHERE id = ? AND post_logout_redirect_uris_json = ?) AS same",
+        params: [id, id, json],
+      },
+      guard,
+      writes: [
+        {
+          sql: "UPDATE clients SET post_logout_redirect_uris_json = ? WHERE id = ? AND post_logout_redirect_uris_json IS NOT ?",
+          params: [json, id, json],
+        },
+      ],
+      detail: { post_logout_redirect_uris: input.post_logout_redirect_uris },
+      settle(probe) {
+        if (probe["found"] !== 1) throw new AdminProblem("not-found", "The client does not exist");
+        return probe["same"] === 1 ? "noop" : "write";
+      },
+      result: () => ({ client_id: id, post_logout_redirect_uris: input.post_logout_redirect_uris }),
+    };
+  },
+};
+
 /** The result of client_rotate_secret; the secret is returned once and never stored in plain text. */
 export type ClientRotateSecretResult = { readonly client_id: string; readonly client_secret: string };
 
@@ -306,6 +384,7 @@ export type ClientSummary = {
   readonly client_type: ClientType;
   readonly enablement: Enablement;
   readonly redirect_uris: readonly string[];
+  readonly post_logout_redirect_uris: readonly string[];
   readonly id_token_alg: IdTokenAlg;
   readonly created_at: number;
 };
@@ -315,7 +394,7 @@ type ClientsListInput = PageInput & { readonly id_token_alg?: IdTokenAlg | undef
 function clientsPage(input: ClientsListInput): PageQuery {
   return {
     columns:
-      "c.id, c.name, c.client_type, c.redirect_uris_json, c.id_token_signed_response_alg, c.created_at, " +
+      "c.id, c.name, c.client_type, c.redirect_uris_json, c.post_logout_redirect_uris_json, c.id_token_signed_response_alg, c.created_at, " +
       "COALESCE(ce.enablement, 'disabled') AS enablement",
     from: "clients c LEFT JOIN client_enablement ce ON ce.client_id = c.id",
     filters: input.id_token_alg === undefined ? [] : [{ sql: "c.id_token_signed_response_alg = ?", params: [input.id_token_alg] }],
@@ -334,6 +413,7 @@ function toClientSummary(row: SqlRow): ClientSummary {
     client_type: row["client_type"] as ClientType,
     enablement: row["enablement"] as Enablement,
     redirect_uris: JSON.parse(row["redirect_uris_json"] as string) as string[],
+    post_logout_redirect_uris: JSON.parse(row["post_logout_redirect_uris_json"] as string) as string[],
     id_token_alg: row["id_token_signed_response_alg"] as IdTokenAlg,
     created_at: row["created_at"] as number,
   };

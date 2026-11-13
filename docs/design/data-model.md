@@ -281,7 +281,7 @@ CREATE TRIGGER groups_no_delete BEFORE DELETE ON groups
 BEGIN SELECT RAISE(ABORT, 'groups are never deleted'); END;
 ```
 
-マイグレーションは `contract/migrations/` に番号順に置き、各ファイルはこのドキュメントの SQL のブロックと、出てくる順に 1 対 1 で同じ内容にする（ずれはテストで検出する）。適用済みのマイグレーションは書き換えず、変更は次の番号のファイルとして足す。最初のブロックが `0001_init.sql`、2 つ目のブロックが `0002_audit_log_append_only.sql`、3 つ目のブロックが `0003_admin_request_nonces.sql`、4 つ目のブロックが `0004_audit_log_admin_credential.sql` である。
+マイグレーションは `contract/migrations/` に番号順に置き、各ファイルはこのドキュメントの SQL のブロックと、出てくる順に 1 対 1 で同じ内容にする（ずれはテストで検出する）。適用済みのマイグレーションは書き換えず、変更は次の番号のファイルとして足す。最初のブロックが `0001_init.sql`、2 つ目のブロックが `0002_audit_log_append_only.sql`、3 つ目のブロックが `0003_admin_request_nonces.sql`、4 つ目のブロックが `0004_audit_log_admin_credential.sql`、5 つ目のブロックが `0005_clients_post_logout_redirect_uris.sql` である。
 
 `0002_audit_log_append_only.sql` は、監査ログを出来事の表と同じく追記だけの表にする。`0001` の時点では監査ログの更新と削除を拒否するトリガーがなく、「行は削除しない」が共有コアの規律だけに頼っていた。本人による失効の条件のように、監査ログの行があることを前提にする書き込みもあるので、D1 の側で強制する。`REPLACE`（`INSERT OR REPLACE` を含む）は衝突した行を消すときに DELETE のトリガーを起こさない（SQLite「The ON CONFLICT Clause」の REPLACE の説明。DELETE のトリガーは recursive triggers が有効なときだけ起こる）ので、既にある `id` を名指しする挿入も拒否する。共有コアは `id` を名指しせず、D1 の採番に任せる。
 
@@ -326,6 +326,17 @@ CREATE TRIGGER audit_log_admin_credential BEFORE INSERT ON audit_log
 WHEN (NEW.actor = 'admin' AND (NEW.admin_credential IS NULL OR NEW.admin_credential <> 'signing-key'))
   OR (NEW.actor <> 'admin' AND NEW.admin_credential IS NOT NULL)
 BEGIN SELECT RAISE(ABORT, 'audit_log.admin_credential does not match the actor'); END;
+```
+
+`0005_clients_post_logout_redirect_uris.sql` は、client に RP-Initiated Logout 1.0 のログアウト後の戻り先 `post_logout_redirect_uris`（§3.1）の列を足す（[認証フロー](authentication.md)の「RP からのログアウト」、[クライアントの種類](clients.md)参照）。値は完全一致で比べる `https` の URI の JSON の配列で、`redirect_uris_json` と同じく、形は管理用の Worker が書き込みのときに共有コアで検証し、IdP の Worker は読むときに配列の形を確かめて、壊れた行を信用しない。`clients` は更新できる表で、行の削除は `0001` のトリガーがすでに拒否しているので、トリガーは足さない。
+
+デプロイはマイグレーションを Worker より先に適用するので、適用から新しい Worker への切り替えまでの間は、今の Worker がこの列のある D1 で動く。今の管理用の Worker の `client_create` の挿入は列を名指ししないので、既定の空の配列（ログアウト後のリダイレクトなし）で入り、`clients_list` などの読み取りは列を名指しして選ぶので影響を受けない。IdP の Worker はこの列を読まない。`NOT NULL` の列を `ADD COLUMN` で足せるのは既定の値があるときだけ（SQLite「ALTER TABLE」の ADD COLUMN の制約）なので、既存の行も空の配列を持つ。新しい Worker はこの列を読むので、このマイグレーションは同じ PR で入れ、Worker より先に適用する。
+
+```sql
+-- RP-Initiated Logout 1.0 §3.1 の post_logout_redirect_uris。完全一致で比べる https の URI の JSON の配列で、
+-- 形は redirect_uris_json と同じく共有コアが書き込みのときに検証する。今の Worker の挿入はこの列を名指ししないので
+-- 既定の空の配列（ログアウト後のリダイレクトなし）で入り、適用の前後どちらの Worker でも同じに動く
+ALTER TABLE clients ADD COLUMN post_logout_redirect_uris_json TEXT NOT NULL DEFAULT '[]';
 ```
 
 上の 16 テーブルのほかに監査ログ用のテーブル `audit_log` を 1 つ置き、管理操作と本人のパスキー操作を記録する。カラムは OWASP Logging Cheat Sheet の「いつ、どこで、誰が、何を」に対応させ、値の形は [実装に依存しない契約](cross-language-contract.md)で固定する。管理者は `idpctl` の `audit_tail` で、いつでも新しい順に読める。

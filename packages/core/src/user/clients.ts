@@ -53,22 +53,57 @@ export async function loadClient(db: Database, clientId: string): Promise<Regist
     id: clientId,
     clientType,
     secretHash: secretHash as string | null,
-    redirectUris: parseRedirectUris(row["redirect_uris_json"]),
+    redirectUris: parseUriList(row["redirect_uris_json"], "redirect_uris_json"),
     idTokenAlg: alg,
     enabled: row["enablement"] === "enabled",
   };
 }
 
-function parseRedirectUris(value: unknown): readonly string[] {
-  if (typeof value !== "string") throw new CorruptRowError("redirect_uris_json is not text");
+/** A client as RP-Initiated Logout sees it: only what decides a post-logout redirect. */
+export type LogoutClient = {
+  /** RP-Initiated Logout 1.0 §3.1: compared exactly, with no loopback exception; empty when none is registered. */
+  readonly postLogoutRedirectUris: readonly string[];
+  /** Whether the latest `client_enablement_events` row is `enabled`; false when there is none (fail-closed). */
+  readonly enabled: boolean;
+};
+
+/**
+ * Loads what RP-Initiated Logout needs of a client. Kept apart from {@link loadClient} so that the sign-in path never
+ * reads the column migration 0005 added (data-model.md).
+ *
+ * @param db The database.
+ * @param clientId A well-formed client ID.
+ * @returns The client's post-logout redirect URIs and enablement, or `undefined` when no such client exists.
+ * @throws {CorruptRowError} `post_logout_redirect_uris_json` is not a JSON array of non-empty strings.
+ * @throws {DatabaseError} The read failed.
+ */
+export async function loadLogoutClient(db: Database, clientId: string): Promise<LogoutClient | undefined> {
+  const [result] = await db.batch([
+    {
+      sql: `SELECT c.post_logout_redirect_uris_json,
+                   (SELECT ce.enablement FROM client_enablement ce WHERE ce.client_id = c.id) AS enablement
+            FROM clients c WHERE c.id = ?`,
+      params: [clientId],
+    },
+  ]);
+  const row = result?.rows[0];
+  if (row === undefined) return undefined;
+  return {
+    postLogoutRedirectUris: parseUriList(row["post_logout_redirect_uris_json"], "post_logout_redirect_uris_json"),
+    enabled: row["enablement"] === "enabled",
+  };
+}
+
+function parseUriList(value: unknown, column: string): readonly string[] {
+  if (typeof value !== "string") throw new CorruptRowError(`${column} is not text`);
   let parsed: unknown;
   try {
     parsed = JSON.parse(value);
   } catch (cause) {
-    throw new CorruptRowError("redirect_uris_json is not JSON", { cause });
+    throw new CorruptRowError(`${column} is not JSON`, { cause });
   }
   if (!Array.isArray(parsed) || !parsed.every((uri): uri is string => typeof uri === "string" && uri !== "")) {
-    throw new CorruptRowError("redirect_uris_json is not an array of URIs");
+    throw new CorruptRowError(`${column} is not an array of URIs`);
   }
   return parsed;
 }

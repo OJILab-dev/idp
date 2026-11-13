@@ -35,5 +35,7 @@
 
 - リフレッシュトークン：ネイティブアプリ・モバイルアプリ（public client）が必要になったら、ローテーションと再利用検知付きで追加する。リフレッシュ時にもアクセス可否を再確認する。
 - 認可レベル 2・3：`roles` クレーム（宛先アプリの分だけ）と、`resource` + スコープの積集合による API 用トークン。未登録の resource は拒否する。外部のリソースサーバーがアクセストークンを検証するようになったら、RFC 9068 §2.1 の RS256 の例外（[標準準拠](standards-compliance.md)参照）を見直す。
+- Front-Channel Logout 1.0 と Back-Channel Logout 1.0：IdP のセッションの終了を、そのセッションでサインインした RP に知らせる仕組み。今は RP-Initiated Logout 1.0 だけを実装している（[認証フロー](authentication.md)の「RP からのログアウト」）。足すなら、ID トークンへの `sid` の追加と、セッションごとにサインインさせた RP の記録（マイグレーション）が要り、Back-Channel Logout では IdP の Worker から RP への外向きの通信も増える。RP が増え、IdP でのサインアウトを全 RP に伝える必要が出たときに検討する。
+- RP-Initiated Logout のネイティブアプリの戻り先：`post_logout_redirect_uris` は今は https だけを登録できる。ネイティブアプリがログアウト後にアプリへ戻る必要が出たら、逆ドメインのカスタムスキームを public client に許すか検討する（RP-Initiated Logout 1.0 §2 は代わりのスキームを許している）。
 - UI の言語：英語と日本語のほかの言語は、辞書のファイルを足して加える（[認証フロー](authentication.md)の画面と言語を参照）。
 - ログの長期保存：Workers Logs は無料枠では短期間しか残らない。より厳密な記録が要るなら、有料のプランを使うか、この IdP を使わない（[デプロイと設定](deployment.md)のログを参照）。

@@ -5,7 +5,7 @@ OIDC と WebAuthn は、仕様の MUST だけでなくセキュリティ上の S
 | 規格 | 主な準拠ポイント |
 | --- | --- |
 | OpenID Connect Core 1.0 | 認可コードフロー（`response_type=code`）のみ。`prompt`（`none` / `login`）と `max_age` を正しく扱い、`auth_time` と `nonce` を ID トークンに入れる。クレームは要求されたスコープの分だけ返す |
-| OpenID Connect Discovery 1.0 | `/.well-known/openid-configuration` を公開する。各エンドポイントの URL は、issuer に `/authorize`、`/token`、`/userinfo`、`/jwks` を付けたものにする。`id_token_signing_alg_values_supported` は設定された署名鍵から導き、既定は `["Ed25519"]`、RS256 を有効にしたデプロイでは `["Ed25519", "RS256"]` にする（RS256 を無効にしている間は §3 から外れる。下の例外を参照）。§3 で省略すると既定値で対応を意味する項目は、対応しない機能を広告しないように明示する。`response_types_supported: ["code"]`、`subject_types_supported: ["public"]`（どちらも §3 で REQUIRED）、`grant_types_supported: ["authorization_code"]`（省略時の既定は `["authorization_code", "implicit"]`）、`response_modes_supported: ["query"]`（省略時の既定は `["query", "fragment"]`）、`request_uri_parameter_supported: false`（省略時の既定は true）、`request_parameter_supported: false`、`claims_parameter_supported: false` を載せる。省略しても対応を意味しない任意の項目のうち、実装していない機能は載せない。`code_challenge_methods_supported: ["S256"]`（RFC 8414）、`token_endpoint_auth_methods_supported: ["client_secret_basic", "none"]`、`authorization_response_iss_parameter_supported: true`（RFC 9207）を明示する。`scopes_supported` は `openid` と `profile` だけにする |
+| OpenID Connect Discovery 1.0 | `/.well-known/openid-configuration` を公開する。各エンドポイントの URL は、issuer に `/authorize`、`/token`、`/userinfo`、`/jwks`、`/end_session`（`end_session_endpoint`。RP-Initiated Logout 1.0 §2.1）を付けたものにする。`id_token_signing_alg_values_supported` は設定された署名鍵から導き、既定は `["Ed25519"]`、RS256 を有効にしたデプロイでは `["Ed25519", "RS256"]` にする（RS256 を無効にしている間は §3 から外れる。下の例外を参照）。§3 で省略すると既定値で対応を意味する項目は、対応しない機能を広告しないように明示する。`response_types_supported: ["code"]`、`subject_types_supported: ["public"]`（どちらも §3 で REQUIRED）、`grant_types_supported: ["authorization_code"]`（省略時の既定は `["authorization_code", "implicit"]`）、`response_modes_supported: ["query"]`（省略時の既定は `["query", "fragment"]`）、`request_uri_parameter_supported: false`（省略時の既定は true）、`request_parameter_supported: false`、`claims_parameter_supported: false` を載せる。省略しても対応を意味しない任意の項目のうち、実装していない機能は載せない。`code_challenge_methods_supported: ["S256"]`（RFC 8414）、`token_endpoint_auth_methods_supported: ["client_secret_basic", "none"]`、`authorization_response_iss_parameter_supported: true`（RFC 9207）を明示する。`scopes_supported` は `openid` と `profile` だけにする |
 | OAuth 2.0（RFC 6749）と Security BCP（RFC 9700） | implicit と password グラントは提供しない。クライアント認証は client\_secret\_basic（RFC 6749 でサーバーに必須の方式）と、public client 向けの none だけにする。redirect URI は完全一致で、例外はネイティブアプリのループバックのポートだけ（RFC 9700 §2.1）。PKCE ダウングレード対策（RFC 9700 §2.1.1）は、`code_challenge` のない認可リクエストを拒否することで満たす |
 | OAuth 2.0 for Native Apps（RFC 8252） | redirect URI の 3 方式（ループバック、カスタムスキーム、https）をすべて受け付ける。client type を登録時に記録し、public client には毎回ユーザーの操作を求める |
 | OAuth 2.0 for Browser-Based Applications（RFC 10017） | ブラウザだけで動く SPA は受け付けず、BFF（confidential client）にしてもらう |
@@ -14,6 +14,7 @@ OIDC と WebAuthn は、仕様の MUST だけでなくセキュリティ上の S
 | JWT（RFC 7519 / RFC 8725）と JWT アクセストークン（RFC 9068） | `alg` は許可リスト（`Ed25519` と、RS256 を有効にしたときの `RS256`）で固定し、鍵の種類と結び付ける。`Ed25519` は `kty: OKP` / `crv: Ed25519` の鍵とだけ、`RS256` は RSA の鍵とだけ使い、`EdDSA` と `none` を含むそれ以外は拒否する（RFC 8725 §3.1）。アクセストークンは `Ed25519` だけを受け付ける。`typ` で ID トークン（`JWT`）とアクセストークン（`at+jwt`）を区別する。`aud` を必ず検証する。アクセストークンの `aud` は、`resource` の指定がないときの既定のリソースである issuer にする（RFC 9068 §3） |
 | JWS / JWK（RFC 7515 / RFC 7517） | JWKS に `kid` 付きで公開鍵を載せ、ローテーション中は新旧両方を載せる。Ed25519 の鍵は `kty: OKP`、`crv: Ed25519`、`x` で表す（RFC 8037 §2） |
 | 完全指定のアルゴリズム（RFC 9864） | JWS の `alg` は完全指定の `Ed25519`（§2.2、§4.1.1）を使う。§4.1.2 で Deprecated になった多態の `EdDSA` は、発行も受け付けもしない |
+| OpenID Connect RP-Initiated Logout 1.0 | `end_session_endpoint` を公開し、GET と POST で受け付ける。`id_token_hint` は発行者であることを確かめ、期限切れも受け付ける。`post_logout_redirect_uri` は事前登録した値との完全一致だけでリダイレクトする（下記）。Front-Channel Logout 1.0 と Back-Channel Logout 1.0 は実装しない |
 | WebAuthn Level 3（W3C） | 登録と認証の検証手順を省略せずに実装する（下記） |
 
 **OIDC Core で守ること**
@@ -29,6 +30,33 @@ OIDC と WebAuthn は、仕様の MUST だけでなくセキュリティ上の S
 - トークンレスポンスには `Cache-Control: no-store` を付ける。
 - `redirect_uri` へのリダイレクトには 307 を使わない（303 か 302）。
 - サインイン画面と登録画面は、クリックジャッキングと CSRF の対策をする。
+
+**RP-Initiated Logout 1.0 で守ること**
+
+手順の全体は[認証フロー](authentication.md)の「RP からのログアウト」に置く。節ごとの準拠は次のとおり。
+
+| 節 | 要求 | 対応 |
+| --- | --- | --- |
+| §2 | OP は Logout Endpoint で GET と POST の両方に対応しなければならない（MUST） | `/end_session` で両方を受け付ける。GET はクエリ、POST はフォームの本文だけを読む |
+| §2 | `id_token_hint` があれば、OP は自分が発行者であることを確かめなければならない（MUST） | 今の JWKS のどれかの鍵での署名、`typ: JWT`、`iss` の一致を確かめる。通らなければエラーページを返し、ログアウトもリダイレクトもしない |
+| §2 | RP にセッションがあるか最近あったなら、`exp` を過ぎた ID トークンも受け付けるべき（SHOULD） | `exp` を確かめない。期限切れの hint でも、`aud` の client と `sub` を使える |
+| §2 | `client_id` と `id_token_hint` の両方があれば、`client_id` が ID トークンの発行に使ったものと一致することを確かめなければならない（MUST） | hint の `aud`（1 つの文字列）と比べ、違えば `client_id_mismatch` のエラーページを返す |
+| §2 | hint の `sid` が RP の今か最近のセッションに当たらなければ、要求を疑わしいものとして扱うべき（SHOULD）で、断ってもよい（MAY） | `sid` を発行しないので、`sub` と `auth_time` を今のセッションと比べる。当たらなければ確認のページを出し、黙ってはログアウトしない |
+| §2 | OP は OP からもログアウトするか利用者に尋ねるべき（SHOULD）。hint がないか、hint が今の OP のセッションやサインイン中の利用者のものでなければ尋ねなければならない（MUST）。利用者が「はい」と答えたらログアウトしなければならない（MUST） | MUST の場合は必ず確認のページを出し、確認されたらセッションを終わらせる。hint の `sub` と `auth_time` が今のセッションと一致するときだけ尋ねない（下の例外） |
+| §2 | `logout_hint` の値と意味は OP に委ねる | 受け取って無視する |
+| §2 | `ui_locales` の一部または全部に対応していなくてもエラーにすべきでない（SHOULD NOT） | 対応しない言語は飛ばし、`Accept-Language`、英語の順に決める |
+| §2.1 | `end_session_endpoint` を discovery に含めなければならない（MUST）。https でなければならない（MUST） | `<issuer>/end_session` を載せる。issuer は https に固定している |
+| §3 | `id_token_hint` がなければ、リダイレクト先の正当性を確かめる別の手段がない限り、リダイレクトしてはならない（MUST NOT） | hint がないときは、`client_id` で指定した client に事前登録した値との完全一致を、その手段として扱う |
+| §3 | 登録した `post_logout_redirect_uris` のどれとも完全に一致しなければ、リダイレクトしてはならない（MUST NOT） | 文字列の完全一致だけで比べる。ループバックのポートの例外も設けない。一致しなければ IdP のサインアウト済みのページを出す |
+| §3 | `state` があれば、OP はリダイレクトでその値を返す | 一致した URI へのリダイレクトにだけ付ける |
+| §3.1 | `post_logout_redirect_uris` は https を使うべき（SHOULD）。http は confidential client だけが使ってよい（MAY） | 管理者が `idpctl` で登録する。https の URI だけを受け付け、http とカスタムスキームは登録できない（下の決定） |
+| §4 | 検証に失敗した情報は使ってはならず（MUST NOT）、それを必要とする操作は中止しなければならない（MUST）。要求に誤りがあればリダイレクトしてはならない（MUST not） | 誤りのある要求にはエラーページだけを返し、ログアウトもリダイレクトもしない |
+| §4 | OP が利用者をサインインしていないと考えるときのログアウトの要求はエラーではない | セッションがなければ、サインアウト済みとして扱う（リダイレクトの規則は同じ） |
+| §6 | 有効な `id_token_hint` のない要求はサービス妨害の手段になるので、明示の確認を得るべき | 上の §2 の確認の規則で満たす。確認の送信は同一オリジンの `POST` だけで受ける |
+
+- **登録できる URI の決定**：§3.1 は、confidential client に http を、ネイティブアプリにカスタムスキームを許している。この IdP では、まず必要な Web アプリ（confidential client）のために https だけを受け付ける。ネイティブアプリのログアウト後の戻り先が必要になったときに、カスタムスキームを足すか見直す。ループバックの http は、§3.1 が public client に http を許していないので受け付けない。
+- **例外：確認を省く場合（§2 の SHOULD）**：有効な hint の `sub` と `auth_time` が今のセッションと一致するときは、利用者に尋ねずにログアウトする。§2 の MUST の条件（hint がない、hint が今のセッションや利用者のものでない）には当たらず、RP で利用者がサインアウトを選んだ結果として届く要求なので、もう一度尋ねるのは利用者の手間を増やすだけと判断する。攻撃者がこの経路で利用者をログアウトさせるには、今のセッションから発行されたその利用者の ID トークンが要る。
+- **Front-Channel Logout 1.0 と Back-Channel Logout 1.0**：実装しない。IdP はセッションごとにどの RP にサインインさせたかを記録せず、ID トークンに `sid` も入れないので、IdP から RP へ知らせる相手がいない。RP のセッションの終了は RP 自身が行い、IdP のセッションの終了は RP-Initiated Logout で RP から求める（[将来拡張](future-extensions.md)参照）。
 
 **例外：RS256 を既定で無効にする**
 

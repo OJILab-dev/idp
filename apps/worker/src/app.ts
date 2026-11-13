@@ -5,6 +5,7 @@ import {
   authorize,
   buildDiscoveryDocument,
   buildJwks,
+  endSession,
   exchangeToken,
   logout,
   resumeAuthorize,
@@ -12,6 +13,7 @@ import {
   userinfo,
   type AuthorizeDecision,
   type Clock,
+  type EndSessionDecision,
   type OidcDeps,
   type PasskeyDeps,
   type RandomSource,
@@ -19,6 +21,7 @@ import {
 import { isAcceptedTlsVersion, type Issuer } from "@idp/core/shared";
 import { InvalidConfigError, workerConfig, type Env, type WorkerConfig } from "./config.js";
 import { renderErrorPage } from "./error-page.js";
+import { renderLogoutConfirmPage, renderLogoutErrorPage, renderSignedOutPage } from "./logout-page.js";
 import { COOKIES, clearCookie, isSameOrigin, log, readCookie, readForm, writeCookie } from "./http.js";
 import { mountWebauthnRoutes } from "./webauthn.js";
 
@@ -85,6 +88,8 @@ const RATE_LIMITED_PATHS = [
   "/token",
   "/userinfo",
   "/logout",
+  "/end_session",
+  "/end_session/confirm",
   "/webauthn/*",
 ] as const;
 
@@ -272,6 +277,63 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
     clearCookie(c, COOKIES.session);
     log({ route: "logout", status: 204 });
     return c.body(null, 204);
+  });
+
+  // RP-Initiated Logout 1.0 (authentication.md, "RP からのログアウト"). Kept apart from POST /logout, the account
+  // page's same-origin API, because an RP's cross-site GET or form POST is a legitimate request here.
+  function renderEndSession(c: Context<AppEnv>, route: string, decision: EndSessionDecision): Response {
+    log({ route, decision: decision.kind, ...("error" in decision ? { error: decision.error } : {}) });
+    switch (decision.kind) {
+      case "error_page":
+        return c.html(renderLogoutErrorPage(decision.error, decision.locale), 400);
+      case "confirm":
+        return c.html(renderLogoutConfirmPage(decision.locale, decision.form, decision.otherUser), 200);
+      case "redirect":
+        clearCookie(c, COOKIES.session);
+        return redirect(c, decision.location);
+      case "signed_out":
+        clearCookie(c, COOKIES.session);
+        return c.html(renderSignedOutPage(decision.locale), 200);
+    }
+  }
+
+  async function endSessionParams(c: Context<AppEnv>): Promise<readonly (readonly [string, string])[] | undefined> {
+    // A POST is read from its form body only, as at /authorize; parameters in its query are ignored.
+    return c.req.method === "GET" ? [...new URL(c.req.url).searchParams] : readForm(c.req.raw);
+  }
+
+  app.on(["GET", "POST"], "/end_session", async (c) => {
+    const params = await endSessionParams(c);
+    if (params === undefined) {
+      return renderEndSession(c, "end_session", {
+        kind: "error_page",
+        error: "invalid_request",
+        locale: selectUiLocale(undefined, c.req.header("accept-language")),
+      });
+    }
+    const decision = await endSession(deps(c), {
+      params,
+      sessionToken: readCookie(c, COOKIES.session),
+      acceptLanguage: c.req.header("accept-language"),
+      via: c.req.method === "GET" ? "get" : "post",
+    });
+    return renderEndSession(c, "end_session", decision);
+  });
+
+  // The confirmation page posts here. Behind the same-origin check, so only the IdP's own page completes a logout
+  // that was not proven to come from the current session; the carried values are validated again by the core.
+  app.post("/end_session/confirm", async (c) => {
+    const acceptLanguage = c.req.header("accept-language");
+    if (!isSameOrigin(c.req.raw, c.get("config").issuer)) {
+      log({ route: "end_session_confirm", result: "refused", reason: "origin" });
+      return c.html(renderLogoutErrorPage("cross_origin_request", selectUiLocale(undefined, acceptLanguage)), 403);
+    }
+    const params = await endSessionParams(c);
+    if (params === undefined) {
+      return renderEndSession(c, "end_session_confirm", { kind: "error_page", error: "invalid_request", locale: selectUiLocale(undefined, acceptLanguage) });
+    }
+    const decision = await endSession(deps(c), { params, sessionToken: readCookie(c, COOKIES.session), acceptLanguage, via: "confirmation" });
+    return renderEndSession(c, "end_session_confirm", decision);
   });
 
   mountWebauthnRoutes(app, passkeyDeps, options.clock);

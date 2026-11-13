@@ -122,6 +122,8 @@ const DETAIL_MEMBERS: Readonly<Record<string, (value: unknown) => boolean>> = {
   problem: isProblemKind,
   // Redirect URIs are configuration without personal data (data-model.md); each must pass the registration rules.
   redirect_uris: (value) => Array.isArray(value) && value.every((uri) => typeof uri === "string" && classifyRedirectUri(uri) !== null),
+  // RP-Initiated Logout's post-logout redirect URIs: the same kind of configuration, https only.
+  post_logout_redirect_uris: (value) => Array.isArray(value) && value.every((uri) => typeof uri === "string" && classifyRedirectUri(uri) === "https"),
 };
 
 /**

@@ -51,7 +51,7 @@ function problemKindsByStatus(route: Route): ReadonlyMap<number, readonly Proble
 }
 
 // A shared response component per distinct (status, kinds), named by status plus a suffix for a narrower variant,
-// so the 26 endpoints reference a handful of components instead of repeating them.
+// so the 27 endpoints reference a handful of components instead of repeating them.
 function problemComponentName(status: number, kinds: readonly ProblemKind[]): string {
   const idempotent = kinds.some((kind) => IDEMPOTENCY_KINDS.has(kind));
   return `Problem${status}${status === 409 && idempotent ? "Idempotent" : ""}`;

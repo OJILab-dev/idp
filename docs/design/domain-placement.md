@@ -104,7 +104,7 @@ IdP は、ゾーン全体に効く設定（Always Use HTTPS と TLS の最小バ
 
 IdP の Worker の Rate Limiting バインディング：
 
-- IdP の Worker は、ホスト名、スキーム、TLS のバージョンの確認の後、Worker が自分で答えるパス（`/authorize`、`/authorize/resume`、`/token`、`/userinfo`、`/logout`、`/jwks`、discovery、`/webauthn/*`）で、ほかの処理の前に、接続元の IP アドレスをキーにバインディングで数え、上限を超えた要求を 429 で拒否する。期間は 10 秒、上限は仮の値（10 件）にする。実測したら置き換える（[未決事項](open-questions.md)）。
+- IdP の Worker は、ホスト名、スキーム、TLS のバージョンの確認の後、Worker が自分で答えるパス（`/authorize`、`/authorize/resume`、`/token`、`/userinfo`、`/logout`、`/end_session`、`/end_session/confirm`、`/jwks`、discovery、`/webauthn/*`）で、ほかの処理の前に、接続元の IP アドレスをキーにバインディングで数え、上限を超えた要求を 429 で拒否する。期間は 10 秒、上限は仮の値（10 件）にする。実測したら置き換える（[未決事項](open-questions.md)）。
 - 静的なページは数えない。書き込みをせず、ページの読み込み 1 回で 4 件の要求になるので、数えると正規の利用を拒否しかねない（[無料枠](free-tier.md)）。
 - 1 日のリクエスト上限は守らない（Worker に届いた後なので）。守るのは、D1 の書き込み（認証前のチャレンジの行）と CPU 時間で、ゾーンのプランによらず、同じ形で効く。
 - バインディングは近似で、Cloudflare の拠点ごとに別々に数え、結果整合なので、上限を超えることがある（[W3]）。厳密な上限ではなく、単純な大量の要求への備えとして扱う。

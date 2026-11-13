@@ -43,7 +43,7 @@ flowchart LR
   rp["RP アプリ<br/>Grafana など OIDC 対応"]
 
   subgraph worker["IdP の Worker（TypeScript）"]
-    oidc["OIDC エンドポイント<br/>discovery · jwks · authorize · token · userinfo · logout"]
+    oidc["OIDC エンドポイント<br/>discovery · jwks · authorize · token · userinfo · logout · end_session"]
     static["静的アセット<br/>サインイン・登録・アカウントページ（HTML / JS）"]
     passkey["パスキー API<br/>登録・サインイン、本人による追加・失効、チャレンジ検証"]
   end
@@ -60,7 +60,7 @@ flowchart LR
 
   browser --> static
   static --> passkey
-  browser -->|"authorize · logout"| oidc
+  browser -->|"authorize · logout · end_session"| oidc
   rp -->|"discovery · jwks · token · userinfo"| oidc
   oidc --> secret
   idpctl -->|"HTTPS（RFC 9421 の署名）"| adminapi
@@ -71,7 +71,7 @@ flowchart LR
   admin --> d1
 ```
 
-ブラウザは静的アセットのページ（サインイン、登録、アカウント）からパスキー API を呼び、`/authorize` と `/logout` にもアクセスする。アカウントページは、サインイン中の本人が自分のパスキーを一覧し、追加し、失効させるためのページで、サインインは常に RP からの `/authorize` を経由する。RP アプリはブラウザを `/authorize` にリダイレクトし、自身は discovery、JWKS、`/token`、`/userinfo` とだけ通信する。署名鍵を使うのは OIDC エンドポイントだけで、トークンは通常 Ed25519 で署名する（RS256 は RSA の鍵を設定したときだけ有効になる任意の機能）。管理用の Worker は署名鍵を持たず、RS256 が有効かどうかを Service Binding で IdP の Worker の discovery から読む。`idpctl` は要求ごとに管理者の秘密鍵で RFC 9421 の署名を付けて、管理用のホスト名に送る。エッジは何も止めず、署名のないリクエストも管理用の Worker に届く。管理用の Worker は、ゲートで接続元の IP ごとのレート制限を数え、署名を署名鍵の許可リストの公開鍵で検証して管理者を確定し、`nonce` を D1 に記録してリプレイを止めてから操作する。IdP の Worker は、静的なページを含むすべてのリクエストで先に動き、平文の HTTP のリダイレクトと TLS のバージョンの確認を自分で行う（IdP はゾーンのルールセットを持たない。[ドメインの置き場所](domain-placement.md)の決定 ③）。破線は共有コアへの依存で、IdP の Worker は管理系のモジュールに依存しない。ledger や MCP などの拡張も、IdP の Worker の外に足す（[将来拡張](future-extensions.md)参照）。
+ブラウザは静的アセットのページ（サインイン、登録、アカウント）からパスキー API を呼び、`/authorize` と `/logout` にもアクセスする。RP はサインアウトのとき、ブラウザを `/end_session`（RP-Initiated Logout）にリダイレクトして IdP のセッションも終わらせられる。アカウントページは、サインイン中の本人が自分のパスキーを一覧し、追加し、失効させるためのページで、サインインは常に RP からの `/authorize` を経由する。RP アプリはブラウザを `/authorize` にリダイレクトし、自身は discovery、JWKS、`/token`、`/userinfo` とだけ通信する。署名鍵を使うのは OIDC エンドポイントだけで、トークンは通常 Ed25519 で署名する（RS256 は RSA の鍵を設定したときだけ有効になる任意の機能）。管理用の Worker は署名鍵を持たず、RS256 が有効かどうかを Service Binding で IdP の Worker の discovery から読む。`idpctl` は要求ごとに管理者の秘密鍵で RFC 9421 の署名を付けて、管理用のホスト名に送る。エッジは何も止めず、署名のないリクエストも管理用の Worker に届く。管理用の Worker は、ゲートで接続元の IP ごとのレート制限を数え、署名を署名鍵の許可リストの公開鍵で検証して管理者を確定し、`nonce` を D1 に記録してリプレイを止めてから操作する。IdP の Worker は、静的なページを含むすべてのリクエストで先に動き、平文の HTTP のリダイレクトと TLS のバージョンの確認を自分で行う（IdP はゾーンのルールセットを持たない。[ドメインの置き場所](domain-placement.md)の決定 ③）。破線は共有コアへの依存で、IdP の Worker は管理系のモジュールに依存しない。ledger や MCP などの拡張も、IdP の Worker の外に足す（[将来拡張](future-extensions.md)参照）。
 
 ## ドキュメント一覧
 

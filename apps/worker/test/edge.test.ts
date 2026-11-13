@@ -46,7 +46,9 @@ describe("the per-IP rate limit (fail-closed)", () => {
     await call(f, "POST", "/logout");
     await call(f, "POST", "/authorize/resume");
     await call(f, "POST", "/webauthn/auth/options", { json: {} });
-    expect(f.rateLimiter.keys).toEqual(Array.from({ length: 8 }, () => CLIENT_IP));
+    await call(f, "GET", "/end_session");
+    await call(f, "POST", "/end_session/confirm");
+    expect(f.rateLimiter.keys).toEqual(Array.from({ length: 10 }, () => CLIENT_IP));
   });
 
   it("does not count a static page, which writes nothing", async () => {

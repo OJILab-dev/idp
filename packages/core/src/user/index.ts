@@ -12,7 +12,14 @@ export {
   type AuthorizeRedirectError,
   type ResumeInput,
 } from "./authorize.js";
-export { CorruptRowError, loadClient, type RegisteredClient } from "./clients.js";
+export { CorruptRowError, loadClient, loadLogoutClient, type LogoutClient, type RegisteredClient } from "./clients.js";
+export {
+  endSession,
+  type EndSessionDecision,
+  type EndSessionErrorReason,
+  type EndSessionInput,
+  type EndSessionVia,
+} from "./end-session.js";
 export { cryptoRandomSource, systemClock, type Clock, type OidcDeps, type PasskeyDeps, type RandomSource } from "./deps.js";
 export {
   CHALLENGE_LIFETIME_SECONDS,
@@ -83,7 +90,9 @@ export {
   signIdToken,
   verifyAccessToken,
   verifyIdTokenHint,
+  verifyLogoutIdTokenHint,
   type AccessTokenClaims,
+  type LogoutIdTokenHint,
   type AccessTokenInput,
   type GrantedScope,
   type IdTokenClaims,

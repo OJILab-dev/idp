@@ -61,6 +61,8 @@ export type ClientSeed = {
   readonly type?: "confidential" | "public";
   readonly secret?: string;
   readonly redirectUris?: readonly string[];
+  /** Left at the column default (an empty list) when omitted, as a Worker before migration 0005 would write it. */
+  readonly postLogoutRedirectUris?: readonly string[];
   readonly alg?: "Ed25519" | "RS256";
   readonly enabled?: boolean | "no-row";
 };
@@ -165,6 +167,12 @@ export async function createFixture(keys?: SigningKeySet): Promise<Fixture> {
           ],
         },
       ];
+      if (seed.postLogoutRedirectUris !== undefined) {
+        statements.push({
+          sql: "UPDATE clients SET post_logout_redirect_uris_json = ? WHERE id = ?",
+          params: [JSON.stringify(seed.postLogoutRedirectUris), seed.id],
+        });
+      }
       const enabled = seed.enabled ?? true;
       if (enabled !== "no-row") statements.push(enablementEvent("client_enablement_events", "client_id", seed.id, enabled));
       await db.batch(statements);

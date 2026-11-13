@@ -149,6 +149,28 @@ var operationCases = map[string]operationCase{
 		body:   `{"redirect_uris":["https://a.example/cb","https://b.example/cb"]}`,
 		status: 200, response: `{"client_id":"grafana","redirect_uris":["https://a.example/cb","https://b.example/cb"]}`,
 	},
+	"client_set_post_logout_redirects": {
+		args:   []string{"client_set_post_logout_redirects", "grafana", "https://a.example/bye", "https://b.example/bye"},
+		method: http.MethodPut, path: "/v1/clients/grafana/post-logout-redirect-uris",
+		body:   `{"post_logout_redirect_uris":["https://a.example/bye","https://b.example/bye"]}`,
+		status: 200, response: `{"client_id":"grafana","post_logout_redirect_uris":["https://a.example/bye","https://b.example/bye"]}`,
+	},
+	// Without URIs the list is cleared, which stops post-logout redirects: the body carries [], never null.
+	"client_set_post_logout_redirects_clear": {
+		args:   []string{"client_set_post_logout_redirects", "grafana"},
+		method: http.MethodPut, path: "/v1/clients/grafana/post-logout-redirect-uris",
+		body:   `{"post_logout_redirect_uris":[]}`,
+		status: 200, response: `{"client_id":"grafana","post_logout_redirect_uris":[]}`,
+	},
+	"client_create_post_logout": {
+		args: []string{"client_create", "cli", "Command line", "--public", "--redirect-uri", "http://127.0.0.1/callback",
+			"--post-logout-redirect-uri", "https://cli.example/bye", "--post-logout-redirect-uri", "https://cli.example/bye2"},
+		method: http.MethodPost, path: "/v1/clients",
+		body: `{"client_id":"cli","name":"Command line","client_type":"public","redirect_uris":["http://127.0.0.1/callback"],` +
+			`"post_logout_redirect_uris":["https://cli.example/bye","https://cli.example/bye2"]}`,
+		idempotent: true,
+		status:     201, response: `{"client_id":"cli","client_type":"public"}`,
+	},
 	"client_set_id_token_alg": {
 		args:   []string{"client_set_id_token_alg", "grafana", "RS256"},
 		method: http.MethodPut, path: "/v1/clients/grafana/id-token-alg",
@@ -273,8 +295,8 @@ func TestOperationsMatchTheSpec(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("operations\n got %v\nwant %v", got, want)
 	}
-	if len(got) != 29 {
-		t.Fatalf("%d operations, idpctl.md lists 29", len(got))
+	if len(got) != 30 {
+		t.Fatalf("%d operations, idpctl.md lists 30", len(got))
 	}
 	for _, name := range got {
 		if _, ok := operationCases[name]; !ok && !slices.Contains([]string{"client_rotate_secret", "enroll_link_issue"}, name) {
