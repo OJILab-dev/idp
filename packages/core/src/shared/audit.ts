@@ -7,7 +7,7 @@
 import type { SqlStatement, SqlValue } from "./db.js";
 import { isClientId, isCredentialId, isUuidV4 } from "./identifiers.js";
 import { isProblemKind, type ProblemKind } from "./problems.js";
-import { classifyRedirectUri } from "./redirect-uri-registration.js";
+import { classifyRedirectUri, isPostLogoutRedirectUriRegistrable } from "./redirect-uri-registration.js";
 
 /** What an audit row is about: `user:<id>`, `client:<id>`, `group:<id>`, `schema`, or `none`. */
 export type AuditTarget = `user:${string}` | `client:${string}` | `group:${string}` | "schema" | "none";
@@ -122,8 +122,10 @@ const DETAIL_MEMBERS: Readonly<Record<string, (value: unknown) => boolean>> = {
   problem: isProblemKind,
   // Redirect URIs are configuration without personal data (data-model.md); each must pass the registration rules.
   redirect_uris: (value) => Array.isArray(value) && value.every((uri) => typeof uri === "string" && classifyRedirectUri(uri) !== null),
-  // RP-Initiated Logout's post-logout redirect URIs: the same kind of configuration, https only.
-  post_logout_redirect_uris: (value) => Array.isArray(value) && value.every((uri) => typeof uri === "string" && classifyRedirectUri(uri) === "https"),
+  // RP-Initiated Logout's post-logout redirect URIs: the same kind of configuration, with exactly the registration
+  // rule. The check runs only on rows being written, never on stored ones, so tightening it cannot reject history.
+  post_logout_redirect_uris: (value) =>
+    Array.isArray(value) && value.every((uri) => typeof uri === "string" && isPostLogoutRedirectUriRegistrable(uri)),
 };
 
 /**

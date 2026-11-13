@@ -1,6 +1,6 @@
 // The /authorize error page, shown when there is no redirect target that can be trusted (RFC 6749 §4.1.2.1). The
-// Worker's other pages are the RP-Initiated Logout pages in logout-page.ts. It shows a generic sentence and the error type for support, never internal detail
-// (docs/design/authentication.md, "画面と言語").
+// Worker's other pages are the RP-Initiated Logout pages in logout-page.ts. It shows a generic sentence and the error
+// type for support, never internal detail (docs/design/authentication.md, "画面と言語").
 import type { AuthorizeErrorPageReason, UiLocale } from "@idp/core/user";
 
 /** Why the page is shown: the core's reasons, plus a resume request that failed the same-origin check. */

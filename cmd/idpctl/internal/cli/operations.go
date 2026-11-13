@@ -79,7 +79,7 @@ func registerFlags(fs *flag.FlagSet, names []string, f *opFlags) {
 		case "redirect-uri":
 			fs.Var(&f.redirectURIs, "redirect-uri", "redirect URI; repeat for several")
 		case "post-logout-redirect-uri":
-			fs.Var(&f.postLogoutRedirectURIs, "post-logout-redirect-uri", "https URI to return to after RP-Initiated Logout; repeat for several")
+			fs.Var(&f.postLogoutRedirectURIs, "post-logout-redirect-uri", "https URI to return to after RP-Initiated Logout, matched exactly; no fragment, userinfo, localhost, or state query parameter (the IdP appends state); repeat for several")
 		case "secret-out":
 			fs.StringVar(&f.secretOut, "secret-out", "", "new file (mode 0600) that receives the IdP-issued secret")
 		}
@@ -310,7 +310,7 @@ var operations = []operation{
 	},
 	{
 		name: "client_set_post_logout_redirects", synopsis: "<client_id> [<post_logout_redirect_uri>...]",
-		summary: "Replace a client's RP-Initiated Logout redirect URIs; none clears them.",
+		summary: "Replace a client's RP-Initiated Logout redirect URIs (https, exact, no fragment, userinfo, localhost, or state parameter); none clears them.",
 		args:    1, variadic: true, secret: noSecret,
 		send: func(ctx context.Context, c *call, a []string, _ *opFlags) (response, error) {
 			// A copy, so an empty list is sent as [] rather than null.

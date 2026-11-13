@@ -265,6 +265,10 @@ describe("a name never reaches detail_json", () => {
     expect(() => auditSuccessStatement({ ...row, detail: { post_logout_redirect_uris: ["https://app.example.com/bye"] } })).not.toThrow();
     expect(() => auditSuccessStatement({ ...row, detail: { post_logout_redirect_uris: ["http://127.0.0.1/bye"] } })).toThrow(InvalidAuditRowError);
     expect(() => auditSuccessStatement({ ...row, detail: { post_logout_redirect_uris: ["Alice's laptop"] } })).toThrow(InvalidAuditRowError);
+    // The registration rule exactly: a URI with its own state could not have been registered, so it is not recorded.
+    expect(() => auditSuccessStatement({ ...row, detail: { post_logout_redirect_uris: ["https://app.example.com/bye?state=x"] } })).toThrow(
+      InvalidAuditRowError,
+    );
   });
 
   it("rejects an operation name that is not snake_case", () => {
