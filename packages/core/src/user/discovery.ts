@@ -1,11 +1,12 @@
 // The discovery document and the JWKS. Both are derived from the issuer and the configured keys, so they never
 // advertise an algorithm the IdP cannot sign with (docs/design/standards-compliance.md, the Discovery row).
-import type { JwsAlgorithm, PublicJwk } from "@idp/jws";
+import type { JwkSet, JwsAlgorithm } from "@idp/jws";
+import type { ProviderMetadata } from "@idp/oidc-discovery";
 import type { Issuer } from "../shared/index.js";
 import type { SigningKeySet } from "./signing-keys.js";
 
-/** The OpenID Provider Metadata (OIDC Discovery 1.0 §3) the IdP publishes. */
-export type DiscoveryDocument = {
+/** The OpenID Provider Metadata the IdP publishes, with each member narrowed to the value it always has. */
+export type DiscoveryDocument = ProviderMetadata & {
   readonly issuer: string;
   readonly authorization_endpoint: string;
   readonly token_endpoint: string;
@@ -26,9 +27,6 @@ export type DiscoveryDocument = {
   readonly scopes_supported: readonly ["openid", "profile"];
   readonly id_token_signing_alg_values_supported: readonly JwsAlgorithm[];
 };
-
-/** The JWK Set (RFC 7517 §5). */
-export type Jwks = { readonly keys: readonly PublicJwk[] };
 
 /**
  * Lists the ID token signing algorithms the configured keys support: Ed25519 always, RS256 with an RSA key.
@@ -79,7 +77,7 @@ export function buildDiscoveryDocument(issuer: Issuer, keys: SigningKeySet): Dis
  * @param keys The configured keys.
  * @returns The document to serve at `/jwks`.
  */
-export function buildJwks(keys: SigningKeySet): Jwks {
+export function buildJwks(keys: SigningKeySet): JwkSet {
   // publicJwk is built member by member at load time, so no private member can be present to leak.
   return { keys: keys.all.map((key) => key.publicJwk) };
 }

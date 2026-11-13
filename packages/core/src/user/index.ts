@@ -60,7 +60,7 @@ export {
   type TokenSuccessBody,
 } from "./token.js";
 export { userinfo, type UserinfoClaims, type UserinfoInput, type UserinfoResponse } from "./userinfo.js";
-export { buildDiscoveryDocument, buildJwks, idTokenSigningAlgorithms, type DiscoveryDocument, type Jwks } from "./discovery.js";
+export { buildDiscoveryDocument, buildJwks, idTokenSigningAlgorithms, type DiscoveryDocument } from "./discovery.js";
 export {
   InvalidSigningKeyConfigError,
   loadSigningKeys,

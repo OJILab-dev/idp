@@ -126,6 +126,9 @@ importers:
       '@idp/jws':
         specifier: workspace:*
         version: link:../jws
+      '@idp/oidc-discovery':
+        specifier: workspace:*
+        version: link:../oidc-discovery
       '@idp/pkce':
         specifier: workspace:*
         version: link:../pkce
@@ -176,6 +179,8 @@ importers:
       '@idp/base64url':
         specifier: workspace:*
         version: link:../base64url
+
+  packages/oidc-discovery: {}
 
   packages/pkce:
     dependencies:
