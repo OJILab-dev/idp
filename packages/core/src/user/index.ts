@@ -50,7 +50,6 @@ export {
   type SignInVerifyResult,
 } from "./webauthn/sign-in.js";
 export { asUiLocale, selectUiLocale, type UiLocale } from "./locale.js";
-export { isRegisteredRedirectUri, matchesRegisteredRedirectUri } from "./redirect-uri.js";
 export { SESSION_LIFETIME_SECONDS, findActiveSession, hasAccess, logout, type ActiveSession } from "./sessions.js";
 export {
   exchangeToken,

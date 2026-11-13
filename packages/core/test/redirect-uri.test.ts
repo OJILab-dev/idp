@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { classifyRedirectUri, isRedirectUriAllowed } from "../src/shared/index.js";
-import { matchesRegisteredRedirectUri } from "../src/user/index.js";
+import { matchesRegisteredRedirectUri } from "@idp/oauth-native-apps";
 import { vectors } from "./vectors.js";
 
 describe("matchesRegisteredRedirectUri (contract vectors)", () => {
