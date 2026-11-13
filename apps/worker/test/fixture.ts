@@ -1,14 +1,14 @@
 // The core's OIDC fixture (a local D1 with the migrations, a settable clock, a counting random source) behind the
 // Worker's fetch handler, so the HTTP layer is tested end to end against the real schema.
 import { afterEach, beforeEach, expect } from "vitest";
-import { createFixture, type Fixture as CoreFixture } from "../../../packages/core/test/oidc-fixture.js";
-import { generateEd25519Jwk } from "../../../packages/core/test/keys.js";
+import { createFixture, type Fixture as CoreFixture } from "./domain/oidc-fixture.js";
+import { generateEd25519Jwk } from "./domain/keys.js";
 import { generateCredential, type SoftCredential } from "../../../packages/webauthn/test/support/webauthn-authenticator.js";
 import { base64urlEncode } from "@idp/base64url";
 import { createHandler } from "../src/index.js";
 import type { Env } from "../src/config.js";
 
-export { CONFIDENTIAL_SECRET, NOW, PKCE } from "../../../packages/core/test/oidc-fixture.js";
+export { CONFIDENTIAL_SECRET, NOW, PKCE } from "./domain/oidc-fixture.js";
 
 export const ISSUER = "https://idp.example.com";
 export const USER = "00000000-0000-4000-8000-000000000001";

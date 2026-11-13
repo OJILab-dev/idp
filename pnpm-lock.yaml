@@ -87,12 +87,39 @@ importers:
 
   apps/worker:
     dependencies:
+      '@idp/accept-language':
+        specifier: workspace:*
+        version: link:../../packages/accept-language
+      '@idp/base64url':
+        specifier: workspace:*
+        version: link:../../packages/base64url
       '@idp/cloudflare':
         specifier: workspace:*
         version: link:../../packages/cloudflare
       '@idp/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@idp/cose-key':
+        specifier: workspace:*
+        version: link:../../packages/cose-key
+      '@idp/jwk-thumbprint':
+        specifier: workspace:*
+        version: link:../../packages/jwk-thumbprint
+      '@idp/jws':
+        specifier: workspace:*
+        version: link:../../packages/jws
+      '@idp/oauth-native-apps':
+        specifier: workspace:*
+        version: link:../../packages/oauth-native-apps
+      '@idp/oidc-discovery':
+        specifier: workspace:*
+        version: link:../../packages/oidc-discovery
+      '@idp/pkce':
+        specifier: workspace:*
+        version: link:../../packages/pkce
+      '@idp/webauthn':
+        specifier: workspace:*
+        version: link:../../packages/webauthn
       hono:
         specifier: 4.13.13
         version: 4.13.13
@@ -100,12 +127,6 @@ importers:
       '@cloudflare/vite-plugin':
         specifier: 2.0.0-beta.v.4
         version: 2.0.0-beta.v.4(@types/node@26.6.5)(vite@8.3.5(@types/node@26.6.5))(workerd@1.20261019.1)
-      '@idp/base64url':
-        specifier: workspace:*
-        version: link:../../packages/base64url
-      '@idp/jwk-thumbprint':
-        specifier: workspace:*
-        version: link:../../packages/jwk-thumbprint
       vite:
         specifier: 8.3.5
         version: 8.3.5(@types/node@26.6.5)
@@ -137,33 +158,19 @@ importers:
 
   packages/core:
     dependencies:
-      '@idp/accept-language':
-        specifier: workspace:*
-        version: link:../accept-language
       '@idp/base64url':
         specifier: workspace:*
         version: link:../base64url
-      '@idp/cose-key':
-        specifier: workspace:*
-        version: link:../cose-key
-      '@idp/jwk-thumbprint':
-        specifier: workspace:*
-        version: link:../jwk-thumbprint
-      '@idp/jws':
-        specifier: workspace:*
-        version: link:../jws
       '@idp/oauth-native-apps':
         specifier: workspace:*
         version: link:../oauth-native-apps
-      '@idp/oidc-discovery':
+    devDependencies:
+      '@idp/jwk-thumbprint':
         specifier: workspace:*
-        version: link:../oidc-discovery
+        version: link:../jwk-thumbprint
       '@idp/pkce':
         specifier: workspace:*
         version: link:../pkce
-      '@idp/webauthn':
-        specifier: workspace:*
-        version: link:../webauthn
 
   packages/cose-key:
     dependencies:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateRsaJwk } from "../../../packages/core/test/keys.js";
+import { generateRsaJwk } from "./domain/keys.js";
 import type { Env } from "../src/config.js";
 import { call, useFixture } from "./fixture.js";
 

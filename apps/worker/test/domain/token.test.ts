@@ -13,7 +13,7 @@ import {
   verifyAccessToken,
   type OidcDeps,
   type TokenResponse,
-} from "../src/user/index.js";
+} from "../../src/domain/index.js";
 import {
   CONFIDENTIAL_SECRET,
   PKCE,

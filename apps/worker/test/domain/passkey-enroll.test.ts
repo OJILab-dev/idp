@@ -3,11 +3,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { base64urlEncode } from "@idp/base64url";
 import { sha256Base64url } from "@idp/jwk-thumbprint";
-import { MAX_PASSKEYS_PER_USER } from "../src/passkeys/index.js";
-import { enrollOptions, enrollVerify, type CreationOptionsJson } from "../src/user/index.js";
+import { MAX_PASSKEYS_PER_USER } from "@idp/core/passkeys";
+import { enrollOptions, enrollVerify, type CreationOptionsJson } from "../../src/domain/index.js";
 import { NOW } from "./oidc-fixture.js";
 import { WRITER_VERSION, createPasskeyFixture, idOf, rp, type PasskeyFixture } from "./passkey-fixture.js";
-import { generateCredential, registrationResponse, type CeremonyOverrides, type SoftCredential } from "../../webauthn/test/support/webauthn-authenticator.js";
+import { generateCredential, registrationResponse, type CeremonyOverrides, type SoftCredential } from "../../../../packages/webauthn/test/support/webauthn-authenticator.js";
 
 const USER = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const OTHER_USER = "7c9e6679-7425-40de-944b-e07fc1f90ae7";

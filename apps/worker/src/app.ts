@@ -1,5 +1,5 @@
 // The IdP Worker's routes. This layer only reads the request into the core's input types and renders the core's
-// decisions; every OIDC rule (validation order, redirects, codes, tokens) lives in @idp/core/user.
+// decisions; every OIDC rule (validation order, redirects, codes, tokens) lives in src/domain.
 import { Hono, type Context } from "hono";
 import {
   authorize,
@@ -17,7 +17,7 @@ import {
   type OidcDeps,
   type PasskeyDeps,
   type RandomSource,
-} from "@idp/core/user";
+} from "./domain/index.js";
 import { isAcceptedTlsVersion } from "@idp/cloudflare/workers/tls";
 import type { Issuer } from "@idp/core/issuer";
 import { InvalidConfigError, workerConfig, type Env, type WorkerConfig } from "./config.js";

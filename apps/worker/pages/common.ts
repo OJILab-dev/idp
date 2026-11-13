@@ -1,8 +1,8 @@
 // What the three pages share: the language, the messages, and the JSON calls to the Worker. The pages are static
 // assets, so every check that matters happens in the Worker; this code only drives the WebAuthn ceremonies.
-// The core's language rules, imported from their own module rather than the @idp/core/user barrel: it has no imports,
+// The domain's language rules, imported from their own module rather than the domain barrel: it has no imports,
 // so the page bundle carries no server code (tokens, SQL) and needs no Worker types.
-import { asUiLocale, selectUiLocale, type UiLocale } from "../../../packages/core/src/user/locale.js";
+import { asUiLocale, selectUiLocale, type UiLocale } from "../src/domain/locale.js";
 import { en, type MessageKey } from "./locales/en.js";
 
 export type { UiLocale };

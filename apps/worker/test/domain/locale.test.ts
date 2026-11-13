@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { selectUiLocale } from "../src/user/index.js";
-import { vectors } from "./vectors.js";
+import { selectUiLocale } from "../../src/domain/index.js";
+import { vectors } from "../../../../packages/core/test/vectors.js";
 
 describe("selectUiLocale (contract vectors)", () => {
   it.each(vectors.ui_locale)("$case", ({ ui_locales, accept_language, locale }) => {

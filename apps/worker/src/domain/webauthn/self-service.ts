@@ -8,10 +8,10 @@ import {
   passkeyBelowLimitCondition,
   passkeyRevocableCondition,
   userEnabledCondition,
-} from "../../passkeys/index.js";
-import { auditSuccessStatement } from "../../audit/index.js";
-import { isCredentialId } from "../../identifiers/index.js";
-import type { SqlCondition, SqlValue } from "../../db/index.js";
+} from "@idp/core/passkeys";
+import { auditSuccessStatement } from "@idp/core/audit";
+import { isCredentialId } from "@idp/core/identifiers";
+import type { SqlCondition, SqlValue } from "@idp/core/db";
 import type { PasskeyDeps } from "../deps.js";
 import { findActiveSession, type ActiveSession } from "../sessions.js";
 import {

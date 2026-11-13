@@ -4,7 +4,7 @@
 // send (a header, a path). The admin Worker therefore calls this RPC method instead, which only a binding to this
 // named entrypoint can reach, and which computes the discovery document with the same code as /.well-known.
 import { WorkerEntrypoint } from "cloudflare:workers";
-import { buildDiscoveryDocument, type DiscoveryDocument } from "@idp/core/user";
+import { buildDiscoveryDocument, type DiscoveryDocument } from "./domain/index.js";
 import { workerConfig, type Env } from "./config.js";
 
 /**

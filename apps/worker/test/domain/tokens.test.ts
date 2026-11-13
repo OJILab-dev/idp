@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { signJwt } from "@idp/jws";
-import { isRandomTokenFormat } from "../src/identifiers/index.js";
-import { parseIssuer } from "../src/issuer/index.js";
+import { isRandomTokenFormat } from "@idp/core/identifiers";
+import { parseIssuer } from "@idp/core/issuer";
 import {
   InvalidTokenError,
   SigningAlgorithmUnavailableError,
@@ -16,9 +16,9 @@ import {
   type AccessTokenClaims,
   type IdTokenClaims,
   type SigningKeySet,
-} from "../src/user/index.js";
+} from "../../src/domain/index.js";
 import { generateEd25519Jwk, generateRsaJwk } from "./keys.js";
-import { vectors } from "./vectors.js";
+import { vectors } from "../../../../packages/core/test/vectors.js";
 
 const issuer = parseIssuer("https://idp.example.com");
 const otherIssuer = parseIssuer("https://other.example.com");

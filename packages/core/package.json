@@ -10,18 +10,14 @@
     "./identifiers": "./src/identifiers/index.ts",
     "./issuer": "./src/issuer/issuer.ts",
     "./passkeys": "./src/passkeys/index.ts",
-    "./problems": "./src/problems/index.ts",
-    "./user": "./src/user/index.ts"
+    "./problems": "./src/problems/index.ts"
   },
   "dependencies": {
-    "@idp/accept-language": "workspace:*",
     "@idp/base64url": "workspace:*",
-    "@idp/cose-key": "workspace:*",
-    "@idp/jws": "workspace:*",
-    "@idp/oauth-native-apps": "workspace:*",
-    "@idp/oidc-discovery": "workspace:*",
-    "@idp/pkce": "workspace:*",
-    "@idp/webauthn": "workspace:*",
-    "@idp/jwk-thumbprint": "workspace:*"
+    "@idp/oauth-native-apps": "workspace:*"
+  },
+  "devDependencies": {
+    "@idp/jwk-thumbprint": "workspace:*",
+    "@idp/pkce": "workspace:*"
   }
 }

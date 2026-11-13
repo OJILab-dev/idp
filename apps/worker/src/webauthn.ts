@@ -1,6 +1,6 @@
 // The /webauthn/* API the three pages call (docs/design/authentication.md): the passkey sign-in, the enrollment
 // through an enroll link, and the account page's list, add, and revoke. Each route reads the request into one core
-// use case and maps its typed result to JSON; every WebAuthn rule lives in @idp/core/user.
+// use case and maps its typed result to JSON; every WebAuthn rule lives in src/domain.
 import type { Context, Hono } from "hono";
 import {
   addBegin,
@@ -17,7 +17,7 @@ import {
   type PasskeyDeps,
   type PasskeyRejection,
   type PasskeyRejectionReason,
-} from "@idp/core/user";
+} from "./domain/index.js";
 import { COOKIES, clearCookie, isSameOrigin, isSameOriginFetch, log, readCookie, readJsonObject, writeCookie } from "./http.js";
 import type { AppEnv } from "./app.js";
 

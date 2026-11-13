@@ -3,7 +3,7 @@
 // passkey, disabled user, audit row, and the foreign-key cascade of a revocation).
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { sha256Base64url } from "@idp/jwk-thumbprint";
-import { MAX_PASSKEYS_PER_USER } from "../src/passkeys/index.js";
+import { MAX_PASSKEYS_PER_USER } from "@idp/core/passkeys";
 import {
   addBegin,
   addOptions,
@@ -12,7 +12,7 @@ import {
   revokeVerify,
   type CreationOptionsJson,
   type RequestOptionsJson,
-} from "../src/user/index.js";
+} from "../../src/domain/index.js";
 import { NOW } from "./oidc-fixture.js";
 import { createPasskeyFixture, idOf, rp, type PasskeyFixture } from "./passkey-fixture.js";
 import {
@@ -21,7 +21,7 @@ import {
   registrationResponse,
   type CeremonyOverrides,
   type SoftCredential,
-} from "../../webauthn/test/support/webauthn-authenticator.js";
+} from "../../../../packages/webauthn/test/support/webauthn-authenticator.js";
 
 const USER = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const OTHER_USER = "7c9e6679-7425-40de-944b-e07fc1f90ae7";

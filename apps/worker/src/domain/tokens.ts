@@ -2,8 +2,8 @@
 // claims; the builders emit exactly those, so a claim the design rules out (azp, at_hash, acr, amr, sid, email,
 // preferred_username, scope in the ID token) cannot appear.
 import { InvalidJwsError, signJwt, verifyJws, type JwsAlgorithm, type JwsVerificationOptions, type VerifiedJws } from "@idp/jws";
-import { isClientId, isRandomTokenFormat, isUuidV4, randomToken } from "../identifiers/index.js";
-import type { Issuer } from "../issuer/index.js";
+import { isClientId, isRandomTokenFormat, isUuidV4, randomToken } from "@idp/core/identifiers";
+import type { Issuer } from "@idp/core/issuer";
 import type { SigningKey, SigningKeySet } from "./signing-keys.js";
 
 /** The `typ` header: `JWT` for ID tokens, `at+jwt` for access tokens (RFC 9068 §2.1), so neither passes as the other. */

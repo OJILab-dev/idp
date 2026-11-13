@@ -9,7 +9,7 @@ import {
   resumeAuthorize,
   signIdToken,
   type AuthorizeDecision,
-} from "../src/user/index.js";
+} from "../../src/domain/index.js";
 import { generateEd25519Jwk } from "./keys.js";
 import { PKCE, createFixture, issuer, type Fixture } from "./oidc-fixture.js";
 
