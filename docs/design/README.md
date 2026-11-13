@@ -1,7 +1,5 @@
 # Design Doc for IdP
 
-Nov 7, 2026 · @Shinra Yamakawa
-
 ## 概要とゴール
 
 Cloudflare Workers の無料枠だけで動く、パスキー専用の最小構成 OIDC IdP を自作する。対象は自分と家族のセルフホストアプリで、管理は手元の CLI から行う。
@@ -89,6 +87,7 @@ flowchart LR
 | [セキュリティ要件チェックリスト](security-checklist.md) | e2e の攻撃ケースとして実装する要件の一覧（実際の CVE 事例付き） |
 | [管理 CLI と管理用の Worker（idpctl）](idpctl.md) | 別ホスト名の管理用の Worker と Go の `idpctl` による管理、RFC 9421 の署名と署名鍵の許可リストによる管理者の確定、REST の管理 API（エラー、Idempotency-Key、ページング）、IdP が発行する秘密の扱い、break-glass |
 | [実装に依存しない契約](cross-language-contract.md) | SQL・エンコーディング・ID・鍵の形式・テストベクタと、Go と TypeScript をつなぐ管理 API の仕様と管理者の署名の形の取り決め |
+| [インフラの構成](infrastructure.md) | Cloudflare の上の要素のつながり（2 つの Worker、名前付きのエントリーポイントへの Service Binding、D1、`idpctl`、RP）と、デプロイのパイプラインの図 |
 | [デプロイと設定](deployment.md) | アカウントの移植性、ホスティングのモードの入力と `workers.dev` の固定の警告、デプロイごとの入力の一覧と直書きの禁止、ホスト名を設定値で与える仕組み、変更時の影響、Cloudflare アカウント、Terraform とスクリプトの分担、デプロイのパイプライン、API トークン、鍵の生成スクリプト、ログ、署名鍵と D1 のバックアップ |
 | [ドメインの置き場所](domain-placement.md) | IdP をホスト名のゾーンと同じアカウント（典型的には仕えるサービスのアカウント）に置く決定（A2）と理由、B か A1 を選ぶ条件、ゾーンをサービスと共有するときの共存の設計（ゾーンの単一資源を持たない）、残るリスク、検討した選択肢 |
 | [ホスティングのモード](hosting-modes.md) | カスタムドメインと `workers.dev` の 2 つのモードの切り替え、`workers.dev` の issuer と RP ID、両方のモードでの RFC 9421 の署名による管理者の認証（mTLS を外す）、管理用の Worker のレート制限、実装の順番（2026-11-10 に運用者が承認） |
