@@ -11,6 +11,9 @@ import { ISSUER } from "./idp.js";
 /** The RP stand-in's redirect URI; Chromium maps rp.test to the stand-in's local HTTPS server (support/rp.ts). */
 export const REDIRECT_URI = "https://rp.test/callback";
 
+/** The RP stand-in's RP-Initiated Logout return address, registered for every seeded client. */
+export const POST_LOGOUT_REDIRECT_URI = "https://rp.test/signed-out";
+
 /** A registered client as the RP stand-in knows it. */
 export type SeededClient = {
   readonly clientId: string;
@@ -37,7 +40,8 @@ export interface Admin {
    */
   createUser(name: string): Promise<SeededUser>;
   /**
-   * Creates an enabled client whose only redirect URI is {@link REDIRECT_URI}, and grants it to the user.
+   * Creates an enabled client whose only redirect URI is {@link REDIRECT_URI} and only post-logout redirect URI is
+   * {@link POST_LOGOUT_REDIRECT_URI}, and grants it to the user.
    *
    * @param type The client type; a confidential client gets a secret.
    * @param userId The user to grant the client to.
@@ -96,7 +100,13 @@ export function adminFor(d1: D1Database): Admin {
     },
     async createClient(type, userId) {
       const clientId = `${type}-${crypto.randomUUID().slice(0, 8)}`;
-      const created = await run("client_create", { client_id: clientId, name: `RP ${clientId}`, client_type: type, redirect_uris: [REDIRECT_URI] });
+      const created = await run("client_create", {
+        client_id: clientId,
+        name: `RP ${clientId}`,
+        client_type: type,
+        redirect_uris: [REDIRECT_URI],
+        post_logout_redirect_uris: [POST_LOGOUT_REDIRECT_URI],
+      });
       await run("grant_add", { client_id: clientId, principal: `user:${userId}` });
       const secret = created["client_secret"];
       return typeof secret === "string" ? { clientId, type, secret } : { clientId, type };

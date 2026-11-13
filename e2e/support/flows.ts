@@ -26,6 +26,8 @@ export async function enrolledUser(admin: Admin, page: Page, authenticators: Aut
 export type SignedIn = {
   readonly sub: string;
   readonly idToken: Readonly<Record<string, unknown>>;
+  /** The ID token as issued, for an RP-Initiated Logout `id_token_hint`. */
+  readonly idTokenJwt: string;
 };
 
 function decodeJwtPayload(jwt: string): Readonly<Record<string, unknown>> {
@@ -59,5 +61,5 @@ export async function finishCodeFlow(page: Page, idp: LocalIdp, client: SeededCl
   expect(info.status, info.body).toBe(200);
   const claims = JSON.parse(info.body) as { readonly sub: string };
   expect(claims.sub).toBe(idToken["sub"]);
-  return { sub: claims.sub, idToken };
+  return { sub: claims.sub, idToken, idTokenJwt: tokens.id_token };
 }
