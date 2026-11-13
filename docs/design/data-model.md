@@ -357,7 +357,7 @@ ALTER TABLE clients ADD COLUMN post_logout_redirect_uris_json TEXT NOT NULL DEFA
 - 失敗の行の `target` は、入力の検証を通った対象の ID にする。存在しない ID を指定した失敗（`not-found`）も、検証を通った ID をそのまま入れる。ID がまだ採番されていない作成の失敗や、ID の形式が不正な失敗は `none` にし、形式が不正な値そのものは書かない。
 - break-glass で手で書く行（[管理 CLI と管理用の Worker](idpctl.md)の break-glass を参照）は、`actor` を `break_glass`、`result` を `success` とし、管理者の列を持たない。基盤の権限の API トークンでは管理者を確かめられないので、名前や証明書を自己申告で書かない。トリガーの付け外しの行は `target` を `schema` にし、外したトリガーの名前を `detail_json` に入れる。
 - OWASP の「記録から除くデータ」に従い、セッション ID、トークン、シークレット、登録トークンは書かない。`detail_json` にも入れず、登録リンクの発行では有効期限だけを残す。
-- 行は更新も削除もしない（`0002_audit_log_append_only.sql` のトリガーで拒否する）。家族規模の件数なら、無料枠の DB サイズ（500 MB）に対して十分小さい。
+- 行は更新も削除もしない（`0002_audit_log_append_only.sql` のトリガーで拒否する）。少人数規模の件数なら、無料枠の DB サイズ（500 MB）に対して十分小さい。
 
 サインインは監査ログに書かず、IdP の Worker のログに任せる（サインイン自体はチャレンジ、セッション、sign count を D1 に書く）。パスキーで署名を検証するセレモニー（サインインと、本人による追加と失効の直前の再認証）は、どれも検証に成功したときに `sign_count` と `last_used_at` を同じバッチで更新し、sign count の後退の検知（[標準準拠](standards-compliance.md)参照）も同じ規則で行う。期限切れの行は発行時に片付けるので、Cron は使わない。有効かどうかは取り出すときに必ず `expires_at` で判定するので、片付けが遅れても安全性は変わらない（容量にだけ影響する）。
 

@@ -2,7 +2,7 @@
 
 ## 概要とゴール
 
-Cloudflare Workers の無料枠だけで動く、パスキー専用の最小構成 OIDC IdP を自作する。対象は自分と家族のセルフホストアプリで、管理は手元の CLI から行う。
+Cloudflare Workers の無料枠だけで動く、パスキー専用の最小構成 OIDC IdP を自作する。管理は手元の CLI から行う。
 
 **背景**
 
