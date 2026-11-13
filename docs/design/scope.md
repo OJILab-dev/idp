@@ -6,8 +6,8 @@
 
 この IdP は趣味のプロジェクトで、セキュリティと統制は確立した製品より意図して弱い。そのため、ほかのサービスの認証に影響しうる機能は入れない。IdP が侵害されても、影響はこの IdP を信頼すると決めた自分の RP の中にとどまらなければならない。すべての機能の提案をこの原則と照らし、IdP のトークンや信頼が外のサービスに届くものは、作らないか作り直す。
 
-- IdP を、ほかのサービス（クラウドの Workload Identity Federation など）が信頼する issuer にしない。
-- 外部のトークンを受け付けるときは、読むだけの信頼にとどめ、外部の基盤に書き込まず、外部の基盤の上で何もしない。その結果として発行するトークンは、IdP に登録した RP だけで使えるものにする（[Workload Identity Federation](workload-identity-federation.md)参照）。
+- IdP を、ほかのサービス（クラウドなど）が信頼する issuer にしない。
+- 外部のサービスに書き込んだり、外部のサービスの上で何かをしたりする機能を持たない。
 
 | 機能 | 判断 | 理由・備考 |
 | --- | --- | --- |
@@ -30,7 +30,6 @@
 | ブラウザだけで動く SPA（public client）と client\_secret\_post | 作らない | SPA は BFF を置いて Web アプリとして登録する（RFC 10017）。confidential client の認証は client\_secret\_basic だけにする |
 | リフレッシュトークン | 作らない | Secure by Default の方針。必要が生じたら、ローテーションと再利用検知を前提に再検討する |
 | アプリ内ロール・API スコープ（認可レベル 2・3） | 後回し | 必要になったらマイグレーションでテーブルを足す |
-| IdP をクラウドなど外部のサービスが信頼する issuer にする（Workload Identity Federation の issuer の側） | 作らない | 上の原則。IdP の侵害が外部のサービスの資格情報に及ぶ（[Workload Identity Federation](workload-identity-federation.md)の付録） |
-| 外部のワークロードのトークンを受け付け、自分の RP あてのトークンを発行する（Workload Identity Federation） | 提案中（運用者のレビュー待ち） | 宛先を登録した RP だけにして上の原則を守る設計を[Workload Identity Federation](workload-identity-federation.md)に置いた。決まったら、この行とパスキーの行（「人の唯一の認証手段」）を書き換える |
+| Workload Identity Federation（どちらの方向も） | 作らない（2026-11-13 に検討して却下） | IdP をクラウドやほかのサービスが信頼する issuer にしない。GitHub Actions の OIDC のトークンなど外部のワークロードのトークンも、トークン交換（RFC 8693）でも JWT bearer のグラント（RFC 7523）でも受け付けない。前者は上の原則に反し、後者は抱えないと決めた攻撃面を増やす（[将来拡張](future-extensions.md)の「検討して却下したもの」） |
 | 課金・権利（entitlements） | IdP に入れない | 別サービス（ledger）で管理する |
 | パスワード / TOTP / SAML / LDAP / ソーシャルログイン | 作らない | 思想の外 |
