@@ -13,7 +13,7 @@ import {
 } from "../../shared/index.js";
 import { CorruptRowError } from "../clients.js";
 import type { PasskeyDeps } from "../deps.js";
-import type { StoredCredential } from "./verify.js";
+import type { StoredCredential } from "@idp/webauthn";
 
 // The algorithms the IdP offers, in the order it prefers them (WebAuthn Level 3 §5.4; docs/design/standards-compliance.md):
 // EdDSA over Ed25519, then ES256, then RS256. Each is one @idp/cose-key verifies, so a registered key always verifies.

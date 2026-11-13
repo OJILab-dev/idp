@@ -5,7 +5,7 @@ import { base64urlEncode } from "@idp/base64url";
 import type { Database, SqlStatement, SqlStatementResult } from "../src/shared/index.js";
 import type { PasskeyDeps } from "../src/user/index.js";
 import { createFixture, issuer, type Fixture } from "./oidc-fixture.js";
-import { generateCredential, type SoftCredential, type TestAlgorithm } from "./webauthn-authenticator.js";
+import { generateCredential, type SoftCredential, type TestAlgorithm } from "../../webauthn/test/support/webauthn-authenticator.js";
 
 export const rp = { rpId: issuer.rpId, origin: issuer.origin };
 

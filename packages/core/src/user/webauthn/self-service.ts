@@ -47,7 +47,7 @@ import {
   type AuthenticationResponse,
   type RegistrationResponse,
   type VerifiedAuthentication,
-} from "./verify.js";
+} from "@idp/webauthn";
 
 /** The result of {@link addBegin} and {@link revokeBegin}: request options for the re-authentication. */
 export type ReauthOptionsResult = { readonly kind: "options"; readonly options: RequestOptionsJson } | PasskeyRejection;

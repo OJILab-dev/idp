@@ -1,9 +1,9 @@
-// Verification of WebAuthn registration (Level 3 §7.1) and authentication (§7.2) responses, limited to what the IdP
-// asks for: attestation "none" (the client may still pass packed self attestation, §5.1.3), the three COSE algorithms
-// of cose.ts, user verification required, one fixed origin and RP ID, and no extensions. Every step the IdP's options
-// make applicable is performed; the step numbers in the comments are those of §7.1 and §7.2.
+// Verification of WebAuthn registration (Level 3 §7.1) and authentication (§7.2) responses for one fixed scope: the
+// RP asks for attestation "none" (the client may still pass packed self attestation, §5.1.3), offers only the COSE
+// algorithms of @idp/cose-key, requires user verification, has one origin and RP ID, is never embedded cross-origin,
+// and requests no extensions. Every step that scope makes applicable is performed; the step numbers in the comments
+// are those of §7.1 and §7.2.
 import { InvalidBase64urlError, base64urlDecode, base64urlEncode } from "@idp/base64url";
-import type { Issuer } from "../../shared/index.js";
 import { InvalidCborError, decodeCbor, decodeCborPrefix } from "@idp/cbor";
 import { InvalidCoseKeyError, importCosePublicKey, verifyCoseSignature } from "@idp/cose-key";
 
@@ -12,17 +12,20 @@ export class WebAuthnVerificationError extends Error {
   override readonly name = "WebAuthnVerificationError";
 }
 
-/** The RP the responses must be bound to; both values come from the issuer. */
-export type RelyingParty = Pick<Issuer, "rpId" | "origin">;
+/** The Relying Party the responses must be bound to: its RP ID (§5.1.2) and its origin. */
+export type RelyingParty = {
+  readonly rpId: string;
+  readonly origin: string;
+};
 
-/** The parts of a `PublicKeyCredential.toJSON()` registration response the IdP reads, decoded. */
+/** The parts of a `PublicKeyCredential.toJSON()` registration response the verifier reads, decoded. */
 export type RegistrationResponse = {
   readonly credentialId: string;
   readonly clientDataJSON: Uint8Array;
   readonly attestationObject: Uint8Array;
 };
 
-/** The parts of a `PublicKeyCredential.toJSON()` authentication response the IdP reads, decoded. */
+/** The parts of a `PublicKeyCredential.toJSON()` authentication response the verifier reads, decoded. */
 export type AuthenticationResponse = {
   readonly credentialId: string;
   readonly clientDataJSON: Uint8Array;
@@ -178,8 +181,8 @@ function verifyClientData(bytes: Uint8Array, type: "webauthn.create" | "webauthn
   if (data["type"] !== type) fail("clientDataJSON type is wrong");
   if (data["challenge"] !== challenge) fail("clientDataJSON challenge does not match");
   if (data["origin"] !== rp.origin) fail("clientDataJSON origin is not the issuer");
-  // The IdP is never embedded in another site's frame (frame-ancestors 'none'), so a cross-origin ceremony is not
-  // the IdP's own page; topOrigin only appears in one.
+  // The RP in scope is never embedded in another site's frame (frame-ancestors 'none'), so a cross-origin ceremony is
+  // not its own page; topOrigin only appears in one.
   if (data["crossOrigin"] === true || data["topOrigin"] !== undefined) fail("clientDataJSON is cross-origin");
 }
 
@@ -218,7 +221,8 @@ function parseAuthenticatorData(bytes: Uint8Array): AuthenticatorData {
 }
 
 async function sha256(bytes: Uint8Array): Promise<Uint8Array> {
-  return new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  // Web Crypto takes a view over an ArrayBuffer; a copy also accepts a view over a SharedArrayBuffer.
+  return new Uint8Array(await crypto.subtle.digest("SHA-256", new Uint8Array(bytes)));
 }
 
 function equalBytes(a: Uint8Array, b: Uint8Array): boolean {

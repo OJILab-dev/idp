@@ -28,7 +28,7 @@ import {
   parseAuthenticationResponse,
   verifyAuthentication,
   type AuthenticationResponse,
-} from "./verify.js";
+} from "@idp/webauthn";
 
 /** The result of {@link signInOptions}. */
 export type SignInOptionsResult = { readonly kind: "options"; readonly options: RequestOptionsJson } | PasskeyRejection;

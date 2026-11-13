@@ -3,7 +3,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { authenticationResponse, generateCredential, registrationResponse, type SoftCredential } from "../../../packages/core/test/webauthn-authenticator.js";
+import { authenticationResponse, generateCredential, registrationResponse, type SoftCredential } from "../../../packages/webauthn/test/support/webauthn-authenticator.js";
 import { base64urlEncode } from "@idp/base64url";
 import { sha256Base64url } from "@idp/jwk-thumbprint";
 import { MAX_PASSKEYS_PER_USER } from "../../../packages/core/src/shared/index.js";

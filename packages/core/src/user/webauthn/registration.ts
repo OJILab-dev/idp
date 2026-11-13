@@ -11,7 +11,7 @@ import {
 } from "../../shared/index.js";
 import type { PasskeyDeps } from "../deps.js";
 import { allOf, condition } from "./ceremony.js";
-import type { VerifiedRegistration } from "./verify.js";
+import type { VerifiedRegistration } from "@idp/webauthn";
 
 /** The registration and where it came from. */
 export type NewPasskey = {
