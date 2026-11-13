@@ -39,7 +39,7 @@ describe("user_create", () => {
     });
   });
 
-  it.each([[""], [" Alice"],["a".repeat(65)], ["Ali\u0000ce"], ["Ali ce"], ["é"]])(
+  it.each([[""], [" Alice"], ["a".repeat(65)], ["Ali\u0000ce"], ["Ali ce"], ["é"]])(
     "rejects the name %j with validation-failed at /name and a failure row targeting none",
     async (name) => {
       await expect(run(h(), userCreate, { name })).rejects.toMatchObject({ kind: "validation-failed", pointers: ["/name"] });

@@ -80,6 +80,7 @@ describe("registration (§7.1)", () => {
     ["the get type", { type: "webauthn.get" }],
     ["another challenge", { challenge: base64urlEncode(new Uint8Array(32)) }],
     ["another origin", { origin: "https://evil.example.com" }],
+    ["a subdomain origin", { origin: "https://sub.idp.example.com" }],
     ["crossOrigin true", { crossOrigin: true }],
     ["a topOrigin", { topOrigin: "https://evil.example.com" }],
     ["another RP ID", { rpId: "example.com" }],
