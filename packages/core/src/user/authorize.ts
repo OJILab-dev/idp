@@ -3,6 +3,7 @@
 // §4.1.2.1), and after that every error goes to the validated redirect_uri with iss and state (RFC 9207, RFC 6749
 // §4.1.2.1). The HTTP layer only renders the returned decision.
 import { sha256Base64url } from "@idp/jwk-thumbprint";
+import { isS256CodeChallenge } from "@idp/pkce";
 import { isClientId, isRandomTokenFormat, type Issuer, type SqlRow } from "../shared/index.js";
 import { CorruptRowError, loadClient, type RegisteredClient } from "./clients.js";
 import type { OidcDeps } from "./deps.js";
@@ -214,7 +215,7 @@ async function validateRequest(deps: OidcDeps, params: Params, locale: UiLocale)
 
   // S256 only; an absent method means plain (RFC 7636 §4.3), which is rejected like an explicit one.
   const codeChallenge = single(params, "code_challenge");
-  if (codeChallenge === undefined || !isRandomTokenFormat(codeChallenge)) return fail("invalid_request");
+  if (codeChallenge === undefined || !isS256CodeChallenge(codeChallenge)) return fail("invalid_request");
   if (single(params, "code_challenge_method") !== "S256") return fail("invalid_request");
 
   const prompt = parsePrompt(single(params, "prompt"));

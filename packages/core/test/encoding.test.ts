@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { InvalidBase64urlError, base64urlDecode, base64urlEncode } from "@idp/base64url";
 import { sha256Base64url } from "@idp/jwk-thumbprint";
+import { s256CodeChallenge } from "@idp/pkce";
 import { hexToBytes, vectors } from "./vectors.js";
 
 describe("base64url", () => {
@@ -27,6 +28,6 @@ describe("sha256Base64url", () => {
   });
 
   it.each(vectors.pkce_s256)("derives the S256 challenge ($source)", async ({ verifier, challenge }) => {
-    expect(await sha256Base64url(verifier)).toBe(challenge);
+    expect(await s256CodeChallenge(verifier)).toBe(challenge);
   });
 });
