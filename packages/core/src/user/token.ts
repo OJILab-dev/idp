@@ -2,6 +2,7 @@
 // checked before it is authenticated, and every check on the code runs before the code is consumed, so a failed
 // request never burns a code (security-checklist.md, Pocket ID CVE-2026-28513).
 import { sha256Base64url } from "@idp/jwk-thumbprint";
+import { isCodeVerifier, s256CodeChallenge } from "@idp/pkce";
 import { isClientId, isRandomTokenFormat, type SqlRow } from "../shared/index.js";
 import { CorruptRowError, loadClient, type RegisteredClient } from "./clients.js";
 import type { OidcDeps } from "./deps.js";
@@ -42,9 +43,6 @@ export type TokenResponse = {
   readonly body: TokenSuccessBody | { readonly error: TokenErrorCode };
 };
 
-// RFC 7636 §4.1: 43 to 128 unreserved characters.
-const CODE_VERIFIER = /^[A-Za-z0-9._~-]{43,128}$/;
-
 // RFC 6749 §5.1 and §5.2: token responses carry secrets and must not be cached.
 const NO_STORE: Readonly<Record<string, string>> = { "Cache-Control": "no-store", Pragma: "no-cache" };
 
@@ -84,7 +82,7 @@ export async function exchangeToken(deps: OidcDeps, input: TokenInput): Promise<
   const code = param("code");
   const redirectUri = param("redirect_uri");
   const codeVerifier = param("code_verifier");
-  if (code === undefined || redirectUri === undefined || codeVerifier === undefined || !CODE_VERIFIER.test(codeVerifier)) {
+  if (code === undefined || redirectUri === undefined || codeVerifier === undefined || !isCodeVerifier(codeVerifier)) {
     return failure("invalid_request", deps);
   }
   if (!isRandomTokenFormat(code)) return failure("invalid_grant", deps);
@@ -105,7 +103,7 @@ export async function exchangeToken(deps: OidcDeps, input: TokenInput): Promise<
     stored.expiresAt <= now ||
     stored.clientId !== client.id ||
     stored.redirectUri !== redirectUri ||
-    (await sha256Base64url(codeVerifier)) !== stored.codeChallenge
+    (await s256CodeChallenge(codeVerifier)) !== stored.codeChallenge
   ) {
     return failure("invalid_grant", deps);
   }

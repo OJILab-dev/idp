@@ -15,6 +15,7 @@
     "@idp/digest-fields": "workspace:*",
     "@idp/http-message-signatures": "workspace:*",
     "@idp/jws": "workspace:*",
+    "@idp/pkce": "workspace:*",
     "@idp/structured-fields": "workspace:*",
     "@idp/webauthn": "workspace:*",
     "@idp/jwk-thumbprint": "workspace:*",

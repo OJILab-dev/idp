@@ -126,6 +126,9 @@ importers:
       '@idp/jws':
         specifier: workspace:*
         version: link:../jws
+      '@idp/pkce':
+        specifier: workspace:*
+        version: link:../pkce
       '@idp/structured-fields':
         specifier: workspace:*
         version: link:../structured-fields
@@ -166,6 +169,12 @@ importers:
         version: link:../base64url
 
   packages/jws:
+    dependencies:
+      '@idp/base64url':
+        specifier: workspace:*
+        version: link:../base64url
+
+  packages/pkce:
     dependencies:
       '@idp/base64url':
         specifier: workspace:*
