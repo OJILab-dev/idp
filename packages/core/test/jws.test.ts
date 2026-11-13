@@ -1,6 +1,6 @@
 import { createPublicKey, verify as nodeVerify } from "node:crypto";
 import { beforeAll, describe, expect, it } from "vitest";
-import { base64urlDecode, base64urlEncode } from "../src/shared/index.js";
+import { base64urlDecode, base64urlEncode } from "@idp/base64url";
 import { createJwsSignature } from "../src/user/jws.js";
 import { InvalidTokenError, loadSigningKeys, signJwt, verifyJws, type SigningKeySet } from "../src/user/index.js";
 import { generateEd25519Jwk, generateRsaJwk } from "./keys.js";

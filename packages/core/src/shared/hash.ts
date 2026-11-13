@@ -1,4 +1,4 @@
-import { base64urlEncode } from "./base64url.js";
+import { base64urlEncode } from "@idp/base64url";
 
 /**
  * Hashes with SHA-256 and encodes the digest as unpadded base64url, the contract's hash format.

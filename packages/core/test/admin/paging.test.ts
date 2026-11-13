@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { decodeCursor, encodeCursor, type Page, type UserSummary } from "../../src/admin/index.js";
 import { userCreate, usersList } from "../../src/admin/users.js";
-import { base64urlEncode } from "../../src/shared/index.js";
+import { base64urlEncode } from "@idp/base64url";
 import { T0, run, useHarness } from "./harness.js";
 
 const h = useHarness();

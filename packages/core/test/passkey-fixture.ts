@@ -1,7 +1,8 @@
 // The OIDC fixture plus what the passkey ceremonies need: users whose stored passkeys are software credentials, the
 // RP of the fixture issuer, and a database wrapper that runs a step just before a chosen batch, so a test can make
 // the state change between a ceremony's read and its write.
-import { base64urlEncode, type Database, type SqlStatement, type SqlStatementResult } from "../src/shared/index.js";
+import { base64urlEncode } from "@idp/base64url";
+import type { Database, SqlStatement, SqlStatementResult } from "../src/shared/index.js";
 import type { PasskeyDeps } from "../src/user/index.js";
 import { createFixture, issuer, type Fixture } from "./oidc-fixture.js";
 import { generateCredential, type SoftCredential, type TestAlgorithm } from "./webauthn-authenticator.js";

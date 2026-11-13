@@ -1,7 +1,8 @@
 // /webauthn/register/options and /webauthn/register/verify against the real schema: the enrollment-link items of
 // docs/design/security-checklist.md (token binding, consumption order, limit, disabled user, audit row).
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MAX_PASSKEYS_PER_USER, base64urlEncode, sha256Base64url } from "../src/shared/index.js";
+import { base64urlEncode } from "@idp/base64url";
+import { MAX_PASSKEYS_PER_USER, sha256Base64url } from "../src/shared/index.js";
 import { enrollOptions, enrollVerify, type CreationOptionsJson } from "../src/user/index.js";
 import { NOW } from "./oidc-fixture.js";
 import { WRITER_VERSION, createPasskeyFixture, idOf, rp, type PasskeyFixture } from "./passkey-fixture.js";

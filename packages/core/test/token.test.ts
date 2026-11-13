@@ -2,7 +2,8 @@
 // PKCE, redirect_uri, current access, the issuing session, and atomic single use of the code
 // (docs/design/security-checklist.md, OIDC and passkey sections).
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { base64urlDecode, sha256Base64url } from "../src/shared/index.js";
+import { base64urlDecode } from "@idp/base64url";
+import { sha256Base64url } from "../src/shared/index.js";
 import {
   authorize,
   exchangeToken,

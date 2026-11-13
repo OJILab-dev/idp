@@ -1,8 +1,8 @@
 // What the passkey ceremonies share: the options shapes sent to the browser, the challenge lifetime, the rejection
 // reasons, and the reads of a stored credential. The SQL conditions that must hold at write time live with each
 // ceremony, because each one binds its challenge to a different issuer (docs/design/data-model.md, challenges).
+import { base64urlEncode } from "@idp/base64url";
 import {
-  base64urlEncode,
   userEnabledCondition,
   type Database,
   type SqlCondition,

@@ -2,8 +2,8 @@
 // source, so the OIDC use cases run against the real schema and every token they mint is predictable.
 import { createD1Database } from "../../d1-adapter/src/index.js";
 import { createTestD1, type TestD1 } from "../../../contract/test/d1.js";
+import { base64urlEncode } from "@idp/base64url";
 import {
-  base64urlEncode,
   parseIssuer,
   sha256Base64url,
   type Database,

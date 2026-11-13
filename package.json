@@ -4,7 +4,7 @@
   "type": "module",
   "packageManager": "pnpm@11.28.8",
   "scripts": {
-    "typecheck": "tsc -p tsconfig.json && tsc -p e2e/tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json && tsc -p e2e/tsconfig.json && pnpm --filter \"./packages/*\" --if-present run typecheck",
     "lint": "eslint .",
     "test": "vitest run",
     "check": "pnpm run typecheck && pnpm run lint && pnpm run test",

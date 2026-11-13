@@ -2,7 +2,8 @@
 // asks for: attestation "none" (the client may still pass packed self attestation, §5.1.3), the three COSE algorithms
 // of cose.ts, user verification required, one fixed origin and RP ID, and no extensions. Every step the IdP's options
 // make applicable is performed; the step numbers in the comments are those of §7.1 and §7.2.
-import { InvalidBase64urlError, base64urlDecode, base64urlEncode, type Issuer } from "../../shared/index.js";
+import { InvalidBase64urlError, base64urlDecode, base64urlEncode } from "@idp/base64url";
+import type { Issuer } from "../../shared/index.js";
 import { InvalidCborError, decodeCbor, decodeCborPrefix } from "./cbor.js";
 import { COSE_ALGORITHMS, InvalidCoseKeyError, importCosePublicKey, verifyCoseSignature } from "./cose.js";
 

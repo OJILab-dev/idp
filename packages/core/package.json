@@ -10,6 +10,7 @@
     "./admin": "./src/admin/index.ts"
   },
   "dependencies": {
+    "@idp/base64url": "workspace:*",
     "zod": "4.6.7"
   }
 }

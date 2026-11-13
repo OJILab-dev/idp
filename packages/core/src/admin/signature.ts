@@ -2,7 +2,7 @@
 // functions are pure apart from WebCrypto: the admin Worker runs the cheaper checks before them (host, rate limit,
 // body size) and stores the nonce after them (item 10, the AdminNonceStore port). Every refusal is reported with a
 // reason for the Worker log only; the response is the same forbidden body whatever the reason (3.8).
-import { InvalidBase64urlError, base64urlDecode } from "../shared/index.js";
+import { InvalidBase64urlError, base64urlDecode } from "@idp/base64url";
 import { StructuredFieldError, parseDictionary, serializeInnerList, type Dictionary, type InnerList, type Item } from "./structured-fields.js";
 
 /** The application tag every admin signature carries (RFC 9421 §2.3, §7.2.7). */

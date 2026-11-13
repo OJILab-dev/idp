@@ -2,7 +2,7 @@
 // §7.2 that the IdP's options make applicable, and each WebAuthn item of docs/design/security-checklist.md, has a
 // case that breaks exactly that check.
 import { describe, expect, it } from "vitest";
-import { base64urlEncode } from "../src/shared/index.js";
+import { base64urlEncode } from "@idp/base64url";
 import { decodeCbor, InvalidCborError } from "../src/user/webauthn/cbor.js";
 import { importCosePublicKey, InvalidCoseKeyError, verifyCoseSignature } from "../src/user/webauthn/cose.js";
 import {
