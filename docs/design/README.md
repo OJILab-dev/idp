@@ -63,8 +63,8 @@ flowchart LR
   oidc --> secret
   idpctl -->|"HTTPS（RFC 9421 の署名）"| adminapi
   adminapi -->|"discovery（Service Binding）"| oidc
-  worker -.->|"利用者向けと共有のモジュールだけ"| core
-  admin -.->|"管理系と共有のモジュール"| core
+  worker -.->|"利用者向けと関心ごとのモジュールだけ"| core
+  admin -.->|"管理系と関心ごとのモジュール"| core
   worker --> d1
   admin --> d1
 ```

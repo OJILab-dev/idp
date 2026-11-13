@@ -4,10 +4,10 @@
 // detail_json is never deleted, so a name or free text written into it would outlive a rename and even a break-glass
 // deletion of the user (design principle 7). The builder therefore accepts only known members, each checked against
 // the format of an ID, an enum, a number, or a time; anything else throws before a statement exists.
-import type { SqlStatement, SqlValue } from "./db.js";
-import { isClientId, isCredentialId, isUuidV4 } from "./identifiers.js";
-import { isProblemKind, type ProblemKind } from "./problems.js";
-import { classifyRedirectUri, isPostLogoutRedirectUriRegistrable } from "./redirect-uri-registration.js";
+import { classifyRedirectUri, isPostLogoutRedirectUriRegistrable } from "../clients/index.js";
+import type { SqlCondition, SqlStatement, SqlValue } from "../db/index.js";
+import { isClientId, isCredentialId, isUuidV4 } from "../identifiers/index.js";
+import { isProblemKind, type ProblemKind } from "../problems/index.js";
 
 /** What an audit row is about: `user:<id>`, `client:<id>`, `group:<id>`, `schema`, or `none`. */
 export type AuditTarget = `user:${string}` | `client:${string}` | `group:${string}` | "schema" | "none";
@@ -27,12 +27,6 @@ export type AuditDetailValue = string | number | readonly string[];
 
 /** The detail_json object, before validation. */
 export type AuditDetail = Readonly<Record<string, AuditDetailValue>>;
-
-/** A boolean SQL expression and its parameters, evaluated in the WHERE of a guarded statement. */
-export type SqlCondition = {
-  readonly sql: string;
-  readonly params: readonly SqlValue[];
-};
 
 /** The detail members that only SQL may compute, because their values must match the rows in the same batch. */
 export const AUDIT_DETAIL_COMPUTED_KEYS = ["newly_enabled", "sessions_deleted"] as const;

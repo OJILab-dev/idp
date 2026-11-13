@@ -1,4 +1,4 @@
-// The audit-row builder (src/shared/audit.ts), checked against the real audit_log table so that the columns and
+// The audit-row builder (src/audit/audit.ts), checked against the real audit_log table so that the columns and
 // CHECK constraints of docs/design/data-model.md are exercised on the engine.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
@@ -6,8 +6,8 @@ import {
   auditFailureStatement,
   auditSuccessStatement,
   type AuditActor,
-  type Database,
-} from "../src/shared/index.js";
+} from "../src/audit/index.js";
+import type { Database } from "../src/db/index.js";
 import { createD1Database } from "../../cloudflare/src/d1/index.js";
 import { createTestD1, type TestD1 } from "../../../contract/test/d1.js";
 

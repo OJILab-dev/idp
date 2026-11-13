@@ -2,7 +2,8 @@
 // Users are never deleted; disabling ends access and keeps the row (data-model.md).
 import { sessionRevokeOutput, userCreateOutput, userGetOutput, userRenameOutput, usersListOutput } from "./outputs.js";
 import { z } from "zod";
-import { newUuidV4, type SqlRow } from "../shared/index.js";
+import { newUuidV4 } from "../identifiers/index.js";
+import type { SqlRow } from "../db/index.js";
 import { currentEnablementSql, enablementOperation, initialEnablementStatement, type Enablement } from "./enablement.js";
 import type { ReadOperation, WriteOperation } from "./operation.js";
 import { readPage, type Page, type PageQuery } from "./paging.js";

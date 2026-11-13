@@ -2,7 +2,8 @@
 // and remove members, and list. Groups are named by ID, never by name, since names change.
 import { groupCreateOutput, groupMemberAddOutput, groupMemberRemoveOutput, groupRenameOutput, groupsListOutput } from "./outputs.js";
 import { z } from "zod";
-import { newUuidV4, type SqlRow } from "../shared/index.js";
+import { newUuidV4 } from "../identifiers/index.js";
+import type { SqlRow } from "../db/index.js";
 import { pairsAsJson, pairsEnabledByMembership, toPairs, type AccessPair } from "./access.js";
 import { enablementOperation, initialEnablementStatement, type Enablement } from "./enablement.js";
 import type { ReadOperation, WriteOperation } from "./operation.js";

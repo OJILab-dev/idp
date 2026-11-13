@@ -5,7 +5,7 @@ import { z } from "zod";
 import { ADMIN_OPERATIONS, AdminProblem, executeOperation, type WriteOperation } from "../../src/admin/index.js";
 import { parseInput } from "../../src/admin/schemas.js";
 import { userRename } from "../../src/admin/users.js";
-import { DatabaseError, type Database } from "../../src/shared/index.js";
+import { DatabaseError, type Database } from "../../src/db/index.js";
 import { auditRows, query, run, useHarness } from "./harness.js";
 
 const h = useHarness();
@@ -154,8 +154,12 @@ describe("executeOperation", () => {
 });
 
 describe("module boundaries", () => {
-  // zod is for the admin API's schemas; keeping it out of shared and user keeps it out of the IdP Worker's bundle.
-  it.each(["shared", "user"])("src/%s does not import zod", (dir) => {
+  // zod is for the admin API's schemas; keeping it out of every other directory keeps it out of the IdP Worker's bundle.
+  const userFacing = readdirSync(join(import.meta.dirname, "..", "..", "src"), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name !== "admin")
+    .map((entry) => entry.name);
+
+  it.each(userFacing)("src/%s does not import zod", (dir) => {
     const root = join(import.meta.dirname, "..", "..", "src", dir);
     // Recursive, so a subdirectory such as src/user/webauthn is covered as well.
     const files = readdirSync(root, { recursive: true, withFileTypes: true }).filter((entry) => entry.isFile());

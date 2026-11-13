@@ -2,7 +2,7 @@
 // adapter, because the IdP Worker imports the package too and must never bundle the admin modules of the core
 // (eslint.config.js bans this entry from the IdP Worker).
 import { AdminNonceStoreError, adminNonceClaimStatements, type AdminNonceClaim, type AdminNonceStore } from "@idp/core/admin";
-import { DatabaseError } from "@idp/core/shared";
+import { DatabaseError } from "@idp/core/db";
 import { createD1Database } from "./d1.js";
 
 /**

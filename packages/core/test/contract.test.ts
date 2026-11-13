@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { MAX_PASSKEYS_PER_USER } from "../src/shared/index.js";
+import { MAX_PASSKEYS_PER_USER } from "../src/passkeys/index.js";
 import { vectors } from "./vectors.js";
 
 describe("shared contract values", () => {

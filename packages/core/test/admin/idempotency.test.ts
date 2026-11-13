@@ -3,7 +3,8 @@ import { sha256Base64url } from "@idp/jwk-thumbprint";
 import { IDEMPOTENCY_TTL_SECONDS, executeOperation, requestHash } from "../../src/admin/index.js";
 import { groupCreate } from "../../src/admin/groups.js";
 import { userCreate, userDisable } from "../../src/admin/users.js";
-import { randomToken, type Database } from "../../src/shared/index.js";
+import { randomToken } from "../../src/identifiers/index.js";
+import type { Database } from "../../src/db/index.js";
 import { T0, auditRows, query, run, useHarness } from "./harness.js";
 
 const h = useHarness();

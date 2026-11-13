@@ -1,7 +1,7 @@
 // The user × client pairs a write newly enables (docs/design/authorization.md, "権限の広がりを見せる"). Each query
 // runs in the write's batch, before the write, and returns the pairs that effective_access will gain: the pairs the
 // write makes reachable, counted only through enabled users, groups, and clients, minus the pairs already allowed.
-import type { SqlStatement } from "../shared/index.js";
+import type { SqlStatement } from "../db/index.js";
 
 /** One newly enabled pair. */
 export type AccessPair = { readonly user_id: string; readonly client_id: string };

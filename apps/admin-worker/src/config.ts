@@ -2,7 +2,8 @@
 // the setting names). Every value is validated before the first request is served, and a bad value refuses every
 // request instead of being defaulted (design principle 4: fail-closed).
 import type { AdminSigningKey } from "@idp/core/admin";
-import { InvalidHostingError, checkHostingHosts, parseHostingMode, parseIssuer, type HostingMode, type Issuer } from "@idp/core/shared";
+import { InvalidHostingError, checkHostingHosts, parseHostingMode, type HostingMode } from "@idp/core/hosting";
+import { parseIssuer, type Issuer } from "@idp/core/issuer";
 
 /**
  * The IdP Worker's internal entrypoint (`IdpInternal`), reached over the `IDP` Service Binding by RPC. The public

@@ -5,14 +5,13 @@
 // The Sec-Fetch-Site / Origin check belongs to the HTTP layer.
 import {
   MAX_PASSKEYS_PER_USER,
-  auditSuccessStatement,
-  isCredentialId,
   passkeyBelowLimitCondition,
   passkeyRevocableCondition,
   userEnabledCondition,
-  type SqlCondition,
-  type SqlValue,
-} from "../../shared/index.js";
+} from "../../passkeys/index.js";
+import { auditSuccessStatement } from "../../audit/index.js";
+import { isCredentialId } from "../../identifiers/index.js";
+import type { SqlCondition, SqlValue } from "../../db/index.js";
 import type { PasskeyDeps } from "../deps.js";
 import { findActiveSession, type ActiveSession } from "../sessions.js";
 import {

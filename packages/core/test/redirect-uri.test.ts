@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyRedirectUri, isRedirectUriAllowed } from "../src/shared/index.js";
+import { classifyRedirectUri, isRedirectUriAllowed } from "../src/clients/index.js";
 import { matchesRegisteredRedirectUri } from "@idp/oauth-native-apps";
 import { vectors } from "./vectors.js";
 

@@ -1,7 +1,7 @@
 // The replay check of the admin signatures (docs/design/hosting-modes.md 3.6, item 10 of 3.8): the port the admin
 // Worker calls after verifyAdminSignature passed, and the SQL an adapter runs for it. The SQL stays here, with the
 // other rules of the core, so an adapter only runs the statements and reads the result.
-import type { SqlStatement } from "../shared/index.js";
+import type { SqlStatement } from "../db/index.js";
 import { ADMIN_SIGNATURE_WINDOW_SECONDS } from "./signature.js";
 
 /** Thrown when the nonce store fails for a reason other than the nonce being taken. */

@@ -103,7 +103,7 @@ main() {
   else
     secret="$(cat -- "${source}")"
   fi
-  # The IdP's client secrets are 32 random bytes as unpadded base64url (packages/core/src/shared/identifiers.ts). The
+  # The IdP's client secrets are 32 random bytes as unpadded base64url (packages/core/src/identifiers/identifiers.ts). The
   # value is never echoed, not even in this error.
   [[ "${secret}" =~ ^[A-Za-z0-9_-]{43}$ ]] || fail "the client secret is not 43 base64url characters (an idpctl --secret-out file)"
 

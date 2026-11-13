@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createTestD1, type TestD1 } from "../../../contract/test/d1.js";
 import { generateEd25519Jwk, generateRsaJwk } from "../../../packages/core/test/keys.js";
-import { parseIssuer } from "@idp/core/shared";
+import { parseIssuer } from "@idp/core/issuer";
 import { IdpInternal } from "../../worker/src/index.js";
 import type { Env as IdpEnv } from "../../worker/src/config.js";
 import { rs256Enabled } from "../src/rs256.js";

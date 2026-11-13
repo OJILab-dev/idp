@@ -10,7 +10,7 @@ import (
 )
 
 // postLogoutRedirectURIRules is the admin API's post-logout redirect URI
-// rule set (POST_LOGOUT_REDIRECT_URI_RULES in packages/core), shortened for
+// rule set (POST_LOGOUT_REDIRECT_URI_RULES in packages/core/src/clients), shortened for
 // the flag help and the usage summary.
 const postLogoutRedirectURIRules = "https, canonical form, matched exactly, at most 2000 printable ASCII characters; " +
 	"no fragment, userinfo, '*', localhost or *.localhost host (trailing dot or not), " +
