@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MAX_PASSKEYS_PER_USER } from "../src/passkeys/index.js";
-import { vectors } from "./vectors.js";
+import { vectors } from "../../../contract/test/vectors.js";
 
 describe("shared contract values", () => {
   it("uses the passkey limit from contract/testdata/vectors.json", () => {

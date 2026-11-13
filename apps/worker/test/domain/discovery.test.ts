@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { parseIssuer } from "@idp/core/issuer";
 import { buildDiscoveryDocument, buildJwks, loadSigningKeys, type SigningKeySet } from "../../src/domain/index.js";
 import { generateEd25519Jwk, generateRsaJwk } from "./keys.js";
-import { vectors } from "../../../../packages/core/test/vectors.js";
+import { vectors } from "../../../../contract/test/vectors.js";
 
 const issuer = parseIssuer(vectors.discovery.issuer);
 

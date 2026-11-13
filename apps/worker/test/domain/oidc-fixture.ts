@@ -8,7 +8,7 @@ import { parseIssuer } from "@idp/core/issuer";
 import type { Database, SqlStatement, SqlValue } from "@idp/core/db";
 import { loadSigningKeys, type Clock, type OidcDeps, type RandomSource, type SigningKeySet } from "../../src/domain/index.js";
 import { generateEd25519Jwk, generateRsaJwk } from "./keys.js";
-import { vectors } from "../../../../packages/core/test/vectors.js";
+import { vectors } from "../../../../contract/test/vectors.js";
 
 export const NOW = 1_800_000_000;
 export const issuer = parseIssuer("https://idp.example.com");

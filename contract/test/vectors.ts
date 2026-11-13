@@ -167,7 +167,7 @@ type Vectors = {
 };
 
 export const vectors = JSON.parse(
-  readFileSync(join(import.meta.dirname, "..", "..", "..", "contract", "testdata", "vectors.json"), "utf8"),
+  readFileSync(join(import.meta.dirname, "..", "testdata", "vectors.json"), "utf8"),
 ) as Vectors;
 
 export function hexToBytes(hex: string): Uint8Array {
