@@ -581,7 +581,7 @@
                     "items": {
                       "type": "string"
                     },
-                    "description": "Up to 10 distinct URIs, each an absolute https URI in canonical form, compared exactly, with no fragment, userinfo, localhost host, or state query parameter (the IdP appends the request's state)."
+                    "description": "Up to 10 distinct URIs, each an absolute https URI of at most 2000 printable ASCII characters in canonical form (as the URL parser prints it), compared exactly, with no fragment, userinfo, '*' wildcard, localhost host (nor *.localhost, with or without a trailing dot), or state query parameter (the IdP appends the request's state)."
                   },
                   "id_token_alg": {
                     "default": "Ed25519",
@@ -2502,7 +2502,7 @@
                     "items": {
                       "type": "string"
                     },
-                    "description": "Up to 10 distinct URIs, each an absolute https URI in canonical form, compared exactly, with no fragment, userinfo, localhost host, or state query parameter (the IdP appends the request's state)."
+                    "description": "Up to 10 distinct URIs, each an absolute https URI of at most 2000 printable ASCII characters in canonical form (as the URL parser prints it), compared exactly, with no fragment, userinfo, '*' wildcard, localhost host (nor *.localhost, with or without a trailing dot), or state query parameter (the IdP appends the request's state)."
                   }
                 },
                 "required": [

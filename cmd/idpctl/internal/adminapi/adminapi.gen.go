@@ -831,7 +831,7 @@ type ClientCreateJSONBody struct {
 	IdTokenAlg *ClientCreateJSONBodyIdTokenAlg `json:"id_token_alg,omitempty"`
 	Name       string                          `json:"name"`
 
-	// PostLogoutRedirectUris Up to 10 distinct URIs, each an absolute https URI in canonical form, compared exactly, with no fragment, userinfo, localhost host, or state query parameter (the IdP appends the request's state).
+	// PostLogoutRedirectUris Up to 10 distinct URIs, each an absolute https URI of at most 2000 printable ASCII characters in canonical form (as the URL parser prints it), compared exactly, with no fragment, userinfo, '*' wildcard, localhost host (nor *.localhost, with or without a trailing dot), or state query parameter (the IdP appends the request's state).
 	PostLogoutRedirectUris *[]string `json:"post_logout_redirect_uris,omitempty"`
 	RedirectUris           []string  `json:"redirect_uris"`
 }
@@ -908,7 +908,7 @@ type ClientRenameJSONBody struct {
 
 // ClientSetPostLogoutRedirectsJSONBody defines parameters for ClientSetPostLogoutRedirects.
 type ClientSetPostLogoutRedirectsJSONBody struct {
-	// PostLogoutRedirectUris Up to 10 distinct URIs, each an absolute https URI in canonical form, compared exactly, with no fragment, userinfo, localhost host, or state query parameter (the IdP appends the request's state).
+	// PostLogoutRedirectUris Up to 10 distinct URIs, each an absolute https URI of at most 2000 printable ASCII characters in canonical form (as the URL parser prints it), compared exactly, with no fragment, userinfo, '*' wildcard, localhost host (nor *.localhost, with or without a trailing dot), or state query parameter (the IdP appends the request's state).
 	PostLogoutRedirectUris []string `json:"post_logout_redirect_uris"`
 }
 
