@@ -2,7 +2,8 @@
 // draft-ietf-httpapi-idempotency-key-header-08). Keys live in a per-admin namespace for 24 hours, and the row is
 // written in the operation's own batch under the operation's guard, so the stored response and the change commit
 // together or not at all.
-import { isRandomTokenFormat, sha256Base64url, type SqlCondition, type SqlRow, type SqlStatement } from "../shared/index.js";
+import { sha256Base64url } from "@idp/jwk-thumbprint";
+import { isRandomTokenFormat, type SqlCondition, type SqlRow, type SqlStatement } from "../shared/index.js";
 import type { OperationName, OperationOutcome } from "./operation.js";
 import { AdminProblem } from "./problem.js";
 

@@ -47,8 +47,15 @@ describe("standards packages import only web standards and their declared standa
     expect(await lintAs("packages/base64url/src/probe.ts", code)).toContain("no-restricted-imports");
   });
 
-  it("packages/base64url/src allows its own modules", async () => {
-    expect(await lintAs("packages/base64url/src/probe.ts", 'import "./base64url.js";')).not.toContain("no-restricted-imports");
+  it.each([
+    ["packages/base64url/src/probe.ts", 'import "./base64url.js";'],
+    ["packages/jwk-thumbprint/src/probe.ts", 'import "@idp/base64url";'],
+  ])("%s allows %s", async (file, code) => {
+    expect(await lintAs(file, code)).not.toContain("no-restricted-imports");
+  });
+
+  it("a standards package cannot import a standards package it does not declare", async () => {
+    expect(await lintAs("packages/base64url/src/probe.ts", 'import "@idp/jwk-thumbprint";')).toContain("no-restricted-imports");
   });
 
   it("the sample relying party cannot import a standards package", async () => {

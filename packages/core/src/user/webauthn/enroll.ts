@@ -1,7 +1,8 @@
 // Registration through an enrollment link (docs/design/authentication.md, "パスキーの登録"): /webauthn/register/options
 // and /webauthn/register/verify. The challenge is bound to the enrollment token, and the consumption order is fixed by
 // the schema: the challenge references the token with ON DELETE CASCADE, so the challenge is consumed first.
-import { MAX_PASSKEYS_PER_USER, isRandomTokenFormat, passkeyBelowLimitCondition, sha256Base64url, userEnabledCondition } from "../../shared/index.js";
+import { sha256Base64url } from "@idp/jwk-thumbprint";
+import { MAX_PASSKEYS_PER_USER, isRandomTokenFormat, passkeyBelowLimitCondition, userEnabledCondition } from "../../shared/index.js";
 import type { PasskeyDeps } from "../deps.js";
 import {
   CHALLENGE_LIFETIME_SECONDS,

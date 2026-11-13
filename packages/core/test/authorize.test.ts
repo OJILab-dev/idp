@@ -1,7 +1,7 @@
 // /authorize and /authorize/resume against the real schema. Each security-checklist item for the authorization
 // endpoint (docs/design/security-checklist.md, OIDC and passkey sections) has at least one case here.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { sha256Base64url } from "../src/shared/index.js";
+import { sha256Base64url } from "@idp/jwk-thumbprint";
 import {
   authorize,
   buildIdTokenClaims,

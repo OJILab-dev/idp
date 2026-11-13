@@ -1,7 +1,8 @@
 // The token endpoint (docs/design/authentication.md, sign-in step 7). The client is identified and its enablement
 // checked before it is authenticated, and every check on the code runs before the code is consumed, so a failed
 // request never burns a code (security-checklist.md, Pocket ID CVE-2026-28513).
-import { isClientId, isRandomTokenFormat, sha256Base64url, type SqlRow } from "../shared/index.js";
+import { sha256Base64url } from "@idp/jwk-thumbprint";
+import { isClientId, isRandomTokenFormat, type SqlRow } from "../shared/index.js";
 import { CorruptRowError, loadClient, type RegisteredClient } from "./clients.js";
 import type { OidcDeps } from "./deps.js";
 import {

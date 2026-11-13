@@ -12,7 +12,8 @@ import {
   clientsList,
 } from "../../src/admin/clients.js";
 import { userCreate } from "../../src/admin/users.js";
-import { isRandomTokenFormat, randomToken, sha256Base64url } from "../../src/shared/index.js";
+import { sha256Base64url } from "@idp/jwk-thumbprint";
+import { isRandomTokenFormat, randomToken } from "../../src/shared/index.js";
 import { T0, auditRows, effectiveAccess, query, run, seedGrant, useHarness } from "./harness.js";
 
 const h = useHarness();

@@ -2,7 +2,8 @@
 // /webauthn/auth/verify. The challenge is bound to the authorize request in the browser's __Host- cookie, because a
 // discoverable credential leaves the user unknown until the assertion arrives. A verified sign-in creates the session
 // that /authorize/resume (authorize.ts) then turns into a code.
-import { isRandomTokenFormat, sha256Base64url, userEnabledCondition, type SqlCondition } from "../../shared/index.js";
+import { sha256Base64url } from "@idp/jwk-thumbprint";
+import { isRandomTokenFormat, userEnabledCondition, type SqlCondition } from "../../shared/index.js";
 import type { PasskeyDeps } from "../deps.js";
 import { SESSION_LIFETIME_SECONDS } from "../sessions.js";
 import {

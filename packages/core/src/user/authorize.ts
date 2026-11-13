@@ -2,7 +2,8 @@
 // the security property: until client_id and redirect_uri are validated nothing is redirected anywhere (RFC 6749
 // §4.1.2.1), and after that every error goes to the validated redirect_uri with iss and state (RFC 9207, RFC 6749
 // §4.1.2.1). The HTTP layer only renders the returned decision.
-import { isClientId, isRandomTokenFormat, sha256Base64url, type Issuer, type SqlRow } from "../shared/index.js";
+import { sha256Base64url } from "@idp/jwk-thumbprint";
+import { isClientId, isRandomTokenFormat, type Issuer, type SqlRow } from "../shared/index.js";
 import { CorruptRowError, loadClient, type RegisteredClient } from "./clients.js";
 import type { OidcDeps } from "./deps.js";
 import { InvalidTokenError } from "./jws.js";

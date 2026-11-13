@@ -2,7 +2,8 @@
 // items of docs/design/security-checklist.md (re-authentication, session and credential binding, limit, last
 // passkey, disabled user, audit row, and the foreign-key cascade of a revocation).
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MAX_PASSKEYS_PER_USER, sha256Base64url } from "../src/shared/index.js";
+import { sha256Base64url } from "@idp/jwk-thumbprint";
+import { MAX_PASSKEYS_PER_USER } from "../src/shared/index.js";
 import {
   addBegin,
   addOptions,

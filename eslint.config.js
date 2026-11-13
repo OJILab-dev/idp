@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
@@ -8,7 +8,9 @@ import tseslint from "typescript-eslint";
 const IDP_PACKAGES = new Set(["core", "d1-adapter", "cloudflare"]);
 
 const standardsPackages = readdirSync(join(import.meta.dirname, "packages"), { withFileTypes: true })
+  // A directory without a manifest is not a package (for example node_modules left behind by another branch).
   .filter((entry) => entry.isDirectory() && !IDP_PACKAGES.has(entry.name))
+  .filter((entry) => existsSync(join(import.meta.dirname, "packages", entry.name, "package.json")))
   .map((entry) => {
     const manifest = JSON.parse(readFileSync(join(import.meta.dirname, "packages", entry.name, "package.json"), "utf8"));
     return { dir: entry.name, dependencies: Object.keys(manifest.dependencies ?? {}) };
