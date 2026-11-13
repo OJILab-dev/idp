@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@idp/base64url": "workspace:*",
+    "@idp/cbor": "workspace:*",
     "@idp/jwk-thumbprint": "workspace:*",
     "zod": "4.6.7"
   }

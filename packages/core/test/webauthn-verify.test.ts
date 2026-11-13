@@ -3,7 +3,7 @@
 // case that breaks exactly that check.
 import { describe, expect, it } from "vitest";
 import { base64urlEncode } from "@idp/base64url";
-import { decodeCbor, InvalidCborError } from "../src/user/webauthn/cbor.js";
+import { decodeCbor } from "@idp/cbor";
 import { importCosePublicKey, InvalidCoseKeyError, verifyCoseSignature } from "../src/user/webauthn/cose.js";
 import {
   claimedChallenge,
@@ -203,33 +203,11 @@ describe("authentication (§7.2)", () => {
   });
 });
 
-describe("CBOR subset", () => {
-  it.each<[string, readonly number[]]>([
-    ["an indefinite-length map", [0xbf, 0xff]],
-    ["a tag", [0xc0, 0x00]],
-    ["a float", [0xf9, 0x00, 0x00]],
-    ["undefined", [0xf7]],
-    ["a duplicate map key", [0xa2, 0x01, 0x00, 0x01, 0x00]],
-    ["a map key that is a byte string", [0xa1, 0x41, 0x00, 0x00]],
-    ["a truncated byte string", [0x42, 0x00]],
-    ["trailing bytes", [0x00, 0x00]],
-    ["invalid UTF-8 text", [0x61, 0xff]],
-    ["an integer above 2^53 - 1", [0x1b, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]],
-  ])("rejects %s", (_name, bytes) => {
-    expect(() => decodeCbor(new Uint8Array(bytes))).toThrow(InvalidCborError);
-  });
-
-  it.each([0xe0, 0xf3])("rejects the simple value below 20 encoded as 0x%s", (initial) => {
-    expect(() => decodeCbor(new Uint8Array([initial]))).toThrow(InvalidCborError);
-  });
-
+describe("the software authenticator's CBOR", () => {
+  // The test encoder must produce what the decoder reads, or the ceremony tests above would test the encoder.
   it("round-trips the values WebAuthn uses", () => {
     const value = new Map<number | string, unknown>([[1, -7], ["a", [true, false, null, "x", new Uint8Array([1, 2])]], [-300, 70000]]);
     expect(decodeCbor(encodeCbor(value as never))).toEqual(value);
-  });
-
-  it("bounds the nesting depth", () => {
-    expect(() => decodeCbor(new Uint8Array([...new Array<number>(40).fill(0x81), 0x00]))).toThrow(/too deep/);
   });
 });
 

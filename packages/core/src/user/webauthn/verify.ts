@@ -4,7 +4,7 @@
 // make applicable is performed; the step numbers in the comments are those of §7.1 and §7.2.
 import { InvalidBase64urlError, base64urlDecode, base64urlEncode } from "@idp/base64url";
 import type { Issuer } from "../../shared/index.js";
-import { InvalidCborError, decodeCbor, decodeCborPrefix } from "./cbor.js";
+import { InvalidCborError, decodeCbor, decodeCborPrefix } from "@idp/cbor";
 import { COSE_ALGORITHMS, InvalidCoseKeyError, importCosePublicKey, verifyCoseSignature } from "./cose.js";
 
 /** Thrown when a response is malformed or fails a verification step; the message names the step for the logs. */
