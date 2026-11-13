@@ -125,7 +125,7 @@ issuer が変わると、[デプロイと設定](deployment.md)の「ホスト�
 
 ### 2.4 fork する人への警告
 
-`workers_dev` を選ぶ人には、[ブートストラップ](../deployment/bootstrap.md)と README の `workers.dev` のモードの説明の最初に、次を警告として書く。
+`workers_dev` を選ぶ人には、[ブートストラップ](../deployment/bootstrap.md)の `workers.dev` のモードの説明の最初に、次を警告として書く。README はこの節を正本として指し、モードを選ぶ前に読むよう求める。
 
 - issuer と RP ID は、アカウントの `workers.dev` のサブドメインと Worker の名前で決まる。後からカスタムドメインに移ると、全員のパスキーの登録し直しと、すべての RP の設定の移行が要る。長く使うつもりなら、最初からカスタムドメインのモードを選ぶ。
 - アカウントの `workers.dev` のサブドメインを変えない。Worker の名前を変えない。どちらも issuer を変える。サブドメインを手放すと、別のアカウントに取られるかもしれない（未確認）。

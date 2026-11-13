@@ -1,157 +1,66 @@
 # idp
 
+> **免責事項**
+>
+> - このプロジェクトは趣味の範囲で開発しています。
+> - 脆弱性など、セキュリティインシデントにつながる指摘があっても、責任を持って対応することはありません。したがって、セキュリティの窓口も設けていません。
+> - このプロジェクトの名前などを商標として使うことは推奨しません。
+
 Cloudflare Workers の無料枠と D1 だけで動く、パスキー専用の最小構成 OIDC IdP です。
-対象は自分と家族のセルフホストアプリです。管理は、別の管理用の Worker を、手元の Go の CLI `idpctl` から呼んで行います。管理者は、`idpctl` が要求ごとに付ける HTTP Message Signatures（RFC 9421）の署名で確かめます。
+管理は、別の管理用の Worker を、手元の Go の CLI `idpctl` から呼んで行います。管理者は、`idpctl` が要求ごとに付ける HTTP Message Signatures（RFC 9421）の署名で確かめます。
 
-2 つの Worker は、自分のドメインのカスタムドメイン（カスタムドメインのモード）か、ドメインを持たない人のための `<名前>.<アカウントのサブドメイン>.workers.dev`（`workers.dev` のモード）で公開できます（[ホスティングのモード](docs/design/hosting-modes.md)）。
+リポジトリを fork し、自分の Cloudflare アカウントの情報を入れるだけで、自分のセルフホストのアプリのための IdP を持てることを目指しています。
 
-モードは、デプロイの設定ファイルの `hosting_mode`（`custom_domain` か `workers_dev`）で選びます。既定値はなく、最初のデプロイの前に決めます。モードを変えることは issuer を変えることなので、後から切り替えるのではなく、新しいデプロイとして作り直します。
+## 主な機能
 
-> **`workers.dev` のモードの警告**（fork してモードを選ぶ前に読んでください。[ホスティングのモード](docs/design/hosting-modes.md)の 2.4）
->
-> - issuer とパスキーの RP ID は、アカウントの `workers.dev` のサブドメインと Worker の名前に固定されます。後からカスタムドメインに移すと、全員のパスキーが使えなくなり（登録し直し）、`iss` が変わるので、すべての RP の設定を移し直すことになります。長く使うつもりなら、最初からカスタムドメインのモードを選んでください。
-> - アカウントの `workers.dev` のサブドメインと Worker の名前を変えないでください。どちらも issuer を変えます。手放したサブドメインは、別のアカウントに取られるかもしれません（未確認）。
-> - Cloudflare は `workers.dev` を本番向けとしておらず、業務上重要でない個人や趣味のプロジェクト向けとしています。
-> - `workers.dev` へのすべての要求は Browser Integrity Check を受け、無効にできません。ライブラリの既定の `User-Agent` を送る RP のサーバーは Error 1010 で拒否されうるので、つなぐ RP ごとに確かめてください。
-> - 同じアカウントのほかの Worker は IdP と same-site になります。アカウントにほかの Worker を置くなら、その Worker の権限を持つ人が IdP の Worker も差し替えられます。
->
-> 手順の前提と確認は [ブートストラップ](docs/deployment/bootstrap.md) を参照してください。
+- ユーザーの認証手段はパスキーだけです。パスワード、メール、SMS は使いません。
+- OIDC の認可コードフローで RP にサインインを提供します。PKCE（`S256`）とユーザー検証（UV）は必須で、リフレッシュトークンは発行しません。
+- アプリ（RP）ごとに、どのユーザーやグループが使えるかを管理できます。
+- サインイン中の本人は、アカウントページで自分のパスキーを一覧し、追加し、失効させられます。
+- RP はサインアウトのとき、IdP のセッションも終わらせられます（RP-Initiated Logout）。
+- 管理操作は `idpctl` からだけ行い、IdP の Worker には管理 UI も管理用のエンドポイントも置きません。
 
-## 現在の状態
+## 準拠する標準
 
-実装済みで、まだデプロイしていません。
-設計の段階 1〜6（共有コア、D1 アダプタ、IdP の Worker、管理用の Worker、`idpctl`）と、Terraform とブートストラップのスクリプトは main にマージ済みです。
+仕様の MUST だけでなく、セキュリティ上の SHOULD にも従います。詳細と、意図して外している箇所は [標準準拠](docs/design/standards-compliance.md) にあります。
 
-残っている作業は次のとおりです。
-
-- 検証用の Cloudflare アカウントへの最初のデプロイ。運用者が [ブートストラップの実行手順](docs/deployment/runbook.md) に沿って行います。段階 5 以降は、[.github/workflows/deploy.yml](.github/workflows/deploy.yml) が main へのマージ（と手動の起動）から、Terraform の apply、D1 のマイグレーション、IdP の Worker、管理用の Worker の順にデプロイし、外から確かめます。
-- e2e テスト（Playwright）。[セキュリティ要件チェックリスト](docs/design/security-checklist.md) の攻撃ケースを実装します。
-- [ホスティングのモード](docs/design/hosting-modes.md) の残りの実装（実装の順番の 9：`workers.dev` のモードのブートストラップの道筋と、`workers.dev` の形の issuer での e2e）。署名による管理者の認証、mTLS の撤去、モードの入力（`hosting_mode` と `workers_dev_subdomain`）は済みです。管理用の Worker は RFC 9421 の署名と `admin_signing_keys` の許可リストだけで管理者を確かめます。
-
-## ゴール
-
-- Cloudflare Workers と D1 の無料枠の範囲で常時稼働する
-- ユーザーの認証手段はパスキーだけにし、OIDC と WebAuthn の標準に厳格に準拠する
-- アプリ単位で「誰が使えるか」を管理できる
-- 管理操作は手元の CLI から行い、管理者は IdP 自身ではなく、IdP の外の鍵による RFC 9421 の署名で確かめる
-- 将来、Worker を Rust で書き直せる余地を残す
+| 分野 | 標準 |
+| --- | --- |
+| OIDC | OpenID Connect Core 1.0、Discovery 1.0、RP-Initiated Logout 1.0 |
+| OAuth | RFC 6749、Security BCP（RFC 9700）、PKCE（RFC 7636）、認可レスポンスの `iss`（RFC 9207）、ネイティブアプリ（RFC 8252） |
+| トークン | JWT（RFC 7519、RFC 8725）、JWT アクセストークン（RFC 9068）、JWS と JWK（RFC 7515、RFC 7517）、完全指定のアルゴリズム（RFC 9864） |
+| パスキー | WebAuthn Level 3 |
+| 管理者の認証 | HTTP Message Signatures（RFC 9421）と `Content-Digest`（RFC 9530） |
 
 ## 構成
 
-| 要素 | 役割 |
-| --- | --- |
-| IdP の Worker（TypeScript + Hono） | 利用者と RP に公開する要素。OIDC エンドポイント、パスキー API、サインイン・登録・アカウントページを提供する |
-| 管理用の Worker（TypeScript） | 別のホスト名に置く管理 API。要求ごとの RFC 9421 の署名を署名鍵の許可リストで検証して、Worker 自身が管理者を確かめる |
-| 共有コア（TypeScript） | ドメインの規則、入力の検証、SQL、ユースケースを 1 か所に持ち、2 つの Worker が使う |
-| D1 | IdP の全状態を置くデータベース。2 つの Worker が同じものをバインドする |
-| `idpctl`（Go） | 手元で動かす管理 CLI。管理 API を呼ぶだけの薄いクライアントで、ドメインの規則は評価しない |
+利用者と RP に公開する IdP の Worker と、別のホスト名の管理用の Worker が、同じ D1 を使います。管理用の Worker は `idpctl` の RFC 9421 の署名で管理者を確かめます。
+要素のつながりとデプロイのパイプラインは [インフラの構成](docs/design/infrastructure.md) にあります。
 
-IdP の Worker には管理用のエンドポイントや管理 UI を置きません。
-設計原則、全体構成の図、各トピックの設計は [設計ドキュメントの索引](docs/design/README.md) を参照してください。
+## ホスティングのモード
 
-## リポジトリの構成
+2 つの Worker は、自分のドメインのカスタムドメイン（`custom_domain`）か、ドメインを持たない人のための `workers.dev`（`workers_dev`）で公開します。モードは issuer を決めるので、最初のデプロイの前に選び、後から切り替えません（[ホスティングのモード](docs/design/hosting-modes.md)）。
 
-| パス | 内容 |
-| --- | --- |
-| [apps/worker/](apps/worker) | IdP の Worker。OIDC エンドポイント、`/webauthn/*` の API、サインイン・登録・アカウントの静的ページ |
-| [apps/admin-worker/](apps/admin-worker) | 管理用の Worker。管理者を確かめるゲートの後ろの管理 API と、その OpenAPI の仕様の生成（ゲートは RFC 9421 の署名と、署名鍵の許可リスト） |
-| [packages/core/](packages/core) | 共有コア。利用者向け（`user`）、管理系（`admin`）、共通（`shared`）のユースケースとドメインの規則 |
-| [packages/d1-adapter/](packages/d1-adapter) | 共有コアのデータベースのポートを D1 で実装するアダプタと、その適合テスト |
-| [contract/](contract) | 実装に依存しない契約。D1 のマイグレーション（`migrations`）、管理 API の仕様（`openapi`）、テストベクタ（`testdata`）、スキーマのテスト（`test`） |
-| [examples/rp-sample/](examples/rp-sample) | RP のサンプル（別の Worker）。認可コードフロー（PKCE、`state`、`nonce`、`iss` の確認、`client_secret_basic`）、ID トークンの検証、`/userinfo`、暗号化した Cookie のセッション、RP-Initiated Logout による IdP のセッションまでのログアウト。IdP からは import しない |
-| [cmd/idpctl/](cmd/idpctl) | Go の管理 CLI。管理 API のクライアントは `contract/openapi/admin.json` から生成する |
-| [infra/](infra) | Terraform と、そのオフラインのテスト。今はゾーンを引く data source と、デプロイの設定ファイルの検証だけを持ち、ゾーンに資源を置かない（管理者のクライアント証明書と mTLS の割り当ては[ホスティングのモード](docs/design/hosting-modes.md)の実装の順番の 7 で外した）。ゾーンのルールセット（WAF、リダイレクト、レート制限）は持たず、HTTPS へのリダイレクト、TLS のバージョン、管理者の認証、レート制限は Worker が行う（[ドメインの置き場所](docs/design/domain-placement.md)の決定 ③） |
-| [scripts/](scripts) | ブートストラップのスクリプト（state のバケット、D1、マイグレーション、署名鍵と管理者の鍵の生成、Terraform の実行）と、2 つの Worker のデプロイのスクリプト（`deploy.sh`）。RP のサンプルのデプロイと秘密の設定のスクリプト（`deploy-rp-sample.sh`、`set-rp-sample-secrets.sh`）も置く |
-| [deployments/](deployments) | デプロイごとの設定ファイル（`<デプロイの名前>.tfvars.json`）とその雛形 |
-| [docs/](docs) | 設計思想、設計ドキュメント、デプロイの手順 |
-| [.github/workflows/](.github/workflows) | PR の CI（`ci.yml`）と、main へのマージと手動の起動で動くデプロイ（`deploy.yml`） |
+`workers.dev` のモードを選ぶ前に、必ず [fork する人への警告](docs/design/hosting-modes.md#24-fork-する人への警告) を読んでください。
 
-## 前提とツールチェーン
+## 現在の状態
 
-- `gh`、`jq`、`mise`、`op`、`openssl`（3.x）を使います。
-- Node.js、pnpm、Go、oapi-codegen、Terraform、ShellCheck、actionlint、pinact は、mise が [mise.toml](mise.toml) に固定したバージョンを `mise install` で入れます。
-- JavaScript のパッケージマネージャーは pnpm だけを使います。依存は `pnpm install --frozen-lockfile` で入れます。
-- Cloudflare の操作には、ルートの `package.json` の devDependency の `cf` CLI（ベータ）を `pnpm exec cf …` で使います。wrangler は使いません。
-- `cf auth login` は運用者が自分で実行します。
-
-## コマンド
-
-| コマンド | 内容 |
-| --- | --- |
-| `pnpm run check` | TypeScript の型検査、ESLint、Vitest を順に実行する。コミットの前に必ず通す |
-| `pnpm run typecheck` / `pnpm run lint` / `pnpm run test` | 上の 3 つを個別に実行する |
-| `pnpm run openapi:generate` | 管理用の Worker から `contract/openapi/admin.json` を作り直す |
-| `mise run idpctl:generate` | `contract/openapi/admin.json` から `idpctl` の管理 API のクライアントを作り直す |
-| `mise run idpctl:check` | `idpctl` の gofmt、go vet、ビルド、テスト（生成物のずれの検出を含む） |
-| `mise run actions:pin` / `mise run actions:check` | 外部 Action の commit SHA への固定と、その確認 |
-
-Terraform とシェルスクリプトの検査は CI（[.github/workflows/ci.yml](.github/workflows/ci.yml)）の `infra` のジョブで動きます。内容は `infra/` に対する `terraform fmt -check`、`terraform validate`、`terraform test`（モックの provider でオフラインに動く）と、`scripts/` に対する `shellcheck` です。
+検証用の Cloudflare アカウントに `workers_dev` のモードでデプロイしてあり、動いています。
+RP のサンプルからのパスキーによるサインインと、RP-Initiated Logout によるサインアウトを、端から端まで確かめました。
 
 ## ドキュメント
 
 | ドキュメント | 内容 |
 | --- | --- |
-| [docs/philosophy/README.md](docs/philosophy/README.md) | OJILab の設計思想とエンジニアリング原則 |
-| [docs/design/README.md](docs/design/README.md) | IdP の設計ドキュメントの索引。概要、ゴール、設計原則、全体構成 |
-| [docs/design/hosting-modes.md](docs/design/hosting-modes.md) | カスタムドメインと `workers.dev` の 2 つのホスティングのモード、RFC 9421 の署名による管理者の認証、実装の順番 |
-| [docs/design/cross-language-contract.md](docs/design/cross-language-contract.md) | SQL、エンコーディング、ID、鍵の形式、管理者の署名の形、テストベクタ、管理 API の仕様の取り決め |
+| [docs/philosophy/](docs/philosophy/README.md) | OJILab の設計思想とエンジニアリング原則 |
+| [docs/design/](docs/design/README.md) | IdP の設計ドキュメントの索引。ゴール、設計原則、全体構成、各トピックの設計 |
+| [docs/design/infrastructure.md](docs/design/infrastructure.md) | 要素のつながりとデプロイのパイプラインの図 |
+| [docs/design/hosting-modes.md](docs/design/hosting-modes.md) | 2 つのホスティングのモードと、RFC 9421 の署名による管理者の認証 |
+| [docs/design/standards-compliance.md](docs/design/standards-compliance.md) | 準拠する標準と、その例外 |
+| [docs/design/security-checklist.md](docs/design/security-checklist.md) | セキュリティ要件のチェックリスト |
 | [docs/deployment/bootstrap.md](docs/deployment/bootstrap.md) | 空の Cloudflare アカウントから最初のユーザーと RP をつなぐまでの手順の設計 |
-| [docs/deployment/runbook.md](docs/deployment/runbook.md) | ブートストラップを `infra/` と `scripts/` で実行するときの運用者の操作の順番 |
-| [docs/deployment/agent-setup.md](docs/deployment/agent-setup.md) | ブートストラップの認証情報の準備を、秘密の値をコンテキストに入れずにエージェントが行う方法 |
+| [docs/deployment/runbook.md](docs/deployment/runbook.md) | ブートストラップを実行するときの運用者の操作の順番 |
+| [docs/deployment/agent-setup.md](docs/deployment/agent-setup.md) | 秘密の値をコンテキストに入れずに、エージェントが認証情報を準備する方法 |
 | [docs/deployment/secret.md](docs/deployment/secret.md) | 1Password Environments と GitHub Actions による CD 用 Secret の扱い |
-| [AGENT.md](AGENT.md) | このリポジトリを変更するエージェントの契約 |
-
-## 貢献者とエージェント向けのセキュリティ規則
-
-詳細と正本は [AGENT.md](AGENT.md) です。
-
-- 署名鍵と管理者の秘密鍵は、`scripts/` のレビュー済みの生成スクリプトでだけ生成する。手で生成したり、鍵の値を読み出したり受け渡したりしない。
-- 秘密（鍵、API トークン、IdP が発行するクライアントシークレットや登録トークン）を AI のコンテキストに入れない。
-- `cf auth login` は運用者が実行する。エージェントがブートストラップの認証情報を準備するときは、運用者が認証したセッションの下で、値をコンテキストに入れずにパイプで流す（[エージェントによる認証情報の準備](docs/deployment/agent-setup.md)）。
-- 管理操作は管理用の Worker だけに置く。IdP の Worker は共有コアの管理系のモジュールを import しない（ESLint の規則で検査する）。
-
-## リポジトリの運用
-
-### Repository settings
-
-GitHub 上のリポジトリ設定を適用します。
-
-```sh
-./setup-repository.sh
-```
-
-設定を変更せずドリフトだけを確認する場合:
-
-```sh
-./setup-repository.sh --check
-```
-
-### 1Password Environments による CD
-
-CD 用 Secret の正本は 1Password Environment に置き、GitHub Actions の OIDC token を 1Password が検証して、許可された job にだけ実行時に渡します。
-GitHub には 1Password Integration Key 以外の長寿命 Secret を保存しません。
-Environment と GitHub Actions destination の作成手順、命名規則、権限、ローテーションは [docs/deployment/secret.md](docs/deployment/secret.md) を参照してください。
-
-1Password 側で作成した Workload ID と Environment ID を GitHub 側へ設定します。
-
-```sh
-OP_WORKLOAD_ID='<workload-id>' \
-OP_ENVIRONMENT_ID='<environment-id>' \
-./setup-1password-integration.sh
-```
-
-設定を変更せずドリフトだけを確認する場合:
-
-```sh
-./setup-1password-integration.sh --check
-```
-
-### GitHub Actions の pin
-
-外部 Action と reusable workflow は、mise で管理する pinact で commit SHA に固定します。
-
-```sh
-mise install
-GITHUB_TOKEN="$(gh auth token)" mise run actions:pin
-GITHUB_TOKEN="$(gh auth token)" mise run actions:check
-```
+| [docs/development.md](docs/development.md) | 開発に必要なツール、コマンド、リポジトリの構成と運用 |
+| [AGENT.md](AGENT.md) | このリポジトリを変更する人とエージェントの契約 |
