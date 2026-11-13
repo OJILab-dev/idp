@@ -9,6 +9,13 @@ import (
 	"github.com/OJILab-dev/idp/cmd/idpctl/internal/adminapi"
 )
 
+// postLogoutRedirectURIRules is the admin API's post-logout redirect URI
+// rule set (POST_LOGOUT_REDIRECT_URI_RULES in packages/core), shortened for
+// the flag help and the usage summary.
+const postLogoutRedirectURIRules = "https, canonical form, matched exactly, at most 2000 printable ASCII characters; " +
+	"no fragment, userinfo, '*', localhost or *.localhost host (trailing dot or not), " +
+	"or state query parameter (the IdP appends state); at most 10, no duplicates"
+
 // opFlags holds every operation-specific flag; each operation registers only
 // the ones it names.
 type opFlags struct {
@@ -79,7 +86,7 @@ func registerFlags(fs *flag.FlagSet, names []string, f *opFlags) {
 		case "redirect-uri":
 			fs.Var(&f.redirectURIs, "redirect-uri", "redirect URI; repeat for several")
 		case "post-logout-redirect-uri":
-			fs.Var(&f.postLogoutRedirectURIs, "post-logout-redirect-uri", "https URI to return to after RP-Initiated Logout, matched exactly; no fragment, userinfo, localhost, or state query parameter (the IdP appends state); repeat for several")
+			fs.Var(&f.postLogoutRedirectURIs, "post-logout-redirect-uri", "URI to return to after RP-Initiated Logout ("+postLogoutRedirectURIRules+"); repeat for several")
 		case "secret-out":
 			fs.StringVar(&f.secretOut, "secret-out", "", "new file (mode 0600) that receives the IdP-issued secret")
 		}
@@ -310,7 +317,7 @@ var operations = []operation{
 	},
 	{
 		name: "client_set_post_logout_redirects", synopsis: "<client_id> [<post_logout_redirect_uri>...]",
-		summary: "Replace a client's RP-Initiated Logout redirect URIs (https, exact, no fragment, userinfo, localhost, or state parameter); none clears them.",
+		summary: "Replace a client's RP-Initiated Logout redirect URIs (" + postLogoutRedirectURIRules + "); none clears them.",
 		args:    1, variadic: true, secret: noSecret,
 		send: func(ctx context.Context, c *call, a []string, _ *opFlags) (response, error) {
 			// A copy, so an empty list is sent as [] rather than null.

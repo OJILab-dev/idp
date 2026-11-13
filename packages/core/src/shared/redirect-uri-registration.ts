@@ -64,7 +64,7 @@ export function classifyRedirectUri(value: string): RedirectUriKind | null {
 
 /** The post-logout redirect URI rules as a noun phrase, for the OpenAPI description and validation messages. */
 export const POST_LOGOUT_REDIRECT_URI_RULES =
-  "an absolute https URI in canonical form, compared exactly, with no fragment, userinfo, localhost host, or state query parameter (the IdP appends the request's state)";
+  `an absolute https URI of at most ${MAX_REDIRECT_URI_LENGTH} printable ASCII characters in canonical form (as the URL parser prints it), compared exactly, with no fragment, userinfo, '*' wildcard, localhost host (nor *.localhost, with or without a trailing dot), or state query parameter (the IdP appends the request's state)`;
 
 /**
  * Checks whether a client may register a URI as an RP-Initiated Logout post-logout redirect URI (docs/design/clients.md):
