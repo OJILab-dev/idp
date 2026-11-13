@@ -4,7 +4,6 @@
   "type": "module",
   "exports": {
     "./d1": "./src/d1/index.ts",
-    "./d1/admin": "./src/d1/admin.ts",
     "./workers/tls": "./src/workers/tls/index.ts"
   },
   "dependencies": {

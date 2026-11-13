@@ -1,8 +1,9 @@
-// A Worker for admin-signature-vectors.test.ts: it runs the shared core's verifier and the D1 nonce store inside
+// A Worker for admin-signature-vectors.test.ts: it runs the shared core's verifier and the admin nonce store inside
 // workerd on the request workerd received, so @target-uri is built from the URL the runtime hands a Worker. It
 // stands in for the admin Worker's gate until plan step 6 wires the verifier there (docs/design/hosting-modes.md 10).
 import { verifyAdminSignature, type AdminSigningKey } from "../../src/admin/signature.js";
-import { createD1AdminNonceStore } from "../../../cloudflare/src/d1/admin.js";
+import { createAdminNonceStore } from "../../src/admin/nonces.js";
+import { createD1Database } from "../../../cloudflare/src/d1/index.js";
 
 type Env = {
   readonly DB: D1Database;
@@ -33,7 +34,7 @@ export default {
       now,
     );
     // Item 10 of 3.8: only a verified request reaches the nonce store.
-    const claim = result.ok ? await createD1AdminNonceStore(env.DB).claim(result.nonce, result.expiresAt, now) : null;
+    const claim = result.ok ? await createAdminNonceStore(createD1Database(env.DB)).claim(result.nonce, result.expiresAt, now) : null;
     return Response.json({ url: request.url, result, claim });
   },
 };

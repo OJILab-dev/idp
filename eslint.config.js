@@ -48,10 +48,6 @@ export const adminImportBan = {
         "**/core/src/admin",
         "**/core/src/admin/*",
         "**/admin/*",
-        // The D1 adapters of the admin-only ports import the admin modules.
-        "@idp/cloudflare/d1/admin",
-        "**/cloudflare/src/d1/admin",
-        "**/cloudflare/src/d1/admin.js",
       ],
       message: "User-facing code must not depend on the admin modules (docs/design/technology.md).",
     },

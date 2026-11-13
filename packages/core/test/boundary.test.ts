@@ -19,8 +19,6 @@ describe("core module boundaries", () => {
     ["packages/core/src/audit/probe.ts", 'import "../admin/index.js";'],
     ["packages/core/src/db/probe.ts", 'import "../user/index.js";'],
     ["packages/core/src/passkeys/probe.ts", 'import "../user/webauthn/ceremony.js";'],
-    ["apps/worker/src/probe.ts", 'import "@idp/cloudflare/d1/admin";'],
-    ["apps/worker/src/probe.ts", 'import "../../../packages/cloudflare/src/d1/admin.js";'],
   ])("%s rejects %s", async (file, code) => {
     expect(await lintAs(file, code)).toContain("no-restricted-imports");
   });
@@ -90,7 +88,6 @@ describe("@idp/cloudflare boundaries", () => {
     ["packages/cloudflare/src/d1/probe.ts", 'import "./d1.js";'],
     ["apps/worker/src/probe.ts", 'import "@idp/cloudflare/d1";'],
     ["apps/worker/src/probe.ts", 'import "@idp/cloudflare/workers/tls";'],
-    ["apps/admin-worker/src/probe.ts", 'import "@idp/cloudflare/d1/admin";'],
   ])("%s allows %s", async (file, code) => {
     expect(await lintAs(file, code)).not.toContain("no-restricted-imports");
   });
