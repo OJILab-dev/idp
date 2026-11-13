@@ -213,6 +213,7 @@ describe("client_set_post_logout_redirects", () => {
     ["userinfo", ["https://u@a.example.com/bye"], ["/post_logout_redirect_uris/0"]],
     ["a non-canonical URI", ["https://A.example.com/bye"], ["/post_logout_redirect_uris/0"]],
     ["localhost", ["https://localhost/bye"], ["/post_logout_redirect_uris/0"]],
+    ["its own state parameter", ["https://a.example.com/bye", "https://a.example.com/bye?x=1&state=fixed"], ["/post_logout_redirect_uris/1"]],
     ["a repeated URI", ["https://a.example.com/bye", "https://a.example.com/bye"], ["/post_logout_redirect_uris"]],
     ["eleven URIs", Array.from({ length: 11 }, (_, i) => `https://a.example.com/${i}`), ["/post_logout_redirect_uris"]],
   ])("rejects %s with validation-failed and keeps the list", async (_case, uris, pointers) => {

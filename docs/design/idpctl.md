@@ -126,7 +126,7 @@ RP-Initiated Logout のログアウト後の戻り先（`post_logout_redirect_ur
 
 - `client_create` は、`post_logout_redirect_uris` を任意で受け取る（`idpctl` では `--post-logout-redirect-uri` を繰り返す）。省けば空の一覧で、その client へのログアウト後のリダイレクトはしない。
 - `client_set_post_logout_redirects` は一覧を丸ごと置き換える。空の一覧も受け付け、それでリダイレクトを止められる（`idpctl client_set_post_logout_redirects <client_id>` を URI なしで実行する）。今と同じ一覧（同じ順）は、書き込まずに成功を返す。
-- 登録できる URI は、redirect URI の規則（[クライアントの種類](clients.md)）のうち `https` の形だけで、client の種類によらずループバックの http とカスタムスキームは拒否する。正規の形、フラグメントなし、userinfo なし、2,000 文字まで、0〜10 個、重複なしの規則は redirect URI と同じ。比較は完全一致で、ループバックのポートの例外もない。
+- 登録できる URI は、redirect URI の規則（[クライアントの種類](clients.md)）のうち `https` の形だけで、client の種類によらずループバックの http とカスタムスキームは拒否する。正規の形、フラグメントなし、userinfo なし、2,000 文字まで、0〜10 個、重複なしの規則は redirect URI と同じ。比較は完全一致で、ループバックのポートの例外もない。`state` のクエリパラメーターを持つ URI も拒否する（IdP が要求の `state` を付け足すので、リダイレクトに `state` が 2 つ並ぶのを防ぐ。[標準準拠](standards-compliance.md)参照）。
 - 新しい一覧は、redirect URI と同じく個人情報を含まない設定値なので、`detail_json` の `post_logout_redirect_uris` にそのまま残す。`client_create` では、一覧が空でないときだけ残す。
 - `clients_list` は client ごとの `post_logout_redirect_uris` も返す。
 

@@ -107,6 +107,18 @@ describe("GET /end_session", () => {
     expect(await sessions(f)).toBe(1);
   });
 
+  it("offers to stay signed in: a link to the IdP's account page that ends nothing and never returns to the RP", async () => {
+    const f = fixture();
+    const session = await seed(f);
+    const query = new URLSearchParams({ client_id: CLIENT, post_logout_redirect_uri: RETURN, state: "s" });
+    const html = await (await call(f, "GET", `/end_session?${query}`, { cookies: { [SESSION]: session } })).text();
+    expect(html).toContain('<a href="/account">Stay signed in</a>');
+    // The only way back to the RP is the form that ends the session.
+    expect(html.split(RETURN)).toHaveLength(2);
+    const ja = await (await call(f, "GET", "/end_session?ui_locales=ja", { cookies: { [SESSION]: session } })).text();
+    expect(ja).toContain('<a href="/account">サインインしたままにする</a>');
+  });
+
   it("says on the confirmation page when the hint names another user", async () => {
     const f = fixture();
     const session = await seed(f);

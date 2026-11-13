@@ -11,6 +11,7 @@ type Messages = {
   readonly confirmBody: string;
   readonly confirmOtherUser: string;
   readonly confirmButton: string;
+  readonly stayLink: string;
   readonly signedOutTitle: string;
   readonly signedOutBody: string;
   readonly errorTitle: string;
@@ -23,9 +24,10 @@ const MESSAGES: Readonly<Record<UiLocale, Messages>> = {
   en: {
     confirmTitle: "Sign out of the identity provider?",
     confirmBody:
-      "An app asked to sign you out of the identity provider. After you sign out, the next sign-in asks for your passkey again. If you did not ask for this, close this page.",
+      "An app asked to sign you out of the identity provider. After you sign out, the next sign-in asks for your passkey again. If you did not ask for this, stay signed in.",
     confirmOtherUser: "This request was made for another account than the one signed in here.",
     confirmButton: "Sign out",
+    stayLink: "Stay signed in",
     signedOutTitle: "You are signed out",
     signedOutBody: "You are signed out of the identity provider. You can close this page.",
     errorTitle: "Sign-out could not continue",
@@ -35,9 +37,10 @@ const MESSAGES: Readonly<Record<UiLocale, Messages>> = {
   ja: {
     confirmTitle: "ID プロバイダーからサインアウトしますか",
     confirmBody:
-      "アプリが、ID プロバイダーからのサインアウトを求めています。サインアウトすると、次のサインインでもう一度パスキーが必要になります。心当たりがなければ、このページを閉じてください。",
+      "アプリが、ID プロバイダーからのサインアウトを求めています。サインアウトすると、次のサインインでもう一度パスキーが必要になります。心当たりがなければ、サインインしたままにしてください。",
     confirmOtherUser: "この要求は、ここでサインインしているのとは別のアカウントのためのものです。",
     confirmButton: "サインアウトする",
+    stayLink: "サインインしたままにする",
     signedOutTitle: "サインアウトしました",
     signedOutBody: "ID プロバイダーからサインアウトしました。このページは閉じてかまいません。",
     errorTitle: "サインアウトを続けられません",
@@ -78,7 +81,10 @@ ${body}
 }
 
 /**
- * Renders the confirmation page: a form that posts the validated values to `/end_session/confirm`.
+ * Renders the confirmation page: a form that posts the validated values to `/end_session/confirm`, and a link to
+ * stay signed in. The link goes to the IdP's account page, never to the RP: RP-Initiated Logout 1.0 §2 defines only
+ * the "yes" answer, and §3 redirects to the RP after a logout, so a return to the RP would claim a logout that did
+ * not happen (and pass the RP's state check).
  *
  * @param locale The language the core chose.
  * @param form The values to carry, in order; each name and value is escaped.
@@ -96,7 +102,8 @@ export function renderLogoutConfirmPage(locale: UiLocale, form: readonly (readon
 <form method="post" action="/end_session/confirm">
 ${fields}
 <button type="submit">${m.confirmButton}</button>
-</form>`,
+</form>
+<p><a href="/account">${m.stayLink}</a></p>`,
   );
 }
 
