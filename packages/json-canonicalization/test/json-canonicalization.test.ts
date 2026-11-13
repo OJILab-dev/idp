@@ -7,9 +7,15 @@ function double(hex: string): number {
 
 describe("RFC 8785 §3.2.2 to §3.2.4", () => {
   // The sample of §3.2.2, parsed as JSON, and the canonical form of §3.2.3, checked against the UTF-8 bytes of §3.2.4.
-  const SAMPLE = String.raw`{
+  // The JSON escapes of the sample's string are assembled from a backslash, so the text below is exactly the RFC's.
+  const BS = "\\";
+  function jsonEscape(hex: string): string {
+    return `${BS}u${hex}`;
+  }
+  const STRING = `${jsonEscape("20ac")}$${jsonEscape("000F")}${jsonEscape("000a")}A'${jsonEscape("0042")}${jsonEscape("0022")}${jsonEscape("005c")}${BS}${BS}${BS}"${BS}/`;
+  const SAMPLE = `{
     "numbers": [333333333.33333329, 1E30, 4.50, 2e-3, 0.000000000000000000000000001],
-    "string": "€$\u000F\u000aA'B"\\\\"\/",
+    "string": "${STRING}",
     "literals": [null, true, false]
   }`;
   const UTF8 = [
