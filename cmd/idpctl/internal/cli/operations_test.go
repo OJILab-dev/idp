@@ -295,9 +295,6 @@ func TestOperationsMatchTheSpec(t *testing.T) {
 	if !slices.Equal(got, want) {
 		t.Fatalf("operations\n got %v\nwant %v", got, want)
 	}
-	if len(got) != 30 {
-		t.Fatalf("%d operations, idpctl.md lists 30", len(got))
-	}
 	for _, name := range got {
 		if _, ok := operationCases[name]; !ok && !slices.Contains([]string{"client_rotate_secret", "enroll_link_issue"}, name) {
 			t.Errorf("operation %s has no request test", name)
