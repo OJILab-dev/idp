@@ -114,6 +114,9 @@ importers:
       '@idp/cose-key':
         specifier: workspace:*
         version: link:../cose-key
+      '@idp/digest-fields':
+        specifier: workspace:*
+        version: link:../digest-fields
       '@idp/jwk-thumbprint':
         specifier: workspace:*
         version: link:../jwk-thumbprint
@@ -144,6 +147,8 @@ importers:
       '@idp/core':
         specifier: workspace:*
         version: link:../core
+
+  packages/digest-fields: {}
 
   packages/jwk-thumbprint:
     dependencies:

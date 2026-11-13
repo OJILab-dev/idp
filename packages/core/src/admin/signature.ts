@@ -3,6 +3,7 @@
 // body size) and stores the nonce after them (item 10, the AdminNonceStore port). Every refusal is reported with a
 // reason for the Worker log only; the response is the same forbidden body whatever the reason (3.8).
 import { InvalidBase64urlError, base64urlDecode } from "@idp/base64url";
+import { verifyDigest } from "@idp/digest-fields";
 import { StructuredFieldError, serializeInnerList, type Dictionary, type InnerList, type Item } from "@idp/structured-fields";
 import { parseStrictDictionary } from "./strict-dictionary.js";
 
@@ -119,8 +120,7 @@ export async function verifyAdminSignature(
     // Written as "not inside" so that a NaN clock, for which every comparison is false, refuses instead of passing.
     if (!Number.isSafeInteger(now) || !(Math.abs(profile.created - now) <= ADMIN_SIGNATURE_WINDOW_SECONDS)) throw new Refusal("created");
     if (!(await verifySignature(key.publicKey, parsed, profile, request))) throw new Refusal("signature");
-    const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", request.body));
-    if (!constantTimeEqual(digest, parsed.digest)) throw new Refusal("content-digest");
+    if (!(await verifyDigest("sha-256", parsed.digest, request.body))) throw new Refusal("content-digest");
     return {
       ok: true,
       admin: { name: key.name, keyid: key.keyid },
@@ -258,11 +258,4 @@ async function verifySignature(key: CryptoKey, parsed: Parsed, profile: Profile,
     // A runtime that throws instead of returning false (a malformed point, for example) still means "not verified".
     return false;
   }
-}
-
-function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  let difference = 0;
-  for (let i = 0; i < a.length; i += 1) difference |= (a[i] ?? 0) ^ (b[i] ?? 0);
-  return difference === 0;
 }
