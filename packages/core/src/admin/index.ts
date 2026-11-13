@@ -26,7 +26,7 @@ export type {
   PrincipalRef,
 } from "./grants.js";
 export type { GroupCreateResult, GroupMemberAddResult, GroupRenameResult, GroupSummary } from "./groups.js";
-export { IDEMPOTENCY_TTL_SECONDS, canonicalJson, requestHash } from "./idempotency.js";
+export { IDEMPOTENCY_TTL_SECONDS, requestHash } from "./idempotency.js";
 export {
   OPERATION_NAMES,
   type AdminContext,

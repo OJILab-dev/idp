@@ -2,6 +2,7 @@
 // draft-ietf-httpapi-idempotency-key-header-08). Keys live in a per-admin namespace for 24 hours, and the row is
 // written in the operation's own batch under the operation's guard, so the stored response and the change commit
 // together or not at all.
+import { canonicalize } from "@idp/json-canonicalization";
 import { sha256Base64url } from "@idp/jwk-thumbprint";
 import { isRandomTokenFormat, type SqlCondition, type SqlRow, type SqlStatement } from "../shared/index.js";
 import type { OperationName, OperationOutcome } from "./operation.js";
@@ -10,35 +11,33 @@ import { AdminProblem } from "./problem.js";
 /** How long a key is remembered. */
 export const IDEMPOTENCY_TTL_SECONDS = 24 * 60 * 60;
 
-/**
- * Serialises a JSON value with object members sorted by key, so equal inputs hash equally whatever their member
- * order on the wire.
- *
- * @param value A JSON value (the validated operation input).
- * @returns The canonical JSON text.
- */
-export function canonicalJson(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+// An optional member the validated input leaves undefined counts as absent, as it always has, so the input is the
+// same JSON value whether the member was omitted or validated away.
+function withoutAbsentMembers(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutAbsentMembers);
   if (typeof value === "object" && value !== null) {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([, v]) => v !== undefined)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
-    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(",")}}`;
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, member]) => member !== undefined)
+        .map(([name, member]) => [name, withoutAbsentMembers(member)]),
+    );
   }
-  return JSON.stringify(value);
+  return value;
 }
 
 /**
- * Hashes a request for idempotency_keys.request_hash.
+ * Hashes a request for idempotency_keys.request_hash: SHA-256, unpadded base64url, of the input's RFC 8785 canonical
+ * JSON, so equal inputs hash equally whatever their member order on the wire.
  *
  * The hash covers the whole validated input, path parameters included: the body of an enablement event is the same
  * for every user, so hashing the body alone would replay one user's response for another.
  *
  * @param input The validated operation input.
- * @returns SHA-256 of {@link canonicalJson}, unpadded base64url.
+ * @returns The hash.
+ * @throws {JsonCanonicalizationError} The input holds a value JSON cannot carry; validated input never does.
  */
 export function requestHash(input: unknown): Promise<string> {
-  return sha256Base64url(canonicalJson(input));
+  return sha256Base64url(canonicalize(withoutAbsentMembers(input)));
 }
 
 /**

@@ -125,6 +125,9 @@ importers:
       '@idp/http-message-signatures':
         specifier: workspace:*
         version: link:../http-message-signatures
+      '@idp/json-canonicalization':
+        specifier: workspace:*
+        version: link:../json-canonicalization
       '@idp/jwk-thumbprint':
         specifier: workspace:*
         version: link:../jwk-thumbprint
@@ -175,6 +178,8 @@ importers:
       '@idp/structured-fields':
         specifier: workspace:*
         version: link:../structured-fields
+
+  packages/json-canonicalization: {}
 
   packages/jwk-thumbprint:
     dependencies:
