@@ -24,7 +24,15 @@ const USED_PARAMETERS = ["state", "iss", "code", "error"] as const;
 
 const ERROR_CODE =/^[a-z_]{1,64}$/;
 
-function constantTimeEqual(a: string, b: string): boolean {
+/**
+ * Compares two strings without stopping at the first difference, so the time taken does not tell how much of a
+ * guessed state was right.
+ *
+ * @param a One string.
+ * @param b The other.
+ * @returns Whether they are equal.
+ */
+export function constantTimeEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let difference = 0;
   for (let index = 0; index < a.length; index += 1) difference |= a.charCodeAt(index) ^ b.charCodeAt(index);

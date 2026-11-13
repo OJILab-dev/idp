@@ -94,5 +94,20 @@ describe("the sample on workerd", () => {
     expect(html).toContain(SUB);
     expect(html).toContain('action="/logout"');
     for (const request of idp.requests) expect(request.headers.get("user-agent")).toMatch(/^idp-rp-sample\//);
+
+    // RP-Initiated Logout: the hashed auto-submit page, then the return with the state.
+    const logout = (await mf.dispatchFetch(`${ORIGIN}/logout`, {
+      method: "POST",
+      redirect: "manual",
+      headers: { cookie: `__Host-rp-sample-session=${session}`, "sec-fetch-site": "same-origin" },
+    })) as unknown as Response;
+    expect(logout.status).toBe(200);
+    expect(logout.headers.get("content-security-policy")).toMatch(/script-src 'sha256-[A-Za-z0-9+/]{43}='/);
+    const page = await logout.text();
+    expect(page).toContain(`action="${ISSUER}/end_session"`);
+    const state = /name="state" value="([^"]*)"/.exec(page)?.[1] ?? "";
+    const pending = cookieFrom(logout, "__Host-rp-sample-logout");
+    const back = await dispatch(`${ORIGIN}/signed-out?state=${state}`, `__Host-rp-sample-logout=${pending}`);
+    expect(back.status).toBe(200);
   });
 });

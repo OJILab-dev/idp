@@ -14,7 +14,6 @@ export type Handler = {
 const SECURITY_HEADERS: Readonly<Record<string, string>> = {
   // Pages hold personal data and responses set session cookies: never cache them.
   "cache-control": "no-store",
-  "content-security-policy": CONTENT_SECURITY_POLICY,
   // The callback URL carries the code and state; no page may leak its URL in a Referer.
   "referrer-policy": "no-referrer",
   "x-content-type-options": "nosniff",
@@ -24,6 +23,9 @@ const SECURITY_HEADERS: Readonly<Record<string, string>> = {
 function withSecurityHeaders(response: Response): Response {
   const secured = new Response(response.body, response);
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) secured.headers.set(name, value);
+  // Only the logout page sets a CSP of its own (logoutContentSecurityPolicy: one hashed script and a form post to
+  // the IdP); every other response gets the scriptless default.
+  if (!secured.headers.has("content-security-policy")) secured.headers.set("content-security-policy", CONTENT_SECURITY_POLICY);
   return secured;
 }
 

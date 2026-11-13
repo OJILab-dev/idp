@@ -1,11 +1,20 @@
-// The routes: `/` (account or sign-in), `/login`, `/callback`, and `POST /logout`. Every protocol check lives in
+// The routes: `/` (account or sign-in), `/login`, `/callback`, `POST /logout`, and `/signed-out`. Every protocol check lives in
 // callback.ts, id-token.ts, and idp.ts; this file wires them to cookies and pages.
 import { Hono, type Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import { CallbackError, checkAuthorizationResponse } from "./callback.js";
+import { CallbackError, checkAuthorizationResponse, constantTimeEqual } from "./callback.js";
 import { loadConfig, type Config, type Env } from "./config.js";
 import { ConfigError, IdpError } from "./errors.js";
-import { accountPage, errorPage, idTokenView, signedOutPage, type SessionView } from "./html.js";
+import {
+  accountPage,
+  errorPage,
+  idTokenView,
+  logoutContentSecurityPolicy,
+  logoutFormPage,
+  postLogoutPage,
+  signedOutPage,
+  type SessionView,
+} from "./html.js";
 import { IdTokenError } from "./id-token.js";
 import { createIdpClient, type Fetcher, type IdpClient } from "./idp.js";
 import { pkceChallenge, randomToken } from "./pkce.js";
@@ -15,7 +24,9 @@ import { seal, unseal } from "./sealed.js";
 export const FLOW_COOKIE = "__Host-rp-sample-flow";
 /** The signed-in session. */
 export const SESSION_COOKIE = "__Host-rp-sample-session";
-/** A login must come back within 10 minutes. */
+/** The logout in progress, between POST /logout and /signed-out: the state sent to the IdP. */
+export const LOGOUT_COOKIE = "__Host-rp-sample-logout";
+/** A login, or a logout's return from the IdP, must come back within 10 minutes. */
 export const FLOW_SECONDS = 600;
 /** The RP session's absolute lifetime; the IdP's own session is also 1 hour (docs/design/tokens.md). */
 export const SESSION_SECONDS = 3600;
@@ -150,8 +161,10 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
     const { state, nonce, verifier } = flow ?? {};
     if (typeof state !== "string" || typeof nonce !== "string" || typeof verifier !== "string") throw new CallbackError("state");
     const { code } = checkAuthorizationResponse(new URL(c.req.url).searchParams, state, config.issuer);
-    const { idToken, userinfo } = await c.get("idp").redeem({ code, verifier, nonce });
-    const session: SessionView = { idToken: idTokenView(idToken), userinfo };
+    const { idToken, idTokenJwt, userinfo } = await c.get("idp").redeem({ code, verifier, nonce });
+    // The raw ID token is kept only as the logout's id_token_hint (RP-Initiated Logout 1.0 §2, RECOMMENDED); it is
+    // sealed like the rest and never shown.
+    const session: SessionView & { readonly idTokenHint: string } = { idToken: idTokenView(idToken), userinfo, idTokenHint: idTokenJwt };
     const sealed = await seal(config.sessionKey, SESSION_COOKIE, session, options.now() + SESSION_SECONDS);
     // RFC 6265bis §5.6: a browser ignores a cookie whose name and value exceed 4096 octets. Refuse here instead, so
     // a large /userinfo (multibyte names included: measured in UTF-8 octets) fails visibly, not as a silent loop.
@@ -166,16 +179,61 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
     return c.redirect("/", 303);
   });
 
-  app.post("/logout", (c) => {
-    if (!isSameOrigin(c.req.raw, c.get("config").origin)) {
+  // RP-Initiated Logout 1.0: this RP's session ends here whatever happens next, then the browser takes the logout
+  // request to the IdP so that the IdP's session ends too and the next sign-in asks for the passkey again.
+  app.post("/logout", async (c) => {
+    const config = c.get("config");
+    if (!isSameOrigin(c.req.raw, config.origin)) {
       log({ route: "logout", result: "refused", reason: "origin" });
       return refuse(c, 403, "このページからのログアウトだけを受け付けます。");
     }
-    // Local to this RP: the IdP defines no RP-initiated logout (docs/design/authentication.md, サインアウト), so its
-    // own session stays until it expires or the user signs out on the IdP's account page.
+    const session = await unseal(config.sessionKey, SESSION_COOKIE, getCookie(c, SESSION_COOKIE), options.now());
     deleteCookie(c, SESSION_COOKIE, COOKIE_OPTIONS);
-    log({ route: "logout", result: "signed_out" });
-    return c.redirect("/", 303);
+    // Without a session there is no ID token to send as the hint, and nothing of this RP to end.
+    if (session === undefined) {
+      log({ route: "logout", result: "signed_out", scope: "rp" });
+      return c.redirect("/", 303);
+    }
+    const { endSession } = await c.get("idp").discover();
+    if (endSession.kind === "none") {
+      log({ route: "logout", result: "signed_out", scope: "rp" });
+      return c.redirect("/", 303);
+    }
+    if (endSession.kind === "invalid") {
+      log({ route: "logout", result: "refused", reason: "end_session_endpoint" });
+      return refuse(c, 502, "IdP のログアウトの宛先を確かめられなかったので、この RP からだけログアウトしました。");
+    }
+    // state is checked at /signed-out against this sealed, single-use cookie (see there).
+    const state = randomToken();
+    setCookie(c, LOGOUT_COOKIE, await seal(config.sessionKey, LOGOUT_COOKIE, { state }, options.now() + FLOW_SECONDS), {
+      ...COOKIE_OPTIONS,
+      maxAge: FLOW_SECONDS,
+    });
+    // §2: id_token_hint (RECOMMENDED), the registered post_logout_redirect_uri (§3), state, and client_id. A sealed
+    // session from before this RP kept the hint has none: the IdP then asks the user to confirm (§2 MUST).
+    const hint = session.idTokenHint;
+    const fields: [string, string][] = [];
+    if (typeof hint === "string") fields.push(["id_token_hint", hint]);
+    fields.push(["post_logout_redirect_uri", config.postLogoutRedirectUri], ["state", state], ["client_id", config.clientId]);
+    // A form POST, not a redirect: the ID token stays out of URLs, browser history, and access logs (§2 allows both).
+    c.header("content-security-policy", await logoutContentSecurityPolicy(new URL(endSession.url).origin));
+    log({ route: "logout", result: "signed_out", scope: "rp_and_idp" });
+    return c.html(logoutFormPage(endSession.url, fields));
+  });
+
+  // The post_logout_redirect_uri. The IdP appends the state this RP sent (§3). Matching it against the sealed cookie
+  // proves that this browser asked for this logout: without the check, any link to /signed-out could claim that the
+  // IdP session ended, which on a shared device is the one thing the user must be able to trust. The cookie is single
+  // use and the RP session is already gone, so a failed check only changes what the page says.
+  app.get("/signed-out", async (c) => {
+    const config = c.get("config");
+    const logout = await unseal(config.sessionKey, LOGOUT_COOKIE, getCookie(c, LOGOUT_COOKIE), options.now());
+    deleteCookie(c, LOGOUT_COOKIE, COOKIE_OPTIONS);
+    const returned = new URL(c.req.url).searchParams.getAll("state");
+    const expected = logout?.state;
+    const confirmed = returned.length === 1 && typeof expected === "string" && constantTimeEqual(returned[0] ?? "", expected);
+    log({ route: "signed_out", result: confirmed ? "confirmed" : "refused" });
+    return c.html(postLogoutPage(confirmed), confirmed ? 200 : 400);
   });
 
   app.all("/logout", (c) => {

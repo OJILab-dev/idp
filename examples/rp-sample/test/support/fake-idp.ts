@@ -81,6 +81,8 @@ function without(claims: Record<string, unknown>): JsonObject {
 /** The fake IdP: the sample's fetcher, and the browser's side of /authorize. */
 export class FakeIdp {
   readonly requests: RecordedRequest[] = [];
+  /** The last ID token the token endpoint issued, as the RP received it. */
+  lastIdToken: string | undefined;
   readonly #codes = new Map<string, PendingCode>();
   readonly #options: FakeIdpOptions;
   readonly #key: CryptoKeyPair;
@@ -117,6 +119,7 @@ export class FakeIdp {
       token_endpoint: `${ISSUER}/token`,
       userinfo_endpoint: `${ISSUER}/userinfo`,
       jwks_uri: `${ISSUER}/jwks`,
+      end_session_endpoint: `${ISSUER}/end_session`,
       response_types_supported: ["code"],
       response_modes_supported: ["query"],
       grant_types_supported: ["authorization_code"],
@@ -227,6 +230,7 @@ export class FakeIdp {
       return json({ error: "invalid_grant" }, 400);
     }
     const idToken = await this.sign(this.idTokenClaims(pending.nonce), this.#options.idTokenHeader, this.#options.signWithForeignKey);
+    this.lastIdToken = idToken;
     return json(
       without({ access_token: "access-token-1", token_type: "Bearer", expires_in: 300, id_token: idToken, scope: "openid profile", ...this.#options.tokenResponse }),
     );
