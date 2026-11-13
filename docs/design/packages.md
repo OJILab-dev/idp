@@ -4,6 +4,8 @@ Nov 13, 2026 · @Shinra Yamakawa
 
 `packages/core` に混ざっている標準規格の実装（base64url、JWS、CBOR、COSE、WebAuthn の検証、RFC 9421 の検証など）を、規格ごとの独立したパッケージに切り出す計画を記録する。方針は運用者が承認済みで（下の「決定」）、この文書はファイルごとの行き先、パッケージの依存、結合の問題の解き方、PR の順番を決める。この文書の PR はコードを動かさない。
 
+その後の決定 10 から 12 で、この文書は `packages/` 全体の構成も決める。`packages/` は再利用する部品を平らに並べた場所で、各パッケージは `package.json` に種類（`standard`、`domain`、`infra`）の印を持つ。コピーで使えるのは `standard` の種類だけである（下の「パッケージの種類」）。`@idp/core` は決定 11 で関心ごとのパッケージに分解され、もうない。下の「core の新しい構成」から後の節のうち、ファイルの行き先、結合の問題、影響を受ける参照は、分割のときの記録として残す。
+
 ## 決定
 
 運用者が承認した方針は次のとおり。
@@ -18,28 +20,51 @@ Nov 13, 2026 · @Shinra Yamakawa
 8. **`canonicalJson` を RFC 8785 の標準パッケージにする**：`admin/idempotency.ts` の `canonicalJson` を、規格の名前を付けた `@idp/json-canonicalization`（RFC 8785、JSON Canonicalization Scheme）に切り出し、RFC 8785 に完全に従わせて、RFC のテストベクタを通す。今の実装が RFC 8785 とずれていれば、パッケージの中で直し、IdP に固有の制限は core に残して、冪等性の振る舞いを変えない（下の結合の問題 13）。
 9. **`examples/rp-sample` は標準パッケージを使わない**：RP のサンプルは IdP のリポジトリのコードを import しない今の lint の禁止を保ち、標準パッケージもその対象に含める。
 10. **`packages/` には再利用する部品だけを置き、ビジネスロジックは使う Worker が持つ**：標準パッケージの分割の後に運用者が承認した配置の規則で、決定 3 の `user/` と `admin/` の置き場所をこれで置き換える（下の「配置の規則」）。`packages/` に置くのは、標準パッケージ、2 つ以上のアプリが使う IdP 固有の関心とインフラのパッケージが実装するポートだけを持つ `@idp/core`、インフラだけを持つ `@idp/cloudflare` の 3 種類。1 つの Worker だけが使うビジネスロジックは、そのアプリの `apps/<名前>/src/domain/` に置く。利用者向けのユースケース（今の `core/src/user/`）は `apps/worker/src/domain/`、管理系のユースケース（今の `core/src/admin/`）は `apps/admin-worker/src/domain/` に移る。
+11. **`@idp/core` を分解する**：運用者が承認した。core に残った関心は、それぞれ `packages/` の直下の平らなパッケージになる：`@idp/audit`、`@idp/clients`、`@idp/db`（`Database` のポート）、`@idp/hosting`、`@idp/identifiers`、`@idp/issuer`、`@idp/passkeys`、`@idp/problems`。パッケージの間の辺は各 `package.json` に宣言し、循環を作らない。2 つのアプリと `@idp/cloudflare` は、使うパッケージにだけ依存する。`packages/core` はもうない。
+12. **すべてのパッケージに種類の印を付ける**：運用者が承認した。`packages/*/package.json` は `"idp": { "kind": "standard" | "domain" | "infra" }` を持ち、lint の対象は印から導く（下の「パッケージの種類」）。強制は既存の `eslint.config.js` と境界のテストで行い、新しい lint のプラグインは使わない。turbo や nx などのタスクの実行器は使わず、`packages/` の直下を平らに保ち、まとめるためのディレクトリは置かない。
 
 ## 配置の規則
 
-コードの置き場所は、何を持つかと、いくつのアプリが使うかで決める（決定 10）。
+コードの置き場所は、何を持つかと、いくつのアプリが使うかで決める（決定 10 と 11）。
 
 | 置き場所 | 置くもの | 置かないもの |
 | --- | --- | --- |
-| `packages/<規格の名前>`（標準パッケージ） | 標準規格の実装 | IdP の方針、プラットフォームに固有のコード |
-| `packages/core`（`@idp/core`） | 2 つ以上のアプリが使う IdP 固有の関心（`db/`、`identifiers/`、`issuer/`、`hosting/`、`problems/`、`clients/`、`passkeys/`、`audit/`）と、インフラのパッケージが実装するポート（`db/` の `Database`） | 1 つのアプリだけが使うユースケースと規則、フレームワーク、プラットフォーム |
-| `packages/cloudflare`（`@idp/cloudflare`） | Cloudflare の上でだけ意味を持つインフラ：core のポートの実装（型の変換とエラーの包み直しだけ）と、Workers の値を読む関数 | ドメインのロジック（SQL 文、結果の解釈、方針） |
-| `apps/<名前>/src/domain/` | その Worker だけが使うユースケースと規則。core のポートを引数で受け取り、フレームワークなしでテストできる | HTTP、Hono、`cloudflare:*`、`@idp/cloudflare`、アプリの HTTP の層 |
-| `apps/<名前>/src/`（`domain/` の外） | HTTP の層と合成：ルーティング、要求と応答の変換、`@idp/cloudflare` の実装を `domain/` と core のポートにつなぐ配線 | ドメインの規則 |
+| `packages/<規格の名前>`（種類 `standard`） | 標準規格の実装 | IdP の方針、プラットフォームに固有のコード |
+| `packages/<関心の名前>`（種類 `domain`） | 2 つ以上のアプリが使う IdP 固有の関心（`@idp/audit`、`@idp/clients`、`@idp/hosting`、`@idp/identifiers`、`@idp/issuer`、`@idp/passkeys`、`@idp/problems`）と、インフラのパッケージが実装するポート（`@idp/db` の `Database`） | 1 つのアプリだけが使うユースケースと規則、フレームワーク、プラットフォーム |
+| `packages/cloudflare`（種類 `infra`） | Cloudflare の上でだけ意味を持つインフラ：ドメインのポートの実装（型の変換とエラーの包み直しだけ）と、Workers の値を読む関数 | ドメインのロジック（SQL 文、結果の解釈、方針） |
+| `apps/<名前>/src/domain/` | その Worker だけが使うユースケースと規則。ポートを引数で受け取り、フレームワークなしでテストできる | HTTP、Hono、`cloudflare:*`、`@idp/cloudflare`、アプリの HTTP の層 |
+| `apps/<名前>/src/`（`domain/` の外） | HTTP の層と合成：ルーティング、要求と応答の変換、`@idp/cloudflare` の実装を `domain/` とポートにつなぐ配線 | ドメインの規則 |
 
-- 1 つのアプリだけが使うものが core に残っていれば、そのアプリの `domain/` に移す。2 つ目のアプリが使うようになったら、core の関心ごとのディレクトリに移す。
-- `@idp/cloudflare` の中にドメインのロジックが入っていれば、それはポートを受け取る関数としてアプリの `domain/`（2 つ以上のアプリが使うなら core）に移し、アプリが `@idp/cloudflare` の実装を渡して合成する。
-- 依存は下向きだけ：`apps/*` → `@idp/cloudflare` → `@idp/core` → 標準パッケージ。アプリの `domain/` は `@idp/core` と標準パッケージだけを import し、アプリどうしは互いの `domain/` を import しない。
+- 1 つのアプリだけが使うものが `domain` のパッケージにあれば、そのアプリの `domain/` に移す。2 つ目のアプリが使うようになったら、`domain` のパッケージにする。
+- `@idp/cloudflare` の中にドメインのロジックが入っていれば、それはポートを受け取る関数としてアプリの `domain/`（2 つ以上のアプリが使うなら `domain` のパッケージ）に移し、アプリが `@idp/cloudflare` の実装を渡して合成する。
+- 依存は下向きだけ：`apps/*` → `infra` → `domain` → `standard`。アプリの `domain/` は `domain` と `standard` のパッケージだけを import し、アプリどうしは互いの `domain/` を import しない。
+
+## パッケージの種類
+
+`packages/` は再利用する部品を平らに並べた場所で、すべてのパッケージが `package.json` に種類の印 `"idp": { "kind": ... }` を持つ。印のないパッケージがあると lint が失敗する。
+
+| 種類 | パッケージ | 依存してよいもの | コピーで使えるか |
+| --- | --- | --- | --- |
+| `standard` | 標準パッケージ（下の「パッケージの一覧」） | `standard` のパッケージと Web 標準の API | 使える（下の「コピーで使えることの条件」） |
+| `domain` | `@idp/audit`、`@idp/clients`、`@idp/db`、`@idp/hosting`、`@idp/identifiers`、`@idp/issuer`、`@idp/passkeys`、`@idp/problems` | `standard` と `domain` のパッケージ | 使えない（IdP 固有） |
+| `infra` | `@idp/cloudflare` | `domain` のパッケージ（実装するポート）と `standard` のパッケージ | 使えない（プラットフォーム固有） |
+
+アプリ（`apps/*`）はすべての種類に依存してよい。`packages/` のどのパッケージもアプリに依存しない。
+
+`domain` のパッケージの間の辺は次のとおりで、循環はない。`@idp/audit` は `@idp/clients`、`@idp/db`、`@idp/identifiers`、`@idp/problems` に、`@idp/passkeys` は `@idp/db` に、`@idp/clients` は `@idp/oauth-native-apps` に、`@idp/identifiers` は `@idp/base64url` に依存する。`@idp/db`、`@idp/hosting`、`@idp/issuer`、`@idp/problems` は何にも依存しない。`@idp/hosting` と `@idp/issuer` の `exports` は、`cloudflare.config.ts` が Node の読み込みで使えるよう、ほかを import しないモジュールを直接指す。
+
+**強制**
+
+- `eslint.config.js` は `packages/*/package.json` を読み、種類ごとの `no-restricted-imports` の対象を印から導く。対象の一覧は手で書かない。
+- 印がないか、宣言した `@idp` の依存が種類の表で許されないとき、`eslint.config.js` は設定を作らずに失敗する。
+- どの種類のパッケージも、`package.json` に宣言した `@idp` のパッケージだけを名前で import できる。パッケージの外への相対の import と `apps/` への import は禁止する。`standard` と `domain` は、さらに `node:*`、`cloudflare:*`、`@cloudflare/*`、`hono` を、`domain` は `zod` も import しない。
+- `test/boundary.test.ts`（リポジトリの直下）が、すべてのパッケージの印、宣言した辺が種類の表に合うこと、印から導いた lint が宣言していない import と禁止の import を止め、宣言した import を通すことを確かめる。
 
 ## 標準パッケージの規則
 
 **配置**
 
-- `packages/<規格の名前>/package.json`：`name` は `@idp/<規格の名前>`、`private: true`、`type: module`、`exports` は `"."` だけで `./src/index.ts` を指す（既存の `packages/core` と同じく、ビルドせずに TypeScript のソースを公開する）。`dependencies` には依存する標準パッケージだけを `workspace:*` で書く。
+- `packages/<規格の名前>/package.json`：`name` は `@idp/<規格の名前>`、`private: true`、`type: module`、`idp.kind` は `standard`、`exports` は `"."` だけで `./src/index.ts` を指す（ほかのパッケージと同じく、ビルドせずに TypeScript のソースを公開する）。`dependencies` には依存する標準パッケージだけを `workspace:*` で書く。
 - `packages/<規格の名前>/src/index.ts`：公開する名前の再エクスポートだけを置く。
 - `packages/<規格の名前>/src/<規格の名前>.ts`：実装。大きいパッケージは関心ごとに複数のファイルに分けてよい。
 - `packages/<規格の名前>/test/`：そのパッケージのテストと、規格のテストベクタ。
@@ -47,8 +72,8 @@ Nov 13, 2026 · @Shinra Yamakawa
 
 **依存の禁止の強制**
 
-- `eslint.config.js` に、`packages/<標準パッケージ>/src/**` を対象にした `no-restricted-imports` を足す。許すのは、同じパッケージの中の相対の import と、依存として宣言した `@idp/<標準パッケージ>` だけ。`node:*`、`cloudflare:*`、`@cloudflare/*`、`zod`、`hono`、`@idp/core` とその下、`@idp/cloudflare` とその下、パッケージの外に出る相対の import（`../../` で始まるもの）を禁止する。
-- `packages/core/test/boundary.test.ts` に、標準パッケージから上の禁止に当たる import をすると lint が失敗する場合と、別の標準パッケージの import が通る場合を足す。
+- `eslint.config.js` に、`packages/<標準パッケージ>/src/**` を対象にした `no-restricted-imports` を足す。許すのは、同じパッケージの中の相対の import と、依存として宣言した `@idp/<標準パッケージ>` だけ。`node:*`、`cloudflare:*`、`@cloudflare/*`、`zod`、`hono`、`domain` と `infra` のパッケージ、パッケージの外に出る相対の import（`../../` で始まるもの）を禁止する。
+- `test/boundary.test.ts` に、標準パッケージから上の禁止に当たる import をすると lint が失敗する場合と、別の標準パッケージの import が通る場合を足す。
 - 標準パッケージの間の依存は下の「依存グラフ」のとおりで、循環を作らない。グラフにない辺を足すときはこの文書を先に直す。
 
 **コピーで使えることの条件**
@@ -84,7 +109,7 @@ Nov 13, 2026 · @Shinra Yamakawa
 
 | パッケージ | サブパス | 中身 | 元のファイル | 依存 |
 | --- | --- | --- | --- | --- |
-| `@idp/cloudflare` | `./d1` | core の D1 のポートの、Cloudflare D1 による実装 | `packages/d1-adapter/src/` | `@idp/core`（ポートの型）、標準パッケージ |
+| `@idp/cloudflare` | `./d1` | `@idp/db` のポートの、Cloudflare D1 による実装 | `packages/d1-adapter/src/` | `@idp/db`（ポートの型） |
 | `@idp/cloudflare` | `./workers/tls` | `request.cf.tlsVersion` による TLS の版の確認 | `shared/tls.ts` | なし（型は `@cloudflare/workers-types`） |
 
 ## `@idp/cloudflare` の規則
@@ -93,23 +118,23 @@ Cloudflare の上でだけ意味を持つコード（D1、Workers の `request.c
 
 **配置**
 
-- `packages/cloudflare/package.json`：`name` は `@idp/cloudflare`。`exports` は関心ごとのサブパスだけを持ち、`"."` を持たない。今のサブパスは `./d1`（`./src/d1/index.ts`）と `./workers/tls`（`./src/workers/tls/index.ts`）。以前の `./d1/admin`（`createD1AdminNonceStore`）は、D1 の実装ではなく、汎用の `Database` のポートの上に書いた管理系のロジックだったので、管理用の Worker のドメインの `createAdminNonceStore(db)` に移して消した（決定 10）。
+- `packages/cloudflare/package.json`：`name` は `@idp/cloudflare`、`idp.kind` は `infra`。`exports` は関心ごとのサブパスだけを持ち、`"."` を持たない。今のサブパスは `./d1`（`./src/d1/index.ts`）と `./workers/tls`（`./src/workers/tls/index.ts`）。以前の `./d1/admin`（`createD1AdminNonceStore`）は、D1 の実装ではなく、汎用の `Database` のポートの上に書いた管理系のロジックだったので、管理用の Worker のドメインの `createAdminNonceStore(db)` に移して消した（決定 10）。
 - `packages/cloudflare/src/<サブパス>/`：サブパスごとのソース。`packages/cloudflare/test/<サブパス>/`：サブパスごとのテスト（今の D1 の適合テストは `test/d1/` に移る）。
 - 新しい関心は、`src/workers/rate-limit/` や `src/r2/` のようにサブパスを足し、この文書の下の辺の一覧を先に直す。
 
 **依存の規則**
 
-- core と標準パッケージは、`@idp/cloudflare` とその下を import しない。
-- `./d1` は core のポートを実装する。import してよいのは `@idp/core` の入口と標準パッケージだけ。
+- `domain` と `standard` のパッケージは、`@idp/cloudflare` とその下を import しない（種類の表で許されない）。
+- `./d1` は `@idp/db` のポートを実装する。import してよいのは、`package.json` に宣言した `domain` と `standard` のパッケージだけ（今は `@idp/db`）。
 - `@idp/cloudflare` はインフラだけを持つ。ポートの実装が行うのは型の変換とエラーの包み直しだけで、SQL 文を組み立てたり、結果の意味を解釈したりするドメインのロジックは持たない（上の「配置の規則」）。
-- `./workers/tls` は、core も `./d1` も import しない。
+- `./workers/tls` は、`@idp` のどのパッケージも `./d1` も import しない。
 - サブパスの間の import は、宣言した辺だけを許す。今は宣言した辺はない。
-- `apps/*` の `domain/` の外が合成の層で、core と `@idp/cloudflare` のサブパスと、アプリの `domain/` をつなぐ。
-- 強制：`eslint.config.js` の `no-restricted-imports` で上の禁止を書き、`packages/core/test/boundary.test.ts` に、禁止に当たる import で lint が失敗する場合と、許す import が通る場合を足す。管理系のロジックの入口がなくなったので、IdP の Worker から管理系の実装を止める `@idp/cloudflare` の禁止は要らない。
+- `apps/*` の `domain/` の外が合成の層で、`domain` のパッケージと `@idp/cloudflare` のサブパスと、アプリの `domain/` をつなぐ。
+- 強制：`eslint.config.js` が `infra` の印から導く規則に、サブパスごとの禁止を重ね、`test/boundary.test.ts` に、禁止に当たる import で lint が失敗する場合と、許す import が通る場合を置く。
 
 ## 依存グラフ
 
-矢印は「依存する」。破線の左側は標準パッケージ、右側は IdP 固有のパッケージ。標準パッケージから右側への矢印はない。
+矢印は「依存する」。左は `standard` の種類のパッケージ、右は IdP 固有の `domain` と `infra` のパッケージとアプリ。`standard` から右側への矢印はない。
 
 ```mermaid
 flowchart LR
@@ -132,8 +157,17 @@ flowchart LR
   end
 
   subgraph idp["IdP 固有"]
-    core["@idp/core"]
-    subgraph cloudflare["@idp/cloudflare"]
+    subgraph domain["domain の種類のパッケージ"]
+      audit["@idp/audit"]
+      clients["@idp/clients"]
+      db["@idp/db"]
+      hosting["@idp/hosting"]
+      identifiers["@idp/identifiers"]
+      issuer["@idp/issuer"]
+      passkeys["@idp/passkeys"]
+      problems["@idp/problems"]
+    end
+    subgraph cloudflare["@idp/cloudflare（infra）"]
       d1["./d1"]
       tls["./workers/tls"]
     end
@@ -157,26 +191,34 @@ flowchart LR
   hms --> sf
   pkce --> base64url
 
-  core --> standards
-  d1 --> core
-  d1 --> standards
-  workerDomain --> core
+  audit --> clients
+  audit --> db
+  audit --> identifiers
+  audit --> problems
+  passkeys --> db
+  clients --> native
+  identifiers --> base64url
+
+  d1 --> db
+  workerDomain --> domain
   workerDomain --> standards
-  adminDomain --> core
+  adminDomain --> domain
   adminDomain --> standards
   worker --> workerDomain
-  worker --> core
+  worker --> domain
   worker --> d1
   worker --> tls
   admin --> adminDomain
-  admin --> core
+  admin --> domain
   admin --> d1
   admin --> tls
 ```
 
-`@idp/core` は標準パッケージのすべてに依存してよい。core と標準パッケージから `@idp/cloudflare` への矢印はなく、`./workers/tls` から core と `./d1` への矢印もない（上の「`@idp/cloudflare` の規則」）。アプリの `domain/` から `@idp/cloudflare` とアプリの HTTP の層への矢印はなく、2 つのアプリの間にも矢印はない。`examples/rp-sample` はこのグラフの外にあり、どのパッケージにも依存しない。アプリの HTTP の層が標準パッケージを直接 import するのは、テストで値を作るとき（base64url など）だけにし、本番のコードは `domain/` か core を通す。
+`domain` のパッケージは、宣言した `standard` と `domain` のパッケージにだけ依存する。`domain` と `standard` から `@idp/cloudflare` への矢印はなく、`./workers/tls` から `@idp` のパッケージと `./d1` への矢印もない（上の「`@idp/cloudflare` の規則」）。アプリの `domain/` から `@idp/cloudflare` とアプリの HTTP の層への矢印はなく、2 つのアプリの間にも矢印はない。`examples/rp-sample` はこのグラフの外にあり、どのパッケージにも依存しない。アプリが依存するのは、`package.json` に宣言した、実際に import するパッケージだけにする。
 
 ## core の新しい構成
+
+この節は `shared` を廃止したときの記録である。ここで決めた関心のディレクトリは、決定 11 でそれぞれ `domain` の種類のパッケージ（`packages/<関心の名前>/src/`）になり、関心の間の依存は各 `package.json` の辺になった（上の「パッケージの種類」）。
 
 `packages/core/src/shared/` をなくし、中身を関心ごとのディレクトリに分ける。各ディレクトリは `index.ts` を持ち、外からはその `index.ts` だけを import する。
 
@@ -202,7 +244,7 @@ flowchart LR
 
 ## アプリのドメインの層
 
-1 つの Worker だけが使うユースケースと規則は、そのアプリの `src/domain/` に置く（決定 10）。`domain/` は、フレームワークなしでテストできる層で、D1 などのインフラには core のポートを通してだけ触れる。
+1 つの Worker だけが使うユースケースと規則は、そのアプリの `src/domain/` に置く（決定 10）。`domain/` は、フレームワークなしでテストできる層で、D1 などのインフラには `@idp/db` のポートを通してだけ触れる。
 
 | ディレクトリ | 中身 | 元の場所 |
 | --- | --- | --- |
@@ -213,9 +255,9 @@ flowchart LR
 
 **lint の規則**
 
-- `apps/*/src/domain/**` は、`hono`、`cloudflare:*`、`@cloudflare/*`、`@idp/cloudflare` とその下、アプリの HTTP の層（`domain/` の外の `src/` のファイル）、ほかのアプリを import しない。`packages/core/test/boundary.test.ts` に、それぞれの禁止で lint が失敗する場合と、`@idp/core` と標準パッケージの import が通る場合を置く。
+- `apps/*/src/domain/**` は、`hono`、`cloudflare:*`、`@cloudflare/*`、`@idp/cloudflare` とその下、アプリの HTTP の層（`domain/` の外の `src/` のファイル）、ほかのアプリを import しない。`test/boundary.test.ts` に、それぞれの禁止で lint が失敗する場合と、`domain` と `standard` のパッケージの import が通る場合を置く。
 - 管理系のユースケースが IdP の Worker の外にあることは、置き場所で決まる。`@idp/core/admin` と `@idp/cloudflare/d1/admin` がなくなるので、IdP の Worker からそれらを止める禁止は消し、代わりに `apps/worker` から `apps/admin-worker` への import を禁止する。
-- IdP の Worker のバンドルに Zod が入らない性質は保つ。`apps/worker` と core からの `zod` の import を lint で禁止し、`apps/worker/src`、`apps/worker/pages`、`packages/core/src` のどのファイルも `zod` を import しないことをテストで確かめる。
+- IdP の Worker のバンドルに Zod が入らない性質は保つ。`apps/worker`、`standard` と `domain` のパッケージからの `zod` の import を lint で禁止し、`apps/worker/src`、`apps/worker/pages`、`packages/*/src` のどのファイルも `zod` を import しないことをテスト（`apps/worker/test/no-zod.test.ts`）で確かめる。
 
 **`packages/core/package.json` の `exports`**
 
@@ -487,6 +529,14 @@ Zod を使うのは `admin/` の入力と出力のスキーマだけで、標準
 | 21 | 利用者向けをアプリへ | `core/src/user/` を `apps/worker/src/domain/` へ、テストも一緒に |
 | 22 | ドメインの境界 | 上の「アプリのドメインの層」の lint の規則と境界のテスト。移動で要らなくなった禁止を消し、Zod の確認を残す。core の `package.json` の `exports` |
 | 23 | 残りの点検 | インフラの中のドメインのロジック、1 つのアプリだけが使う core のもの、上向きの import を探して直す |
+
+決定 11 と 12 の変更は、23 の後に次の順番でマージする。
+
+| 順 | PR | 動かすもの |
+| --- | --- | --- |
+| 24 | core の分解 | core の関心のディレクトリを `packages/<関心の名前>/` へ、テストも一緒に。標準パッケージの契約のテスト（`encoding`、`jwk`）は `contract/test/` へ、境界のテストはリポジトリの直下の `test/` へ。`packages/core` を消し、アプリと `@idp/cloudflare` の依存を使うパッケージだけにする |
+| 25 | 種類の印 | すべての `package.json` に `idp.kind` を足し、`eslint.config.js` の対象を印から導く。印のないパッケージと種類の表に合わない辺で失敗させ、境界のテストで確かめる |
+| 26 | 文書 | この文書の種類と配置の規則、依存グラフ、`@idp/core` に触れるほかの文書 |
 
 ## 前提
 
