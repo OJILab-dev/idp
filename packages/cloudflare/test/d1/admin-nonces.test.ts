@@ -2,8 +2,8 @@
 // local D1 with every migration applied (docs/design/hosting-modes.md 3.6).
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AdminNonceStoreError, type AdminNonceStore } from "@idp/core/admin";
-import { createTestD1, type TestD1 } from "../../../contract/test/d1.js";
-import { createD1AdminNonceStore } from "../src/admin.js";
+import { createTestD1, type TestD1 } from "../../../../contract/test/d1.js";
+import { createD1AdminNonceStore } from "../../src/d1/admin.js";
 
 const NOW = 1_767_225_600;
 const NONCE = "DeSswvZ-qFqcZhVfI2rcdFVorRiuH6QVrl8Hy7i2liM";

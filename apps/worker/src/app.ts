@@ -18,7 +18,8 @@ import {
   type PasskeyDeps,
   type RandomSource,
 } from "@idp/core/user";
-import { isAcceptedTlsVersion, type Issuer } from "@idp/core/shared";
+import { isAcceptedTlsVersion } from "@idp/cloudflare/workers/tls";
+import type { Issuer } from "@idp/core/shared";
 import { InvalidConfigError, workerConfig, type Env, type WorkerConfig } from "./config.js";
 import { renderErrorPage } from "./error-page.js";
 import { renderLogoutConfirmPage, renderLogoutErrorPage, renderSignedOutPage } from "./logout-page.js";

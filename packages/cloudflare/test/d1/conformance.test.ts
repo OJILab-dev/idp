@@ -3,8 +3,8 @@
 // itself rather than on a mock.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { DatabaseError, type Database, type SqlStatement } from "@idp/core/shared";
-import { createTestD1, type TestD1 } from "../../../contract/test/d1.js";
-import { createD1Database } from "../src/index.js";
+import { createTestD1, type TestD1 } from "../../../../contract/test/d1.js";
+import { createD1Database } from "../../src/d1/index.js";
 
 const NOW = 1_800_000_000;
 

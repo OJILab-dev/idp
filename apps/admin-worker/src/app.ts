@@ -13,7 +13,7 @@ import {
   type AdminIdentity,
   type AdminOperation,
 } from "@idp/core/admin";
-import { createD1Database } from "@idp/d1-adapter";
+import { createD1Database } from "@idp/cloudflare/d1";
 import { adminConfig, InvalidConfigError, type AdminConfig, type Env } from "./config.js";
 import { admitRequest } from "./gate.js";
 import { rs256Enabled } from "./rs256.js";

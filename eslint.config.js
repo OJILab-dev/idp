@@ -5,7 +5,7 @@ import tseslint from "typescript-eslint";
 
 // The packages under packages/ that hold IdP or platform code. Every other directory there is a standards package
 // (docs/design/packages.md), so a new package gets the strict rules below unless it is listed here.
-const IDP_PACKAGES = new Set(["core", "d1-adapter", "cloudflare"]);
+const IDP_PACKAGES = new Set(["core", "cloudflare"]);
 
 const standardsPackages = readdirSync(join(import.meta.dirname, "packages"), { withFileTypes: true })
   // A directory without a manifest is not a package (for example node_modules left behind by another branch).
@@ -49,9 +49,9 @@ export const adminImportBan = {
         "**/core/src/admin/*",
         "**/admin/*",
         // The D1 adapters of the admin-only ports import the admin modules.
-        "@idp/d1-adapter/admin",
-        "**/d1-adapter/src/admin",
-        "**/d1-adapter/src/admin.js",
+        "@idp/cloudflare/d1/admin",
+        "**/cloudflare/src/d1/admin",
+        "**/cloudflare/src/d1/admin.js",
       ],
       message: "User-facing code must not depend on the admin modules (docs/design/technology.md).",
     },
@@ -65,6 +65,39 @@ export const sampleImportBan = {
       group: ["@idp/rp-sample", "@idp/rp-sample/*", "**/examples/*", "**/examples/**"],
       message: "The IdP and admin code must not depend on the sample relying parties (examples/).",
     },
+  ],
+};
+
+// Cloudflare-specific code lives in @idp/cloudflare, which the apps wire to the core; the core never reaches for it,
+// so the core and the standards packages stay free of any platform (docs/design/packages.md, "@idp/cloudflare の規則").
+const cloudflareImportBan = {
+  patterns: [
+    {
+      group: ["@idp/cloudflare", "@idp/cloudflare/*", "@idp/cloudflare/**", "**/cloudflare/src/**"],
+      message: "The core must not depend on @idp/cloudflare; the apps wire the two together (docs/design/packages.md).",
+    },
+  ],
+};
+
+// The subpaths of @idp/cloudflare import each other only along declared edges, and there are none yet: the D1
+// adapter implements the core's ports, and the TLS check needs neither the core nor D1.
+const cloudflareD1ImportBan = {
+  patterns: [
+    {
+      group: ["@idp/cloudflare", "@idp/cloudflare/*", "@idp/cloudflare/**", "**/workers/**", "hono", "hono/*"],
+      message: "@idp/cloudflare/d1 may import only @idp/core and the standards packages (docs/design/packages.md).",
+    },
+    ...sampleImportBan.patterns,
+  ],
+};
+
+const cloudflareTlsImportBan = {
+  patterns: [
+    {
+      group: ["@idp/*", "@idp/*/**", "**/d1/**", "**/packages/**", "**/apps/**", "hono", "hono/*"],
+      message: "@idp/cloudflare/workers/tls imports neither the core nor the D1 adapter (docs/design/packages.md).",
+    },
+    ...sampleImportBan.patterns,
   ],
 };
 
@@ -94,10 +127,31 @@ export default tseslint.config(
     files: ["apps/**/*.ts", "packages/**/*.ts"],
     rules: { "no-restricted-imports": ["error", sampleImportBan] },
   },
-  // A later block replaces the rule's options for the files it matches, so the user-facing code repeats the sample ban.
+  // A later block replaces the rule's options for the files it matches, so each block repeats the bans it keeps.
   {
-    files: ["apps/worker/**/*.ts", "packages/core/src/user/**/*.ts", "packages/core/src/shared/**/*.ts"],
+    files: ["packages/core/src/**/*.ts"],
+    rules: { "no-restricted-imports": ["error", { patterns: [...cloudflareImportBan.patterns, ...sampleImportBan.patterns] }] },
+  },
+  {
+    files: ["apps/worker/**/*.ts"],
     rules: { "no-restricted-imports": ["error", { patterns: [...adminImportBan.patterns, ...sampleImportBan.patterns] }] },
+  },
+  {
+    files: ["packages/core/src/user/**/*.ts", "packages/core/src/shared/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: [...adminImportBan.patterns, ...cloudflareImportBan.patterns, ...sampleImportBan.patterns] },
+      ],
+    },
+  },
+  {
+    files: ["packages/cloudflare/src/d1/**/*.ts"],
+    rules: { "no-restricted-imports": ["error", cloudflareD1ImportBan] },
+  },
+  {
+    files: ["packages/cloudflare/src/workers/tls/**/*.ts"],
+    rules: { "no-restricted-imports": ["error", cloudflareTlsImportBan] },
   },
   ...standardsPackages.map(({ dir, dependencies }) => ({
     files: [`packages/${dir}/src/**/*.ts`],

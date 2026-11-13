@@ -44,12 +44,12 @@ importers:
 
   apps/admin-worker:
     dependencies:
+      '@idp/cloudflare':
+        specifier: workspace:*
+        version: link:../../packages/cloudflare
       '@idp/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@idp/d1-adapter':
-        specifier: workspace:*
-        version: link:../../packages/d1-adapter
       hono:
         specifier: 4.13.13
         version: 4.13.13
@@ -66,12 +66,12 @@ importers:
 
   apps/worker:
     dependencies:
+      '@idp/cloudflare':
+        specifier: workspace:*
+        version: link:../../packages/cloudflare
       '@idp/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@idp/d1-adapter':
-        specifier: workspace:*
-        version: link:../../packages/d1-adapter
       hono:
         specifier: 4.13.13
         version: 4.13.13
@@ -107,6 +107,12 @@ importers:
   packages/base64url: {}
 
   packages/cbor: {}
+
+  packages/cloudflare:
+    dependencies:
+      '@idp/core':
+        specifier: workspace:*
+        version: link:../core
 
   packages/core:
     dependencies:
@@ -164,12 +170,6 @@ importers:
       '@idp/cbor':
         specifier: workspace:*
         version: link:../cbor
-
-  packages/d1-adapter:
-    dependencies:
-      '@idp/core':
-        specifier: workspace:*
-        version: link:../core
 
   packages/digest-fields: {}
 

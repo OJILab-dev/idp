@@ -2,7 +2,7 @@
 // workerd on the request workerd received, so @target-uri is built from the URL the runtime hands a Worker. It
 // stands in for the admin Worker's gate until plan step 6 wires the verifier there (docs/design/hosting-modes.md 10).
 import { verifyAdminSignature, type AdminSigningKey } from "../../src/admin/signature.js";
-import { createD1AdminNonceStore } from "../../../d1-adapter/src/admin.js";
+import { createD1AdminNonceStore } from "../../../cloudflare/src/d1/admin.js";
 
 type Env = {
   readonly DB: D1Database;

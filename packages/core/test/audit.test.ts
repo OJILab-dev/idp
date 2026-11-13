@@ -8,7 +8,7 @@ import {
   type AuditActor,
   type Database,
 } from "../src/shared/index.js";
-import { createD1Database } from "../../d1-adapter/src/index.js";
+import { createD1Database } from "../../cloudflare/src/d1/index.js";
 import { createTestD1, type TestD1 } from "../../../contract/test/d1.js";
 
 const NOW = 1_800_000_000;

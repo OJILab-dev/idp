@@ -1,7 +1,7 @@
 // The IdP Worker's configuration (docs/design/deployment.md, "設定値" and "署名鍵"). The issuer, the D1 binding, and the
 // signing keys are validated before the first request is served, and a bad value refuses every request instead of
 // being defaulted (design principle 4: fail-closed).
-import { createD1Database } from "@idp/d1-adapter";
+import { createD1Database } from "@idp/cloudflare/d1";
 import {
   InvalidHostingError,
   InvalidIssuerError,

@@ -31,7 +31,6 @@ export { InvalidIssuerError, parseIssuer, type Issuer } from "./issuer.js";
 export { MAX_PASSKEYS_PER_USER } from "./limits.js";
 export { passkeyBelowLimitCondition, passkeyRevocableCondition, userEnabledCondition } from "./passkey-rules.js";
 export { PROBLEM_KINDS, isProblemKind, type ProblemKind } from "./problems.js";
-export { ACCEPTED_TLS_VERSIONS, isAcceptedTlsVersion } from "./tls.js";
 export {
   POST_LOGOUT_REDIRECT_URI_RULES,
   classifyRedirectUri,
