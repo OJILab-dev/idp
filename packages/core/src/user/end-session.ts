@@ -6,10 +6,9 @@ import { isClientId } from "../shared/index.js";
 import { redirectLocation } from "./authorize.js";
 import { loadLogoutClient } from "./clients.js";
 import type { OidcDeps } from "./deps.js";
-import { InvalidTokenError } from "./jws.js";
 import { selectUiLocale, type UiLocale } from "./locale.js";
 import { findActiveSession, logout, type ActiveSession } from "./sessions.js";
-import { verifyLogoutIdTokenHint, type LogoutIdTokenHint } from "./tokens.js";
+import { InvalidTokenError, verifyLogoutIdTokenHint, type LogoutIdTokenHint } from "./tokens.js";
 
 // Echoed back in the redirect and in the confirmation form; the same bound as the authorization request's state.
 const MAX_STATE_LENGTH = 2048;

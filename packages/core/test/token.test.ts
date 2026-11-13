@@ -4,13 +4,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { base64urlDecode } from "@idp/base64url";
 import { sha256Base64url } from "@idp/jwk-thumbprint";
+import { verifyJws } from "@idp/jws";
 import {
   authorize,
   exchangeToken,
   logout,
   resumeAuthorize,
   verifyAccessToken,
-  verifyJws,
   type OidcDeps,
   type TokenResponse,
 } from "../src/user/index.js";

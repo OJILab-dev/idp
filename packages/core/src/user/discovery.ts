@@ -1,7 +1,8 @@
 // The discovery document and the JWKS. Both are derived from the issuer and the configured keys, so they never
 // advertise an algorithm the IdP cannot sign with (docs/design/standards-compliance.md, the Discovery row).
+import type { JwsAlgorithm, PublicJwk } from "@idp/jws";
 import type { Issuer } from "../shared/index.js";
-import type { JwsAlgorithm, PublicJwk, SigningKeySet } from "./signing-keys.js";
+import type { SigningKeySet } from "./signing-keys.js";
 
 /** The OpenID Provider Metadata (OIDC Discovery 1.0 §3) the IdP publishes. */
 export type DiscoveryDocument = {

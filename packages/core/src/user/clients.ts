@@ -1,7 +1,7 @@
 // Reading a registered client. The IdP Worker only compares against stored values; the admin Worker validated them on
 // write, so a row that does not have the contract's shape is corruption and is rejected, never repaired.
 import type { Database } from "../shared/index.js";
-import type { JwsAlgorithm } from "./signing-keys.js";
+import type { JwsAlgorithm } from "@idp/jws";
 
 /** A client as the user-facing use cases see it. */
 export type RegisteredClient = {

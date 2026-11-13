@@ -1,9 +1,31 @@
 // The ID token and access token claims. docs/design/tokens.md (the table and "クレームの一覧") is the only list of
 // claims; the builders emit exactly those, so a claim the design rules out (azp, at_hash, acr, amr, sid, email,
 // preferred_username, scope in the ID token) cannot appear.
+import { InvalidJwsError, signJwt, verifyJws, type JwsAlgorithm, type JwsVerificationOptions, type VerifiedJws } from "@idp/jws";
 import { isClientId, isRandomTokenFormat, isUuidV4, randomToken, type Issuer } from "../shared/index.js";
-import { InvalidTokenError, signJwt, verifyJws } from "./jws.js";
-import type { JwsAlgorithm, SigningKeySet } from "./signing-keys.js";
+import type { SigningKey, SigningKeySet } from "./signing-keys.js";
+
+/** The `typ` header: `JWT` for ID tokens, `at+jwt` for access tokens (RFC 9068 §2.1), so neither passes as the other. */
+export type JwtType = "JWT" | "at+jwt";
+
+/** Thrown when a token is malformed, uses a disallowed algorithm or key, has the wrong `typ`, or fails a claim check. */
+export class InvalidTokenError extends Error {
+  override readonly name = "InvalidTokenError";
+}
+
+function signToken(key: SigningKey, typ: JwtType, claims: object): Promise<string> {
+  return signJwt(key, typ, claims);
+}
+
+// The JWS checks of @idp/jws, with its error wrapped so the HTTP layer sees one error type for every token failure.
+async function verifyToken(token: string, options: JwsVerificationOptions & { readonly typ: JwtType }): Promise<VerifiedJws> {
+  try {
+    return await verifyJws(token, options);
+  } catch (error) {
+    if (error instanceof InvalidJwsError) throw new InvalidTokenError(error.message, { cause: error });
+    throw error;
+  }
+}
 
 /** The lifetime of both ID tokens and access tokens; also the token response's `expires_in`. */
 export const TOKEN_LIFETIME_SECONDS = 300;
@@ -128,7 +150,7 @@ export async function signIdToken(keys: SigningKeySet, alg: JwsAlgorithm, claims
   if (key === undefined) {
     throw new SigningAlgorithmUnavailableError("RS256 is not enabled: no RSA signing key is configured");
   }
-  return signJwt(key, "JWT", claims);
+  return signToken(key, "JWT", claims);
 }
 
 /**
@@ -139,7 +161,7 @@ export async function signIdToken(keys: SigningKeySet, alg: JwsAlgorithm, claims
  * @returns The signed token (`typ: at+jwt`).
  */
 export async function signAccessToken(keys: SigningKeySet, claims: AccessTokenClaims): Promise<string> {
-  return signJwt(keys.ed25519, "at+jwt", claims);
+  return signToken(keys.ed25519, "at+jwt", claims);
 }
 
 /**
@@ -151,7 +173,7 @@ export async function signAccessToken(keys: SigningKeySet, claims: AccessTokenCl
  * @param token The bearer token.
  * @param context The issuer, the configured keys, and the current time in UNIX seconds.
  * @returns The claims and the parsed scopes.
- * @throws {InvalidTokenError} The JWS is invalid (see {@link verifyJws}); `iss` or `aud` is not the issuer string;
+ * @throws {InvalidTokenError} The JWS is invalid (see `verifyJws` of `@idp/jws`); `iss` or `aud` is not the issuer string;
  *   `now` is not before `exp`; `sub` is not a UUIDv4; `client_id` is not a client ID; `scope` is not a duplicate-free
  *   set of granted scopes containing `openid`; `exp` or `iat` is not an integer; or `jti` is not a random token.
  */
@@ -159,7 +181,7 @@ export async function verifyAccessToken(
   token: string,
   context: { readonly issuer: Issuer; readonly keys: SigningKeySet; readonly now: number },
 ): Promise<VerifiedAccessToken> {
-  const { payload } = await verifyJws(token, {
+  const { payload } = await verifyToken(token, {
     keys: context.keys.all,
     algorithms: ["Ed25519"],
     typ: "at+jwt",
@@ -197,7 +219,7 @@ export async function verifyAccessToken(
  * @param token The hint from the authorization request.
  * @param context The issuer and the configured keys.
  * @returns The hint's `sub`.
- * @throws {InvalidTokenError} The JWS is invalid (Ed25519 or RS256, `typ: JWT`; see {@link verifyJws}); `iss` is not
+ * @throws {InvalidTokenError} The JWS is invalid (Ed25519 or RS256, `typ: JWT`; see `verifyJws` of `@idp/jws`); `iss` is not
  *   the issuer; or `sub` is not a string.
  */
 export async function verifyIdTokenHint(
@@ -205,7 +227,7 @@ export async function verifyIdTokenHint(
   context: { readonly issuer: Issuer; readonly keys: SigningKeySet },
 ): Promise<{ readonly sub: string }> {
   // RS256 is listed unconditionally; a deployment without RSA keys has no RS256 key for a kid to select.
-  const { payload } = await verifyJws(token, { keys: context.keys.all, algorithms: ["Ed25519", "RS256"], typ: "JWT" });
+  const { payload } = await verifyToken(token, { keys: context.keys.all, algorithms: ["Ed25519", "RS256"], typ: "JWT" });
   if (payload["iss"] !== context.issuer.url) {
     throw new InvalidTokenError("iss is not the issuer");
   }
@@ -237,7 +259,7 @@ export type LogoutIdTokenHint = {
  * @param token The hint from the logout request.
  * @param context The issuer and the configured keys.
  * @returns The hint's `sub`, `aud`, and `auth_time`.
- * @throws {InvalidTokenError} The JWS is invalid (Ed25519 or RS256, `typ: JWT`; see {@link verifyJws}); `iss` is not
+ * @throws {InvalidTokenError} The JWS is invalid (Ed25519 or RS256, `typ: JWT`; see `verifyJws` of `@idp/jws`); `iss` is not
  *   the issuer; `sub` is not a non-empty string; `aud` is not a single client ID; or `auth_time` is present but not
  *   an integer.
  */
@@ -245,7 +267,7 @@ export async function verifyLogoutIdTokenHint(
   token: string,
   context: { readonly issuer: Issuer; readonly keys: SigningKeySet },
 ): Promise<LogoutIdTokenHint> {
-  const { payload } = await verifyJws(token, { keys: context.keys.all, algorithms: ["Ed25519", "RS256"], typ: "JWT" });
+  const { payload } = await verifyToken(token, { keys: context.keys.all, algorithms: ["Ed25519", "RS256"], typ: "JWT" });
   if (payload["iss"] !== context.issuer.url) {
     throw new InvalidTokenError("iss is not the issuer");
   }

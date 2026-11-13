@@ -2,8 +2,7 @@
 // exists, is enabled, and may use that client is re-read from D1 on every call, so a disabled user or a removed
 // grant stops working before the 5-minute token expires (security-checklist.md, Pocket ID CVE-2026-43983).
 import type { OidcDeps } from "./deps.js";
-import { InvalidTokenError } from "./jws.js";
-import { verifyAccessToken } from "./tokens.js";
+import { InvalidTokenError, verifyAccessToken } from "./tokens.js";
 
 /** A request to `/userinfo` (GET or POST): only the `Authorization` header carries the token (RFC 6750 §2.1). */
 export type UserinfoInput = {

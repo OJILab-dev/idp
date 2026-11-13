@@ -62,26 +62,14 @@ export {
 export { userinfo, type UserinfoClaims, type UserinfoInput, type UserinfoResponse } from "./userinfo.js";
 export { buildDiscoveryDocument, buildJwks, idTokenSigningAlgorithms, type DiscoveryDocument, type Jwks } from "./discovery.js";
 export {
-  InvalidTokenError,
-  signJwt,
-  verifyJws,
-  type JwsHeader,
-  type JwsVerificationOptions,
-  type JwtType,
-  type VerifiedJws,
-} from "./jws.js";
-export {
   InvalidSigningKeyConfigError,
   loadSigningKeys,
-  type Ed25519PublicJwk,
-  type JwsAlgorithm,
-  type PublicJwk,
-  type RsaPublicJwk,
   type SigningKey,
   type SigningKeySecrets,
   type SigningKeySet,
 } from "./signing-keys.js";
 export {
+  InvalidTokenError,
   SigningAlgorithmUnavailableError,
   TOKEN_LIFETIME_SECONDS,
   buildAccessTokenClaims,
@@ -97,5 +85,6 @@ export {
   type GrantedScope,
   type IdTokenClaims,
   type IdTokenInput,
+  type JwtType,
   type VerifiedAccessToken,
 } from "./tokens.js";

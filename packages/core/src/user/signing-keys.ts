@@ -2,43 +2,17 @@
 // The Worker calls this once per isolate and caches the result at module scope (docs/design/tokens.md).
 import { InvalidBase64urlError, base64urlDecode } from "@idp/base64url";
 import { InvalidJwkError, jwkThumbprint } from "@idp/jwk-thumbprint";
+import type { Ed25519PublicJwk, JwsAlgorithm, JwsSigningKey, JwsVerificationKey, PublicJwk, RsaPublicJwk } from "@idp/jws";
 
-/** The JWS algorithms the IdP signs and verifies with (RFC 9864 §2.2 `Ed25519`, RFC 7518 §3.3 `RS256`). */
-export type JwsAlgorithm = "Ed25519" | "RS256";
-
-/** An Ed25519 public key as published in the JWKS (RFC 8037 §2). */
-export type Ed25519PublicJwk = {
-  readonly kty: "OKP";
-  readonly crv: "Ed25519";
-  readonly x: string;
-  readonly kid: string;
-  readonly alg: "Ed25519";
-  readonly use: "sig";
-};
-
-/** An RSA public key as published in the JWKS (RFC 7518 §6.3.1). */
-export type RsaPublicJwk = {
-  readonly kty: "RSA";
-  readonly n: string;
-  readonly e: string;
-  readonly kid: string;
-  readonly alg: "RS256";
-  readonly use: "sig";
-};
-
-/** A public JWK with exactly the members the contract allows in the JWKS. */
-export type PublicJwk = Ed25519PublicJwk | RsaPublicJwk;
-
-/** One loaded signing key. Each key is used with exactly one algorithm (RFC 8725 §3.1). */
-export type SigningKey = {
-  /** The RFC 7638 JWK thumbprint. */
-  readonly kid: string;
-  readonly alg: JwsAlgorithm;
-  /** Non-extractable, so the private key cannot leave WebCrypto once imported. */
-  readonly privateKey: CryptoKey;
-  readonly publicKey: CryptoKey;
-  readonly publicJwk: PublicJwk;
-};
+/**
+ * One loaded signing key. Each key is used with exactly one algorithm (RFC 8725 §3.1); its `kid` is the RFC 7638
+ * JWK thumbprint, and its private key is non-extractable, so it cannot leave WebCrypto once imported.
+ */
+export type SigningKey = JwsSigningKey &
+  JwsVerificationKey & {
+    /** The public JWK with exactly the members the contract allows in the JWKS. */
+    readonly publicJwk: PublicJwk;
+  };
 
 /** The configured keys. Only the current key of each type signs; every key verifies and appears in the JWKS. */
 export type SigningKeySet = {
