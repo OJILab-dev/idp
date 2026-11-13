@@ -8,7 +8,7 @@ import { ConfigError, IdpError } from "./errors.js";
 import {
   accountPage,
   errorPage,
-  idTokenView,
+  idTokenViewFromJwt,
   logoutContentSecurityPolicy,
   logoutFormPage,
   postLogoutPage,
@@ -16,7 +16,7 @@ import {
   type SessionView,
 } from "./html.js";
 import { IdTokenError } from "./id-token.js";
-import { createIdpClient, type Fetcher, type IdpClient } from "./idp.js";
+import { createIdpClient, type EndSessionEndpoint, type Fetcher, type IdpClient } from "./idp.js";
 import { pkceChallenge, randomToken } from "./pkce.js";
 import { seal, unseal } from "./sealed.js";
 
@@ -70,8 +70,11 @@ function isSameOrigin(request: Request, origin: string): boolean {
   return request.headers.get("origin") === origin;
 }
 
+// A session keeps the ID token once, as the logout hint, and the page's claims are read from it. A session sealed
+// before this RP kept the hint holds the claims instead (and no hint), and still reads.
 function readSession(data: Readonly<Record<string, unknown>> | undefined): SessionView | undefined {
-  const idToken = data?.idToken;
+  const hint = data?.idTokenHint;
+  const idToken = typeof hint === "string" ? idTokenViewFromJwt(hint) : data?.idToken;
   const userinfo = data?.userinfo;
   if (typeof idToken !== "object" || idToken === null || typeof userinfo !== "object" || userinfo === null) return undefined;
   return { idToken: idToken as Record<string, unknown>, userinfo: userinfo as Record<string, unknown> };
@@ -161,10 +164,10 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
     const { state, nonce, verifier } = flow ?? {};
     if (typeof state !== "string" || typeof nonce !== "string" || typeof verifier !== "string") throw new CallbackError("state");
     const { code } = checkAuthorizationResponse(new URL(c.req.url).searchParams, state, config.issuer);
-    const { idToken, idTokenJwt, userinfo } = await c.get("idp").redeem({ code, verifier, nonce });
-    // The raw ID token is kept only as the logout's id_token_hint (RP-Initiated Logout 1.0 §2, RECOMMENDED); it is
-    // sealed like the rest and never shown.
-    const session: SessionView & { readonly idTokenHint: string } = { idToken: idTokenView(idToken), userinfo, idTokenHint: idTokenJwt };
+    const { idTokenJwt, userinfo } = await c.get("idp").redeem({ code, verifier, nonce });
+    // The verified ID token is kept as issued: the logout's id_token_hint (RP-Initiated Logout 1.0 §2, RECOMMENDED)
+    // and the source of the claims the account page shows (readSession). It is sealed like the rest.
+    const session = { userinfo, idTokenHint: idTokenJwt };
     const sealed = await seal(config.sessionKey, SESSION_COOKIE, session, options.now() + SESSION_SECONDS);
     // RFC 6265bis §5.6: a browser ignores a cookie whose name and value exceed 4096 octets. Refuse here instead, so
     // a large /userinfo (multibyte names included: measured in UTF-8 octets) fails visibly, not as a silent loop.
@@ -194,14 +197,22 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
       log({ route: "logout", result: "signed_out", scope: "rp" });
       return c.redirect("/", 303);
     }
-    const { endSession } = await c.get("idp").discover();
+    let endSession: EndSessionEndpoint;
+    try {
+      ({ endSession } = await c.get("idp").discover());
+    } catch (error) {
+      if (!(error instanceof IdpError)) throw error;
+      // The RP session is already gone (the cookie is cleared above); say so, and that the IdP's may remain.
+      log({ route: "logout", result: "refused", reason: "discovery", detail: error.message });
+      return refuse(c, 502, "IdP に連絡できなかったので、この RP からだけログアウトしました。この RP のセッションは終わっています。IdP のセッションは残っているかもしれません。");
+    }
     if (endSession.kind === "none") {
       log({ route: "logout", result: "signed_out", scope: "rp" });
       return c.redirect("/", 303);
     }
     if (endSession.kind === "invalid") {
       log({ route: "logout", result: "refused", reason: "end_session_endpoint" });
-      return refuse(c, 502, "IdP のログアウトの宛先を確かめられなかったので、この RP からだけログアウトしました。");
+      return refuse(c, 502, "IdP のログアウトの宛先を確かめられなかったので、この RP からだけログアウトしました。この RP のセッションは終わっています。IdP のセッションは残っているかもしれません。");
     }
     // state is checked at /signed-out against this sealed, single-use cookie (see there).
     const state = randomToken();
@@ -216,7 +227,7 @@ export function createApp(options: AppOptions): Hono<AppEnv> {
     if (typeof hint === "string") fields.push(["id_token_hint", hint]);
     fields.push(["post_logout_redirect_uri", config.postLogoutRedirectUri], ["state", state], ["client_id", config.clientId]);
     // A form POST, not a redirect: the ID token stays out of URLs, browser history, and access logs (§2 allows both).
-    c.header("content-security-policy", await logoutContentSecurityPolicy(new URL(endSession.url).origin));
+    c.header("content-security-policy", logoutContentSecurityPolicy(new URL(endSession.url).origin));
     log({ route: "logout", result: "signed_out", scope: "rp_and_idp" });
     return c.html(logoutFormPage(endSession.url, fields));
   });

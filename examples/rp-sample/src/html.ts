@@ -1,6 +1,7 @@
 // Server-rendered HTML. Every value that comes from the IdP or the request goes through escapeHtml; the only markup
 // is the literal text of this file. No script runs on these pages, and the CSP forbids any; the one exception is the
 // logout page's auto-submit, allowed by its hash in that page's own CSP.
+import { base64urlDecode, parseJsonObject } from "./encoding.js";
 import type { IdTokenClaims } from "./id-token.js";
 
 /** What the session keeps: only what the account page shows. */
@@ -59,10 +60,25 @@ export const AUTO_SUBMIT_SCRIPT = "document.forms[0].submit();";
  * @param idpOrigin The origin of the end_session_endpoint.
  * @returns The header value.
  */
-export async function logoutContentSecurityPolicy(idpOrigin: string): Promise<string> {
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(AUTO_SUBMIT_SCRIPT)));
-  const hash = btoa(String.fromCharCode(...digest));
-  return `default-src 'none'; script-src 'sha256-${hash}'; style-src 'unsafe-inline'; form-action ${idpOrigin} 'self'; frame-ancestors 'none'; base-uri 'none'`;
+export function logoutContentSecurityPolicy(idpOrigin: string): string {
+  return `default-src 'none'; script-src 'sha256-${AUTO_SUBMIT_SCRIPT_SHA256}'; style-src 'unsafe-inline'; form-action ${idpOrigin} 'self'; frame-ancestors 'none'; base-uri 'none'`;
+}
+
+/** SHA-256 of {@link AUTO_SUBMIT_SCRIPT}, base64 (CSP Level 3 hash-source); a test recomputes it from the script. */
+export const AUTO_SUBMIT_SCRIPT_SHA256 = "8lDeP0UDwCO6/RhblgeH/ctdBzjVpJxrXizsnIk3cEQ=";
+
+/**
+ * The ID token claims the account page shows, read from the sealed ID token. The token was verified at /callback
+ * and the cookie is authenticated, so it is only decoded here; keeping it once saves cookie octets.
+ *
+ * @param jwt The ID token as issued.
+ * @returns The claims to show, or undefined when the value is not a JWS with a JSON object payload.
+ */
+export function idTokenViewFromJwt(jwt: string): Readonly<Record<string, unknown>> | undefined {
+  const payload = jwt.split(".")[1];
+  const bytes = payload === undefined ? undefined : base64urlDecode(payload);
+  const claims = bytes === undefined ? undefined : parseJsonObject(new TextDecoder().decode(bytes));
+  return claims === undefined ? undefined : idTokenView(claims as IdTokenClaims);
 }
 
 /**

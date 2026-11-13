@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
+import { AUTO_SUBMIT_SCRIPT, AUTO_SUBMIT_SCRIPT_SHA256 } from "../src/html.js";
 import { createHandler, type Handler } from "../src/index.js";
-import { CLIENT_ID, ENV, FakeIdp, ISSUER, ORIGIN, SUB, type FakeIdpOptions } from "./support/fake-idp.js";
+import { importSealingKey, seal, unseal } from "../src/sealed.js";
+import { CLIENT_ID, ENV, FakeIdp, ISSUER, ORIGIN, SESSION_KEY, SUB, type FakeIdpOptions } from "./support/fake-idp.js";
 
 const FLOW_COOKIE = "__Host-rp-sample-flow";
 const SESSION_COOKIE = "__Host-rp-sample-session";
@@ -314,8 +316,8 @@ describe("GET /callback", () => {
   });
 
   it("counts the kept ID token (the logout hint) against the 4096-octet limit and fails clearly", async () => {
-    // The name is in the claims the page shows and again inside the raw ID token: together over the limit.
-    const r = await rig({ idTokenClaims: { name: "a".repeat(1200) } });
+    // The ID token is kept whole (sealed, so base64url twice): a long name in it alone goes over the limit.
+    const r = await rig({ idTokenClaims: { name: "a".repeat(2400) } });
     const { callback, flow } = await startLogin(r);
     const response = await call(r, `${callback.pathname}${callback.search}`, { cookies: { [FLOW_COOKIE]: flow } });
     expect(response.status).toBe(502);
@@ -409,14 +411,58 @@ describe("POST /logout (RP-Initiated Logout 1.0)", () => {
     const html = await response.text();
     const script = /<script>([^<]*)<\/script>/.exec(html)?.[1] ?? "";
     expect(script).toBe("document.forms[0].submit();");
-    const csp = response.headers.get("content-security-policy") ?? "";
-    expect(csp).toContain(`script-src 'sha256-${await sha256Base64(script)}'`);
-    expect(csp).toContain(`form-action ${ISSUER} 'self'`);
-    expect(csp).toContain("default-src 'none'");
-    expect(csp).toContain("frame-ancestors 'none'");
-    expect(csp).not.toContain("unsafe-inline' 'unsafe-eval");
+    const directives = new Map(
+      (response.headers.get("content-security-policy") ?? "").split(";").map((part) => {
+        const [name = "", ...values] = part.trim().split(/\s+/);
+        return [name, values.join(" ")];
+      }),
+    );
+    // Exactly one hash source: no nonce, no 'unsafe-inline', no other script.
+    expect(directives.get("script-src")).toBe(`'sha256-${await sha256Base64(script)}'`);
+    expect(directives.get("form-action")).toBe(`${ISSUER} 'self'`);
+    expect(directives.get("default-src")).toBe("'none'");
+    expect(directives.get("frame-ancestors")).toBe("'none'");
+    expect(directives.get("base-uri")).toBe("'none'");
     // Without script the button still submits the form.
     expect(html).toContain('<button type="submit">');
+  });
+
+  it("pins the script hash constant to the script", async () => {
+    expect(AUTO_SUBMIT_SCRIPT_SHA256).toBe(await sha256Base64(AUTO_SUBMIT_SCRIPT));
+  });
+
+  it.each(["status", "network"] as const)("clears the RP session and says so when discovery fails during logout (%s)", async (failure) => {
+    const r = await rig();
+    const session = await signIn(r);
+    // Past the discovery cache, so /logout asks the IdP again; the RP session is still valid.
+    r.clock.now += 301;
+    r.idp.failDiscovery = failure;
+    const response = await call(r, "/logout", { method: "POST", headers: { "sec-fetch-site": "same-origin" }, cookies: { [SESSION_COOKIE]: session } });
+    expect(response.status).toBe(502);
+    expect(setCookie(response, SESSION_COOKIE)?.get("max-age")).toBe("0");
+    expect(setCookie(response, LOGOUT_COOKIE)).toBeUndefined();
+    expect(await response.text()).toContain("この RP のセッションは終わっています");
+  });
+
+  it("sends no id_token_hint for a session sealed before the hint was kept, so the IdP asks the user (§2, §6)", async () => {
+    const r = await rig();
+    const key = await importSealingKey(SESSION_KEY);
+    const legacy = await seal(key, SESSION_COOKIE, { idToken: { iss: ISSUER, sub: SUB, aud: CLIENT_ID }, userinfo: { sub: SUB } }, START + 3600);
+    // The old shape still reads as a session.
+    expect(await (await call(r, "/", { cookies: { [SESSION_COOKIE]: legacy } })).text()).toContain(SUB);
+    const response = await call(r, "/logout", { method: "POST", headers: { "sec-fetch-site": "same-origin" }, cookies: { [SESSION_COOKIE]: legacy } });
+    expect(response.status).toBe(200);
+    const fields = formFields(await response.text());
+    expect(fields.has("id_token_hint")).toBe(false);
+    expect([...fields.keys()].sort()).toEqual(["client_id", "post_logout_redirect_uri", "state"]);
+  });
+
+  it("keeps the ID token once: the account page's claims are read from the kept token", async () => {
+    const r = await rig();
+    const session = await signIn(r);
+    const opened = await unseal(await importSealingKey(SESSION_KEY), SESSION_COOKIE, session, START);
+    expect(Object.keys(opened ?? {}).sort()).toEqual(["idTokenHint", "userinfo"]);
+    expect(await (await call(r, "/", { cookies: { [SESSION_COOKIE]: session } })).text()).toContain(ISSUER);
   });
 
   it("keeps the returned state in a sealed, single-use __Host- cookie", async () => {

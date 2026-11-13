@@ -83,6 +83,8 @@ export class FakeIdp {
   readonly requests: RecordedRequest[] = [];
   /** The last ID token the token endpoint issued, as the RP received it. */
   lastIdToken: string | undefined;
+  /** Makes discovery fail from now on: a 500, or a failed connection. */
+  failDiscovery: "status" | "network" | undefined;
   readonly #codes = new Map<string, PendingCode>();
   readonly #options: FakeIdpOptions;
   readonly #key: CryptoKeyPair;
@@ -188,6 +190,10 @@ export class FakeIdp {
     this.requests.push({ method: request.method, url: request.url, headers: request.headers, body });
     const url = new URL(request.url);
     if (url.origin !== ISSUER) return new Response("unexpected host", { status: 599 });
+    if (this.failDiscovery !== undefined && url.pathname === "/.well-known/openid-configuration") {
+      if (this.failDiscovery === "network") throw new TypeError("connection refused");
+      return json({ error: "server_error" }, 500);
+    }
     const response = await this.#answer(`${request.method} ${url.pathname}`, request.headers, body);
     const endpoint = ENDPOINTS[url.pathname];
     const contentType = endpoint === undefined ? undefined : this.#options.contentType?.[endpoint];
