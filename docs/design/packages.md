@@ -17,6 +17,23 @@ Nov 13, 2026 · @Shinra Yamakawa
 7. **`@idp/structured-fields` は RFC 9651 どおりにする**：重複したキーの後勝ちを含めて RFC 9651 に正確に従い、HTTP WG の structured-field-tests を通す。今の IdP が重複したキーを拒否する動作は core の方針として残し、IdP の外から見える振る舞いは変えない（下の結合の問題 7）。
 8. **`canonicalJson` を RFC 8785 の標準パッケージにする**：`admin/idempotency.ts` の `canonicalJson` を、規格の名前を付けた `@idp/json-canonicalization`（RFC 8785、JSON Canonicalization Scheme）に切り出し、RFC 8785 に完全に従わせて、RFC のテストベクタを通す。今の実装が RFC 8785 とずれていれば、パッケージの中で直し、IdP に固有の制限は core に残して、冪等性の振る舞いを変えない（下の結合の問題 13）。
 9. **`examples/rp-sample` は標準パッケージを使わない**：RP のサンプルは IdP のリポジトリのコードを import しない今の lint の禁止を保ち、標準パッケージもその対象に含める。
+10. **`packages/` には再利用する部品だけを置き、ビジネスロジックは使う Worker が持つ**：標準パッケージの分割の後に運用者が承認した配置の規則で、決定 3 の `user/` と `admin/` の置き場所をこれで置き換える（下の「配置の規則」）。`packages/` に置くのは、標準パッケージ、2 つ以上のアプリが使う IdP 固有の関心とインフラのパッケージが実装するポートだけを持つ `@idp/core`、インフラだけを持つ `@idp/cloudflare` の 3 種類。1 つの Worker だけが使うビジネスロジックは、そのアプリの `apps/<名前>/src/domain/` に置く。利用者向けのユースケース（今の `core/src/user/`）は `apps/worker/src/domain/`、管理系のユースケース（今の `core/src/admin/`）は `apps/admin-worker/src/domain/` に移る。
+
+## 配置の規則
+
+コードの置き場所は、何を持つかと、いくつのアプリが使うかで決める（決定 10）。
+
+| 置き場所 | 置くもの | 置かないもの |
+| --- | --- | --- |
+| `packages/<規格の名前>`（標準パッケージ） | 標準規格の実装 | IdP の方針、プラットフォームに固有のコード |
+| `packages/core`（`@idp/core`） | 2 つ以上のアプリが使う IdP 固有の関心（`db/`、`identifiers/`、`issuer/`、`hosting/`、`problems/`、`clients/`、`passkeys/`、`audit/`）と、インフラのパッケージが実装するポート（`db/` の `Database`） | 1 つのアプリだけが使うユースケースと規則、フレームワーク、プラットフォーム |
+| `packages/cloudflare`（`@idp/cloudflare`） | Cloudflare の上でだけ意味を持つインフラ：core のポートの実装（型の変換とエラーの包み直しだけ）と、Workers の値を読む関数 | ドメインのロジック（SQL 文、結果の解釈、方針） |
+| `apps/<名前>/src/domain/` | その Worker だけが使うユースケースと規則。core のポートを引数で受け取り、フレームワークなしでテストできる | HTTP、Hono、`cloudflare:*`、`@idp/cloudflare`、アプリの HTTP の層 |
+| `apps/<名前>/src/`（`domain/` の外） | HTTP の層と合成：ルーティング、要求と応答の変換、`@idp/cloudflare` の実装を `domain/` と core のポートにつなぐ配線 | ドメインの規則 |
+
+- 1 つのアプリだけが使うものが core に残っていれば、そのアプリの `domain/` に移す。2 つ目のアプリが使うようになったら、core の関心ごとのディレクトリに移す。
+- `@idp/cloudflare` の中にドメインのロジックが入っていれば、それはポートを受け取る関数としてアプリの `domain/`（2 つ以上のアプリが使うなら core）に移し、アプリが `@idp/cloudflare` の実装を渡して合成する。
+- 依存は下向きだけ：`apps/*` → `@idp/cloudflare` → `@idp/core` → 標準パッケージ。アプリの `domain/` は `@idp/core` と標準パッケージだけを import し、アプリどうしは互いの `domain/` を import しない。
 
 ## 標準パッケージの規則
 
@@ -67,7 +84,7 @@ Nov 13, 2026 · @Shinra Yamakawa
 
 | パッケージ | サブパス | 中身 | 元のファイル | 依存 |
 | --- | --- | --- | --- | --- |
-| `@idp/cloudflare` | `./d1`、`./d1/admin` | core の D1 のポートの、Cloudflare D1 による実装 | `packages/d1-adapter/src/` | `@idp/core`（ポートの型）、標準パッケージ |
+| `@idp/cloudflare` | `./d1` | core の D1 のポートの、Cloudflare D1 による実装 | `packages/d1-adapter/src/` | `@idp/core`（ポートの型）、標準パッケージ |
 | `@idp/cloudflare` | `./workers/tls` | `request.cf.tlsVersion` による TLS の版の確認 | `shared/tls.ts` | なし（型は `@cloudflare/workers-types`） |
 
 ## `@idp/cloudflare` の規則
@@ -76,18 +93,19 @@ Cloudflare の上でだけ意味を持つコード（D1、Workers の `request.c
 
 **配置**
 
-- `packages/cloudflare/package.json`：`name` は `@idp/cloudflare`。`exports` は関心ごとのサブパスだけを持ち、`"."` を持たない。今のサブパスは `./d1`（`./src/d1/index.ts`）、`./d1/admin`（`./src/d1/admin.ts`、管理用の Worker だけが使う D1 の実装）、`./workers/tls`（`./src/workers/tls/index.ts`）。
+- `packages/cloudflare/package.json`：`name` は `@idp/cloudflare`。`exports` は関心ごとのサブパスだけを持ち、`"."` を持たない。今のサブパスは `./d1`（`./src/d1/index.ts`）と `./workers/tls`（`./src/workers/tls/index.ts`）。以前の `./d1/admin`（`createD1AdminNonceStore`）は、D1 の実装ではなく、汎用の `Database` のポートの上に書いた管理系のロジックだったので、管理用の Worker のドメインの `createAdminNonceStore(db)` に移して消した（決定 10）。
 - `packages/cloudflare/src/<サブパス>/`：サブパスごとのソース。`packages/cloudflare/test/<サブパス>/`：サブパスごとのテスト（今の D1 の適合テストは `test/d1/` に移る）。
 - 新しい関心は、`src/workers/rate-limit/` や `src/r2/` のようにサブパスを足し、この文書の下の辺の一覧を先に直す。
 
 **依存の規則**
 
 - core と標準パッケージは、`@idp/cloudflare` とその下を import しない。
-- `./d1` と `./d1/admin` は core のポートを実装する。import してよいのは `@idp/core` の入口と標準パッケージだけ。
+- `./d1` は core のポートを実装する。import してよいのは `@idp/core` の入口と標準パッケージだけ。
+- `@idp/cloudflare` はインフラだけを持つ。ポートの実装が行うのは型の変換とエラーの包み直しだけで、SQL 文を組み立てたり、結果の意味を解釈したりするドメインのロジックは持たない（上の「配置の規則」）。
 - `./workers/tls` は、core も `./d1` も import しない。
-- サブパスの間の import は、宣言した辺だけを許す。今は宣言した辺はない（`./d1/admin` から `./d1` へのパッケージの中の import を除く）。
-- `apps/*` が合成の層で、core と `@idp/cloudflare` のサブパスをつなぐ。
-- 強制：`eslint.config.js` の `no-restricted-imports` で上の禁止を書き、`packages/core/test/boundary.test.ts` に、禁止に当たる import で lint が失敗する場合と、許す import が通る場合を足す。利用者向けの IdP の Worker から `./d1/admin` への import は、今の `@idp/d1-adapter/admin` と同じく禁止する。
+- サブパスの間の import は、宣言した辺だけを許す。今は宣言した辺はない。
+- `apps/*` の `domain/` の外が合成の層で、core と `@idp/cloudflare` のサブパスと、アプリの `domain/` をつなぐ。
+- 強制：`eslint.config.js` の `no-restricted-imports` で上の禁止を書き、`packages/core/test/boundary.test.ts` に、禁止に当たる import で lint が失敗する場合と、許す import が通る場合を足す。管理系のロジックの入口がなくなったので、IdP の Worker から管理系の実装を止める `@idp/cloudflare` の禁止は要らない。
 
 ## 依存グラフ
 
@@ -116,11 +134,17 @@ flowchart LR
   subgraph idp["IdP 固有"]
     core["@idp/core"]
     subgraph cloudflare["@idp/cloudflare"]
-      d1["./d1、./d1/admin"]
+      d1["./d1"]
       tls["./workers/tls"]
     end
-    worker["apps/worker"]
-    admin["apps/admin-worker"]
+    subgraph workerApp["apps/worker"]
+      worker["HTTP の層と合成"]
+      workerDomain["src/domain（利用者向けのユースケース）"]
+    end
+    subgraph adminApp["apps/admin-worker"]
+      admin["HTTP の層と合成"]
+      adminDomain["src/domain（管理系のユースケース）"]
+    end
   end
 
   thumb --> base64url
@@ -136,15 +160,21 @@ flowchart LR
   core --> standards
   d1 --> core
   d1 --> standards
+  workerDomain --> core
+  workerDomain --> standards
+  adminDomain --> core
+  adminDomain --> standards
+  worker --> workerDomain
   worker --> core
   worker --> d1
   worker --> tls
+  admin --> adminDomain
   admin --> core
   admin --> d1
   admin --> tls
 ```
 
-`@idp/core` は標準パッケージのすべてに依存してよい。core と標準パッケージから `@idp/cloudflare` への矢印はなく、`./workers/tls` から core と `./d1` への矢印もない（上の「`@idp/cloudflare` の規則」）。`examples/rp-sample` はこのグラフの外にあり、どのパッケージにも依存しない。`apps/` が標準パッケージを直接 import するのは、テストで値を作るとき（base64url など）だけにし、本番のコードは core を通す。
+`@idp/core` は標準パッケージのすべてに依存してよい。core と標準パッケージから `@idp/cloudflare` への矢印はなく、`./workers/tls` から core と `./d1` への矢印もない（上の「`@idp/cloudflare` の規則」）。アプリの `domain/` から `@idp/cloudflare` とアプリの HTTP の層への矢印はなく、2 つのアプリの間にも矢印はない。`examples/rp-sample` はこのグラフの外にあり、どのパッケージにも依存しない。アプリの HTTP の層が標準パッケージを直接 import するのは、テストで値を作るとき（base64url など）だけにし、本番のコードは `domain/` か core を通す。
 
 ## core の新しい構成
 
@@ -160,13 +190,32 @@ flowchart LR
 | `src/clients/` | redirect URI と post-logout redirect URI の登録の方針（長さの上限、client の種類ごとの制限、`state` の禁止、規則の説明文） | なし |
 | `src/passkeys/` | パスキーの上限と、パスキーの規則の SQL の条件 | db |
 | `src/audit/` | 監査ログの行の組み立て | db、identifiers、problems、clients |
-| `src/user/` | 利用者向けのユースケース（今のまま） | 上のすべて |
-| `src/admin/` | 管理系のユースケース（今のまま） | 上のすべて |
+| `src/user/` | 利用者向けのユースケース。決定 10 で `apps/worker/src/domain/` に移る | 上のすべて |
+| `src/admin/` | 管理系のユースケース。決定 10 で `apps/admin-worker/src/domain/` に移る | 上のすべて |
 
 - 関心のディレクトリは `user/` と `admin/` を import しない。今の `shared/` と同じく `admin/` の禁止を lint で強制し、`user/` の禁止も足す（今の `shared/index.ts` の注記にはあるが、lint は `admin/` しか止めていない）。
 - 関心のディレクトリの間の依存は上の表の列のとおりで、循環を作らない。
 - `eslint.config.js` の利用者向けのコードの対象（今は `packages/core/src/shared/**/*.ts`）は、`packages/core/src/` の下の `admin/` 以外のディレクトリに置き換える。
 - `packages/core/test/admin/framework.test.ts` の「Zod を import しない」の確認の対象（今は `shared` と `user`）は、`admin/` 以外のすべての関心のディレクトリにする。
+
+決定 10 の後、core に残るのは関心のディレクトリだけになる。`user/` と `admin/` がなくなるので、core の中の `user/` と `admin/` の禁止は要らなくなり、core は Zod に依存しなくなる。
+
+## アプリのドメインの層
+
+1 つの Worker だけが使うユースケースと規則は、そのアプリの `src/domain/` に置く（決定 10）。`domain/` は、フレームワークなしでテストできる層で、D1 などのインフラには core のポートを通してだけ触れる。
+
+| ディレクトリ | 中身 | 元の場所 |
+| --- | --- | --- |
+| `apps/worker/src/domain/` | 利用者向けのユースケース（OIDC、パスキーの登録とサインイン、アカウントページでの本人による操作） | `packages/core/src/user/` |
+| `apps/worker/test/domain/` | そのテスト（OIDC とパスキーのフィクスチャ、Worker Secret の形の鍵の生成を含む） | `packages/core/test/` の利用者向けのテスト |
+| `apps/admin-worker/src/domain/` | 管理系のユースケース（`idpctl` の全操作、管理者の署名の検証、`nonce` の保存の `createAdminNonceStore`） | `packages/core/src/admin/`、`packages/cloudflare/src/d1/admin.ts` の中身 |
+| `apps/admin-worker/test/domain/` | そのテスト（管理者の署名の契約のテストベクタを使うものを含む） | `packages/core/test/admin/`、`admin-signature-*`、`support/admin-signature-probe.ts`、`packages/cloudflare/test/d1/admin-nonces.test.ts` |
+
+**lint の規則**
+
+- `apps/*/src/domain/**` は、`hono`、`cloudflare:*`、`@cloudflare/*`、`@idp/cloudflare` とその下、アプリの HTTP の層（`domain/` の外の `src/` のファイル）、ほかのアプリを import しない。`packages/core/test/boundary.test.ts` に、それぞれの禁止で lint が失敗する場合と、`@idp/core` と標準パッケージの import が通る場合を置く。
+- 管理系のユースケースが IdP の Worker の外にあることは、置き場所で決まる。`@idp/core/admin` と `@idp/cloudflare/d1/admin` がなくなるので、IdP の Worker からそれらを止める禁止は消し、代わりに `apps/worker` から `apps/admin-worker` への import を禁止する。
+- IdP の Worker のバンドルに Zod が入らない性質は保つ。`apps/worker` と core からの `zod` の import を lint で禁止し、`apps/worker/src`、`apps/worker/pages`、`packages/core/src` のどのファイルも `zod` を import しないことをテストで確かめる。
 
 **`packages/core/package.json` の `exports`**
 
@@ -182,14 +231,26 @@ flowchart LR
 | `./issuer` | `./src/issuer/index.ts` |
 | `./passkeys` | `./src/passkeys/index.ts` |
 | `./problems` | `./src/problems/index.ts` |
-| `./user` | `./src/user/index.ts`（今のまま） |
-| `./admin` | `./src/admin/index.ts`（今のまま） |
+| `./user` | `./src/user/index.ts`（決定 10 で消す） |
+| `./admin` | `./src/admin/index.ts`（決定 10 で消す） |
 
-`dependencies` には、使う標準パッケージを `workspace:*` で足す。Zod は core の依存のまま残す（下の結合の問題 4）。
+`dependencies` には、使う標準パッケージを `workspace:*` で足す。Zod は core の依存のまま残す（下の結合の問題 4）。決定 10 の後は、`./user` と `./admin` の入口を消し、`dependencies` は残った関心のディレクトリが使う標準パッケージだけにする。Zod は `apps/admin-worker` の依存になり、ユースケースが使う標準パッケージは、それを使うアプリの `dependencies` に移る。
 
 ## 現在のファイルの行き先
 
-`packages/core/src` のすべてのファイルの行き先。「残る」は同じ場所に残り、import だけを書き換えるもの。
+`packages/core/src` のすべてのファイルの行き先。「残る」は同じ場所に残り、import だけを書き換えるもの。この表は標準パッケージへの分割のときの行き先で、そこで「残る」とした `user/` と `admin/` のファイルは、決定 10 で次のように動く。
+
+| 現在のファイル | 行き先 | 備考 |
+| --- | --- | --- |
+| `user/` のすべてのファイル（`webauthn/` を含む） | `apps/worker/src/domain/` の同じ相対パス | core の関心への相対の import を `@idp/core/<関心>` に書き換える |
+| `admin/` のすべてのファイル | `apps/admin-worker/src/domain/` の同じ相対パス | 同上 |
+| `packages/cloudflare/src/d1/admin.ts` | `apps/admin-worker/src/domain/nonces.ts` の `createAdminNonceStore(db)` | D1 のバインディングではなく `Database` のポートを受け取る。`fresh`、`replayed`、`AdminNonceStoreError` の意味とエラーの対応は変えない |
+| `packages/core/test/` の利用者向けのテスト（`authorize`、`discovery`、`end-session`、`jws`、`locale`、`passkey-*`、`signing-keys`、`token`、`tokens`、`userinfo`）とフィクスチャ（`oidc-fixture.ts`、`passkey-fixture.ts`、`keys.ts`） | `apps/worker/test/domain/` | `keys.ts` を使う `apps/admin-worker/test/` と `e2e/` の import も直す |
+| `packages/core/test/admin/`、`admin-signature-fixture.ts`、`admin-signature-vectors.test.ts`、`support/admin-signature-probe.ts` | `apps/admin-worker/test/domain/` | 契約のテストベクタ（`admin_signature`）を読むテストも一緒に動く |
+| `packages/cloudflare/test/d1/admin-nonces.test.ts` | `apps/admin-worker/test/domain/nonces.test.ts` | `createD1Database` で包んだローカルの D1 に対して同じ性質を確かめる |
+| `packages/core/test/vectors.ts` と、core に残る関心のテスト | 残る | 動いたテストは `vectors.ts` を相対パスで読む |
+
+以下は標準パッケージへの分割のときの表。
 
 | 現在のファイル | 行き先 | 備考 |
 | --- | --- | --- |
@@ -415,6 +476,17 @@ Zod を使うのは `admin/` の入力と出力のスキーマだけで、標準
 
 順番の依存：2 は 1 の後、4 は 1 と 3 の後、5 は 1 の後、6 は 1、3、4 の後、8 と 9 は 7 の後、10 は 1 の後。ほかは互いに独立で、1 の枠組みの後なら並べて進めてよいが、表の順番どおりに 1 つずつマージする。16 は 1 から 15 の後、17 は 1 から 16 のすべての後に行う。
 
+決定 10 の移動は、17 の後に次の順番で 1 つずつマージする。どれもコードを動かすだけで振る舞いを変えず、上と同じく、すべての参照を同じ PR で書き換えて再エクスポートの中継を残さない。
+
+| 順 | PR | 動かすもの |
+| --- | --- | --- |
+| 18 | 文書 | この文書の配置の規則、依存グラフ、lint の規則、ファイルの表と、`user/` と `admin/` を説明するほかの設計文書 |
+| 19 | `nonce` の保存をドメインへ | `createD1AdminNonceStore` を `Database` を受け取る `createAdminNonceStore(db)` として `core/src/admin/nonces.ts` に書き直し、`@idp/cloudflare` の `./d1/admin` とその lint の禁止を消す。管理用の Worker が `createD1Database` から合成する |
+| 20 | 管理系をアプリへ | `core/src/admin/` を `apps/admin-worker/src/domain/` へ、テストと契約のテストベクタを使うテストも一緒に |
+| 21 | 利用者向けをアプリへ | `core/src/user/` を `apps/worker/src/domain/` へ、テストも一緒に |
+| 22 | ドメインの境界 | 上の「アプリのドメインの層」の lint の規則と境界のテスト。移動で要らなくなった禁止を消し、Zod の確認を残す。core の `package.json` の `exports` |
+| 23 | 残りの点検 | インフラの中のドメインのロジック、1 つのアプリだけが使う core のもの、上向きの import を探して直す |
+
 ## 前提
 
 依頼に曖昧さがあった箇所は、次の前提を置いて書いた。
@@ -426,7 +498,7 @@ Zod を使うのは `admin/` の入力と出力のスキーマだけで、標準
 5. `user/redirect-uri.ts` の全体を規格の実装と判断し、core から消して `@idp/oauth-native-apps` に移す。`user/index.ts` からの `isRegisteredRedirectUri` と `matchesRegisteredRedirectUri` の再エクスポートは、`apps/` が使っていないので外す。
 6. WebAuthn Level 3 の仕様にテストベクタの付録があることを前提にしたが、版によって中身が違うので、6 の PR で今の版の本文を確かめ、提示する 3 つのアルゴリズムと attestation `none` に当てはまるものだけを取り込む。当てはまるものがなければ、ふるまいのテストだけにする。
 7. RFC 9421 には ECDSA P-384 の署名のテストベクタがないので、`@idp/http-message-signatures` の規格のテストベクタは署名の基底の組み立て（付録 B.2）に限る。署名の検証は、今の `admin_signature` の契約のテストベクタが core で確かめる。
-8. `@idp/d1-adapter` の `./admin` の入口は、`@idp/cloudflare` の `./d1/admin` として残す。管理用の D1 の実装を利用者向けの IdP の Worker から lint で止めるには、入口が分かれている必要があるため。
+8. `@idp/d1-adapter` の `./admin` の入口は、`@idp/cloudflare` の `./d1/admin` として残す。管理用の D1 の実装を利用者向けの IdP の Worker から lint で止めるには、入口が分かれている必要があるため。（決定 10 で、この入口の中身は D1 の実装ではなく管理系のロジックだったとして、管理用の Worker のドメインに移し、入口を消した）
 9. HTTP WG の structured-field-tests は、取り込んだ版のコミットを出典としてテストのファイルに書き、パッケージの `test/` に JSON として写す。コピーで使えることの条件（テストは `contract/` を読まない）に合わせ、ほかの場所から読まない。
 
 運用者に確認することは残っていない（`@idp/cloudflare` の置き方、Structured Fields の汎用化、`canonicalJson` の扱い、RP のサンプルからの利用は、決定 6 から 9 で決まった）。
