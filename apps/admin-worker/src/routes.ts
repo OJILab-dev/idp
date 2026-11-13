@@ -1,6 +1,6 @@
 // The admin API's endpoints, derived from the core's registry (docs/design/idpctl.md, "管理 API の形"). The router
 // and the OpenAPI spec both read this one table, so neither keeps its own list of operations.
-import { ADMIN_OPERATIONS, type AdminOperation, type EnablementResource, type HttpMapping } from "@idp/core/admin";
+import { ADMIN_OPERATIONS, type AdminOperation, type EnablementResource, type HttpMapping } from "./domain/index.js";
 
 /** One endpoint of the admin API. */
 export type Route = {

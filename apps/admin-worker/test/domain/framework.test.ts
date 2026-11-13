@@ -1,0 +1,152 @@
+import { describe, expect, it } from "vitest";
+import { z } from "zod";
+import { ADMIN_OPERATIONS, AdminProblem, executeOperation, type WriteOperation } from "../../src/domain/index.js";
+import { parseInput } from "../../src/domain/schemas.js";
+import { userRename } from "../../src/domain/users.js";
+import { DatabaseError, type Database } from "@idp/core/db";
+import { auditRows, query, run, useHarness } from "./harness.js";
+
+const h = useHarness();
+
+// docs/design/idpctl.md, "操作の一覧" and "管理 API の形": [class, concern, method, path].
+const EXPECTED: Readonly<Record<string, readonly [string, string | null, string, string]>> = {
+  users_list: ["read", null, "GET", "/v1/users"],
+  user_get: ["read", null, "GET", "/v1/users/{id}"],
+  clients_list: ["read", null, "GET", "/v1/clients"],
+  groups_list: ["read", null, "GET", "/v1/groups"],
+  grants_list: ["read", null, "GET", "/v1/grants"],
+  access_check: ["read", null, "GET", "/v1/access"],
+  audit_tail: ["read", null, "GET", "/v1/audit-events"],
+  user_create: ["write", "user", "POST", "/v1/users"],
+  user_rename: ["write", "user", "PUT", "/v1/users/{id}/name"],
+  user_disable: ["write", "user", "POST", "/v1/users/{id}/enablement-events"],
+  user_enable: ["write", "user", "POST", "/v1/users/{id}/enablement-events"],
+  enroll_link_issue: ["write", "user", "POST", "/v1/users/{id}/enrollment-links"],
+  passkey_revoke: ["write", "user", "DELETE", "/v1/users/{id}/passkeys/{credential_id}"],
+  session_revoke: ["write", "user", "DELETE", "/v1/users/{id}/sessions"],
+  group_create: ["write", "user", "POST", "/v1/groups"],
+  group_rename: ["write", "user", "PUT", "/v1/groups/{id}/name"],
+  group_disable: ["write", "user", "POST", "/v1/groups/{id}/enablement-events"],
+  group_enable: ["write", "user", "POST", "/v1/groups/{id}/enablement-events"],
+  group_member_add: ["write", "user", "PUT", "/v1/groups/{id}/members/{user_id}"],
+  group_member_remove: ["write", "user", "DELETE", "/v1/groups/{id}/members/{user_id}"],
+  client_create: ["write", "rp", "POST", "/v1/clients"],
+  client_rename: ["write", "rp", "PUT", "/v1/clients/{id}/name"],
+  client_set_redirects: ["write", "rp", "PUT", "/v1/clients/{id}/redirect-uris"],
+  client_set_post_logout_redirects: ["write", "rp", "PUT", "/v1/clients/{id}/post-logout-redirect-uris"],
+  client_rotate_secret: ["write", "rp", "POST", "/v1/clients/{id}/secrets"],
+  client_set_id_token_alg: ["write", "rp", "PUT", "/v1/clients/{id}/id-token-alg"],
+  client_disable: ["write", "rp", "POST", "/v1/clients/{id}/enablement-events"],
+  client_enable: ["write", "rp", "POST", "/v1/clients/{id}/enablement-events"],
+  grant_add: ["write", "access", "PUT", "/v1/clients/{id}/grants/{principal}"],
+  grant_remove: ["write", "access", "DELETE", "/v1/clients/{id}/grants/{principal}"],
+};
+
+describe("the operation catalogue", () => {
+  // The class and concern decide which admin scope an operation needs, so a misclassified operation is an
+  // authorization bug; idempotent POSTs are the ones that require Idempotency-Key.
+  it("registers each operation once, classified and routed as idpctl.md does", () => {
+    const names = ADMIN_OPERATIONS.map((o) => o.name);
+    expect(names.sort()).toEqual(Object.keys(EXPECTED).sort());
+    for (const operation of ADMIN_OPERATIONS) {
+      const [cls, concern, method, path] = EXPECTED[operation.name] ?? [];
+      expect([operation.class.access, "concern" in operation.class ? operation.class.concern : null], operation.name).toEqual([cls, concern]);
+      expect([operation.http.method, operation.http.path], operation.name).toEqual([method, path]);
+      expect(operation.establishesIdentity, operation.name).toBe(operation.name === "enroll_link_issue");
+      if ("plan" in operation) expect(operation.idempotent, operation.name).toBe(method === "POST");
+    }
+  });
+});
+
+describe("problems", () => {
+  it("serialises RFC 9457 problem details, with pointers only for validation", () => {
+    expect(new AdminProblem("validation-failed", "bad", { pointers: ["/name"] }).toProblemDetails()).toEqual({
+      type: "urn:ojilab:idp:problem:validation-failed",
+      title: "The request is not valid",
+      status: 400,
+      detail: "bad",
+      errors: ["/name"],
+    });
+    expect(new AdminProblem("not-found", "The user does not exist").toProblemDetails()).not.toHaveProperty("errors");
+  });
+
+  it("never exposes an internal detail", () => {
+    const details = new AdminProblem("internal", "SELECT secret FROM x").toProblemDetails();
+    expect(details.detail).not.toContain("SELECT");
+  });
+});
+
+describe("parseInput", () => {
+  it("reports every failing field as an escaped JSON Pointer", () => {
+    const schema = z.strictObject({ "a/b": z.string(), list: z.array(z.int()), "c~d": z.string() });
+    try {
+      parseInput(schema, { "a/b": 1, list: [1, "x"], "c~d": "ok" });
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(AdminProblem);
+      expect((error as AdminProblem).pointers).toEqual(["/a~1b", "/list/1"]);
+    }
+  });
+
+  it("points at the root for a non-object input", () => {
+    expect(() => parseInput(z.strictObject({}), "x")).toThrow(expect.objectContaining({ pointers: [""] }));
+  });
+});
+
+describe("executeOperation", () => {
+  it("wraps a database failure as internal, writes a failure row, and leaves no partial write", async () => {
+    const failing: Database = {
+      batch: async (statements) => {
+        if (statements.some((s) => s.sql.startsWith("UPDATE"))) throw new DatabaseError("boom");
+        return h().db.batch(statements);
+      },
+    };
+    const ctx = { ...h().ctx(), db: failing };
+    const id = "0f8fad5b-d9cb-469f-a165-70867728950e";
+    const outcome = executeOperation(ctx, userRename, { user_id: id, name: "x" });
+    await expect(outcome).rejects.toMatchObject({ kind: "internal", cause: expect.any(DatabaseError) });
+    expect(await auditRows(h())).toEqual([expect.objectContaining({ result: "failure", target: `user:${id}`, detail: { problem: "internal" } })]);
+  });
+
+  it("hands a failure-row error to onFailureAuditError and still throws the original problem", async () => {
+    const broken: Database = {
+      batch: async () => {
+        throw new DatabaseError("unreachable");
+      },
+    };
+    const ctx = { ...h().ctx(), db: broken };
+    await expect(executeOperation(ctx, userRename, { user_id: "bad", name: "x" })).rejects.toMatchObject({ kind: "validation-failed" });
+    expect(h().failureAuditErrors).toEqual([expect.any(DatabaseError)]);
+  });
+
+  it("reports internal when a plan's guard and settle disagree", async () => {
+    const liar: WriteOperation<Record<string, never>, null> = {
+      name: "user_create",
+      class: { access: "write", concern: "user" },
+      establishesIdentity: false,
+      idempotent: false,
+      target: "none",
+      input: z.strictObject({}),
+      output: z.null(),
+      http: { method: "POST", path: "/v1/users", status: 201 },
+      plan: async () => ({
+        target: "none",
+        probe: { sql: "SELECT 1 AS ok", params: [] },
+        guard: { sql: "0", params: [] },
+        writes: [],
+        detail: {},
+        settle: () => "write",
+        result: () => null,
+      }),
+    };
+    await expect(run(h(), liar, {}, null)).rejects.toMatchObject({ kind: "internal" });
+  });
+
+  it("checks the admin identity through the audit-row builder", async () => {
+    h().admin = { name: "root", keyid: "not-hex" };
+    await expect(run(h(), userRename, { user_id: "0f8fad5b-d9cb-469f-a165-70867728950e", name: "x" }, null)).rejects.toMatchObject({
+      kind: "internal",
+    });
+    expect(await query(h(), "SELECT COUNT(*) AS n FROM audit_log")).toEqual([{ n: 0 }]);
+  });
+});

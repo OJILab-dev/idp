@@ -3,8 +3,15 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@idp/base64url": "workspace:*",
     "@idp/cloudflare": "workspace:*",
     "@idp/core": "workspace:*",
+    "@idp/digest-fields": "workspace:*",
+    "@idp/http-message-signatures": "workspace:*",
+    "@idp/json-canonicalization": "workspace:*",
+    "@idp/jwk-thumbprint": "workspace:*",
+    "@idp/problem-details": "workspace:*",
+    "@idp/structured-fields": "workspace:*",
     "hono": "4.13.13",
     "zod": "4.6.7"
   },

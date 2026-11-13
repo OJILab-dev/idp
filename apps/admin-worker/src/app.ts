@@ -12,7 +12,7 @@ import {
   type AdminContext,
   type AdminIdentity,
   type AdminOperation,
-} from "@idp/core/admin";
+} from "./domain/index.js";
 import { createD1Database } from "@idp/cloudflare/d1";
 import { adminConfig, InvalidConfigError, type AdminConfig, type Env } from "./config.js";
 import { admitRequest } from "./gate.js";
