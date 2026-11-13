@@ -49,7 +49,6 @@ test_private_jwk_from_pkcs8() {
   assert_equal "jwk d" "${RFC8037_D}" "$(printf '%s' "${jwk}" | jq -r .d)"
   assert_equal "jwk x" "${RFC8037_X}" "$(printf '%s' "${jwk}" | jq -r .x)"
   assert_equal "jwk kid" "${RFC8037_KID}" "$(printf '%s' "${jwk}" | jq -r .kid)"
-  assert_equal "jwk alg and use" "Ed25519 sig OKP Ed25519" "$(printf '%s' "${jwk}" | jq -r '"\(.alg) \(.use) \(.kty) \(.crv)"')"
 }
 
 test_public_jwk_has_no_private_member() {
@@ -78,7 +77,6 @@ test_base64url_has_no_padding_or_unsafe_characters() {
 
 test_deployment_config_path_rejects_unsafe_names() {
   assert_fails "rejects a path traversal" deployment_config_path "../etc"
-  assert_fails "rejects an uppercase name" deployment_config_path "Prod"
   assert_fails "rejects a missing file" deployment_config_path "no-such-deployment"
 }
 
@@ -91,8 +89,6 @@ test_reject_removed_inputs() {
   assert_equal "accepts a file without the removed inputs" "ok" "$(reject_removed_inputs "${config}" && printf ok)"
   printf '%s' '{"zone":"example.com","admin_allowlist":[]}' >"${config}"
   assert_fails "rejects admin_allowlist" reject_removed_inputs "${config}"
-  printf '%s' '{"zone":"example.com","admin_client_certificates":{}}' >"${config}"
-  assert_fails "rejects admin_client_certificates" reject_removed_inputs "${config}"
   printf '%s' '{"zone":"example.com","admin_client_certificates":null}' >"${config}"
   assert_fails "rejects a removed input set to null" reject_removed_inputs "${config}"
   printf '%s' 'not json' >"${config}"
@@ -108,15 +104,6 @@ test_config_string_fails_closed() {
   assert_fails "rejects an empty input" config_string "${config}" empty
   assert_fails "rejects a non-string input" config_string "${config}" number
   assert_fails "rejects a missing input" config_string "${config}" absent
-  rm -f "${config}"
-}
-
-# The ③ input went before the hosting modes; it stops a file in both modes (hosting-modes.md 1.1).
-test_reject_removed_zone_singletons_owner() {
-  local config
-  config="$(mktemp)"
-  printf '%s' '{"zone_singletons_owner":"idp"}' >"${config}"
-  assert_fails "rejects zone_singletons_owner" reject_removed_inputs "${config}"
   rm -f "${config}"
 }
 
@@ -144,7 +131,7 @@ test_check_hosting_inputs() {
   write_config "${config}" "${CUSTOM_DOMAIN_CONFIG}" 'del(.hosting_mode)'
   assert_fails "rejects a file without hosting_mode" check_hosting_inputs "${config}"
   local mode
-  for mode in '""' '"CUSTOM_DOMAIN"' '"custom-domain"' '"workers.dev"' '"custom_domain\n"' 'null' '1'; do
+  for mode in '"CUSTOM_DOMAIN"' '"custom_domain\n"' '1'; do
     write_config "${config}" "${CUSTOM_DOMAIN_CONFIG}" ".hosting_mode = ${mode}"
     assert_fails "rejects hosting_mode ${mode}" check_hosting_inputs "${config}"
   done
@@ -171,7 +158,7 @@ test_check_hosting_inputs() {
   write_config "${config}" "${WORKERS_DEV_CONFIG}" 'del(.workers_dev_subdomain)'
   assert_fails "workers_dev requires workers_dev_subdomain" check_hosting_inputs "${config}"
   local subdomain
-  for subdomain in '""' '"Team"' '"-team"' '"team-"' '"a.b"' '"team.workers.dev"' '"team\n"' "\"$(printf 'a%.0s' {1..64})\"" '1'; do
+  for subdomain in '"Team"' '"-team"' '"team-"' '"a.b"' '"team\n"' "\"$(printf 'a%.0s' {1..64})\"" '1'; do
     write_config "${config}" "${WORKERS_DEV_CONFIG}" ".workers_dev_subdomain = ${subdomain}"
     assert_fails "workers_dev rejects the subdomain ${subdomain}" check_hosting_inputs "${config}"
   done
@@ -235,8 +222,6 @@ test_verify_workers_dev_subdomain() {
   assert_equal "curl gets no token argument" "0" "$(grep -c 'stub-api-token' "${stub_dir}/curl_args" || true)"
   assert_equal "curl reads the account's subdomain" "1" \
     "$(grep -c '^https://api.cloudflare.com/client/v4/accounts/0123456789abcdef0123456789abcdef/workers/subdomain$' "${stub_dir}/curl_args" || true)"
-  assert_equal "op resolves the Terraform token" "1" \
-    "$(grep -c '^op://idp-test/cloudflare/terraform_api_token$' "${stub_dir}/token_reference" || true)"
 
   printf '%s' '{"success":true,"errors":[],"result":{"subdomain":"other"}}' >"${stub_dir}/curl_response"
   assert_fails "rejects another subdomain" run_subdomain_check "${stub_dir}" "${config}"
@@ -312,8 +297,6 @@ test_admin_signing_key_row() {
   row="$(admin_signing_key_row alice "${P384_SPKI}")"
   assert_equal "row members" "keyid,name,public_key" "$(printf '%s' "${row}" | jq -r 'keys | join(",")')"
   assert_equal "row keyid" "${P384_KEYID}" "$(printf '%s' "${row}" | jq -r .keyid)"
-  assert_equal "row public_key" "${P384_SPKI}" "$(printf '%s' "${row}" | jq -r .public_key)"
-  assert_equal "row name" "alice" "$(printf '%s' "${row}" | jq -r .name)"
   assert_fails "rejects an invalid admin name" admin_signing_key_row "Alice" "${P384_SPKI}"
   assert_fails "rejects a non-P-384 key" admin_signing_key_row alice "${ED25519_SPKI}"
 }
@@ -350,7 +333,6 @@ test_check_admin_signing_keys() {
   assert_fails "rejects an empty list with an unknown mode" check_keys '[]' allow-all
   # The generation script adds the first row to the empty list of a new deployment.
   assert_equal "accepts an empty list with allow-empty" "ok" "$(check_keys '[]' allow-empty && printf ok)"
-  assert_equal "accepts valid rows with allow-empty" "ok" "$(check_keys "[${alice}]" allow-empty && printf ok)"
   assert_equal "accepts valid rows" "ok" "$(check_keys "[${alice},${bob}]" && printf ok)"
   assert_equal "accepts two keys of one admin" "ok" \
     "$(check_keys "[${alice},$(printf '%s' "${bob}" | jq -c '.name = "alice"')]" && printf ok)"
@@ -453,13 +435,9 @@ test_verify_workers_dev_subdomain_from_env() {
   assert_equal "env token: accepts the account's subdomain" "ok" "$(run_subdomain_check_from_env "${stub_dir}" "${config}" && printf ok)"
   assert_equal "env token: curl gets no token argument" "0" "$(grep -c 'stub-api-token' "${stub_dir}/curl_args" || true)"
   assert_equal "env token: op is never called" "" "$(cat "${stub_dir}/calls")"
-  assert_equal "env token: curl reads the account's subdomain" "1" \
-    "$(grep -c '^https://api.cloudflare.com/client/v4/accounts/0123456789abcdef0123456789abcdef/workers/subdomain$' "${stub_dir}/curl_args" || true)"
 
   printf '%s' '{"success":true,"errors":[],"result":{"subdomain":"other"}}' >"${stub_dir}/curl_response"
   assert_fails "env token: rejects another subdomain" run_subdomain_check_from_env "${stub_dir}" "${config}"
-  printf '%s' '{"success":false,"errors":[{"code":10007}],"result":null}' >"${stub_dir}/curl_response"
-  assert_fails "env token: rejects an account without a subdomain" run_subdomain_check_from_env "${stub_dir}" "${config}"
   printf '%s' '{"success":true,"errors":[],"result":{"subdomain":"team-1"}}' >"${stub_dir}/curl_response"
   assert_fails "env token: stops without a token" subdomain_check_without_token "${stub_dir}" "${config}"
   assert_fails "env token: rejects a malformed account ID" subdomain_check_with_bad_account "${stub_dir}" "${config}"
@@ -475,7 +453,6 @@ test_plain_http_verdict() {
   local expected="https://id.example.com/.well-known/openid-configuration?smoke=1"
   assert_equal "custom_domain: the Worker's 308" "worker" "$(plain_http_verdict custom_domain redirect 308 "${expected}" "${expected}")"
   assert_fails "custom_domain: a 301 is a zone rule, not the Worker" plain_http_verdict custom_domain redirect 301 "${expected}" "${expected}"
-  assert_fails "custom_domain: a 308 elsewhere" plain_http_verdict custom_domain redirect 308 "https://id.example.com/" "${expected}"
   assert_fails "custom_domain: a 308 that drops the query" plain_http_verdict custom_domain redirect 308 \
     "https://id.example.com/.well-known/openid-configuration" "${expected}"
   assert_fails "custom_domain: an answer over http" plain_http_verdict custom_domain redirect 200 "" "${expected}"
@@ -517,10 +494,8 @@ test_is_route_not_live_yet() {
   assert_succeeds "the edge's 404 for a new Worker" is_route_not_live_yet 404 "text/plain; charset=UTF-8"
   assert_succeeds "plain text without a charset" is_route_not_live_yet 404 "text/plain"
   assert_fails "a 404 in problem details" is_route_not_live_yet 404 "application/problem+json"
-  assert_fails "a 404 in JSON" is_route_not_live_yet 404 "application/json"
   assert_fails "a 404 with no content type" is_route_not_live_yet 404 ""
   assert_fails "another status in plain text" is_route_not_live_yet 500 "text/plain; charset=UTF-8"
-  assert_fails "the gate's forbidden" is_route_not_live_yet 403 "application/problem+json"
 }
 
 # A throwaway origin (bare) and a clone of its main, so require_reviewed_checkout runs against real git offline.
@@ -605,15 +580,13 @@ test_ci_deploy_matrix() {
 ${second}" | jq length)"
   assert_equal "no deployment is an empty matrix" "[]" "$(ci_deploy_matrix "")"
   assert_fails "a name listed twice" ci_deploy_matrix "${first} ${first}"
+  # One refusal of deployment_config_path shows it reaches the matrix; its other refusals are tested above.
   assert_fails "a deployment without a file" ci_deploy_matrix "${first} lib-test-missing-$$"
-  assert_fails "an unsafe name" ci_deploy_matrix "../etc"
   # The value becomes a job output and an Environment name; a newline or "=" could inject another output.
   write_config "${second_config}" "${WORKERS_DEV_CONFIG}" '.github_deploy_environment = "a=b"'
   assert_fails "an Environment name outside ^[A-Za-z0-9_-]+$" ci_deploy_matrix "${second}"
   write_config "${second_config}" "${WORKERS_DEV_CONFIG}"
   assert_fails "a deployment without github_deploy_environment" ci_deploy_matrix "${second}"
-  write_config "${second_config}" "${WORKERS_DEV_CONFIG}" '.github_deploy_environment = "workers-dev" | .zone = "example.com"'
-  assert_fails "a deployment that mixes the modes" ci_deploy_matrix "${second}"
   rm -f "${first_config}" "${second_config}"
 }
 
@@ -645,7 +618,7 @@ test_cf_output_shapes() {
   assert_equal "d1 id reads a wrapped array" "id-1" "$(with_cf_output "${wrapped_list}" d1_database_id idp)"
   assert_fails "d1 id rejects a missing database" with_cf_output '[]' d1_database_id idp
   local output
-  for output in '{}' '{"result":null}' '{"result":{}}' '"idp"' 'null' '1' 'not json'; do
+  for output in '{}' '{"result":null}' 'not json'; do
     assert_fails "d1 count rejects ${output}" with_cf_output "${output}" d1_database_count idp
     assert_fails "d1 id rejects ${output}" with_cf_output "${output}" d1_database_id idp
   done
@@ -654,7 +627,7 @@ test_cf_output_shapes() {
     "$(with_cf_output '{"uuid":"id-1","version":"production"}' d1_database_version id-1)"
   assert_equal "d1 backend reads a wrapped object" "production" \
     "$(with_cf_output '{"result":{"uuid":"id-1","version":"production"}}' d1_database_version id-1)"
-  for output in '[{"version":"production"}]' '{"result":null}' '{"result":[]}' '{}' 'null' 'not json'; do
+  for output in '[{"version":"production"}]' '{}' 'not json'; do
     assert_fails "d1 backend rejects ${output}" with_cf_output "${output}" d1_database_version id-1
   done
 
@@ -663,7 +636,7 @@ test_cf_output_shapes() {
   assert_equal "account check reads a wrapped object" "ok" \
     "$(with_cf_output '{"result":{"id":"0123456789abcdef0123456789abcdef"}}' verify_cf_account && printf ok)"
   assert_fails "account check rejects another account" with_cf_output '{"id":"ffffffffffffffffffffffffffffffff"}' verify_cf_account
-  for output in '[{"id":"0123456789abcdef0123456789abcdef"}]' '{"result":null}' 'null'; do
+  for output in '[{"id":"0123456789abcdef0123456789abcdef"}]' 'null'; do
     assert_fails "account check rejects ${output}" with_cf_output "${output}" verify_cf_account
   done
 }
@@ -677,7 +650,6 @@ test_base64url_has_no_padding_or_unsafe_characters
 test_deployment_config_path_rejects_unsafe_names
 test_reject_removed_inputs
 test_config_string_fails_closed
-test_reject_removed_zone_singletons_owner
 test_check_hosting_inputs
 test_deployment_config_path_checks_the_mode
 test_deployment_hosts

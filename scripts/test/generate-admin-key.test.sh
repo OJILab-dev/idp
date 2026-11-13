@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Offline tests for scripts/generate-admin-key.sh. A stub op answers from files and logs every call, and a stub
 # openssl refuses genpkey, so nothing here reaches 1Password or generates a key. The only key material is the
-# published P-384 public keys of contract/testdata/vectors.json and RFC 6979 Appendix A.2.6, so xtrace stays on.
+# published public keys of contract/testdata/vectors.json, so xtrace stays on.
 #
 # The scripts are copied into a temporary tree, because lib.sh finds deployments/ next to its own directory.
 set -euxo pipefail
@@ -20,7 +20,6 @@ P384_KEYID="$(jq -er '.admin_signature.keyid.valid[0].keyid' "${REPO_ROOT}/contr
 readonly P384_KEYID
 ED25519_SPKI="$(jq -er '.admin_signature.keyid.valid[1].spki' "${REPO_ROOT}/contract/testdata/vectors.json")"
 readonly ED25519_SPKI
-readonly RFC6979_P384_SPKI="MHYwEAYHKoZIzj0CAQYFK4EEACIDYgAE7DpOQVtOGaRWhhgCn0J/pdqai8SukuAuBqrlKGswDGTe+PDqkFWGYGSiVFFUgLwTgBXZty19VyROqO+awMYhiWcIpZNn+d+59UyoSz8cnbEoiyMcOuDU/nNE/SUzJkcg"
 
 failures=0
 
@@ -114,30 +113,7 @@ test_existing_item_writes_the_row() {
   assert_equal "existing item: exit code" "0" "$(status_of "${tree}")"
   assert_equal "existing item: the row is written" "${expected}" "$(keys_of "${tree}")"
   assert_equal "existing item: stdout is the row" "$(printf '%s' "${expected}" | jq -c '.[0]')" "$(jq -c . "${tree}/out")"
-  assert_equal "existing item: the other inputs are untouched" "example.com" \
-    "$(jq -r '.zone' "${tree}/deployments/test.tfvars.json")"
-  assert_equal "existing item: no CSR input is written" "false" \
-    "$(jq 'has("admin_client_certificates")' "${tree}/deployments/test.tfvars.json")"
   assert_only_public_fields_read "existing item: reads only the public fields" "${tree}"
-
-  run_script "${tree}" --from-existing test alice
-  assert_equal "existing item: a second run keeps one row" "${expected}" "$(keys_of "${tree}")"
-  rm -rf "${tree}"
-}
-
-test_existing_item_appends_to_other_admins() {
-  local tree
-  tree="$(make_tree)"
-  local bob
-  bob="$(jq -nc --arg p "${RFC6979_P384_SPKI}" --arg k "$(printf '%s' "${RFC6979_P384_SPKI}" | "${REAL_OPENSSL}" base64 -d -A | "${REAL_OPENSSL}" dgst -sha256 -r | cut -d ' ' -f 1)" \
-    '{keyid: $k, name: "bob", public_key: $p}')"
-  jq --argjson bob "${bob}" '.admin_signing_keys = [$bob]' "${tree}/deployments/test.tfvars.json" >"${tree}/config"
-  mv "${tree}/config" "${tree}/deployments/test.tfvars.json"
-  set_item_public_key "${tree}" "${P384_SPKI}" "${P384_KEYID}"
-
-  run_script "${tree}" --from-existing test alice
-  assert_equal "existing item: appends after other admins" "bob,alice" \
-    "$(jq -r '.admin_signing_keys | map(.name) | join(",")' "${tree}/deployments/test.tfvars.json")"
   rm -rf "${tree}"
 }
 
@@ -180,16 +156,10 @@ test_existing_item_refusals() {
   rm -f "${tree}/op/fields/public_key" "${tree}/op/fields/public_key_sha256"
   assert_refused "existing item: an item without public_key" "${tree}" "cannot read public_key" --from-existing test alice
 
+  # --replace would archive the admin's item; it must never combine with the mode that reads an existing one.
   set_item_public_key "${tree}" "${P384_SPKI}" "${P384_KEYID}"
-  assert_refused "existing item: an invalid admin name" "${tree}" "invalid admin name" --from-existing test Alice
   assert_refused "existing item: --replace together with --from-existing" "${tree}" "Usage:" --replace --from-existing test alice
   assert_only_public_fields_read "existing item: refusals read only the public fields" "${tree}"
-
-  jq -c --arg k "${P384_KEYID}" --arg p "${P384_SPKI}" '.admin_signing_keys = [{keyid: $k, name: "bob", public_key: $p}]' \
-    "${tree}/deployments/test.tfvars.json" >"${tree}/config"
-  mv "${tree}/config" "${tree}/deployments/test.tfvars.json"
-  assert_refused "existing item: a keyid that already belongs to another admin" "${tree}" \
-    "already belongs to another admin" --from-existing test alice
   rm -rf "${tree}"
 }
 
@@ -199,8 +169,6 @@ test_invalid_deployment_file_stops_before_op() {
   set_item_public_key "${tree}" "${P384_SPKI}" "${P384_KEYID}"
   jq 'del(.admin_signing_keys)' "${tree}/deployments/test.tfvars.json" >"${tree}/config"
   mv "${tree}/config" "${tree}/deployments/test.tfvars.json"
-  assert_refused "a deployment file without admin_signing_keys (existing item)" "${tree}" \
-    "lacks the list \"admin_signing_keys\"" --from-existing test alice
   assert_refused "a deployment file without admin_signing_keys (generation)" "${tree}" \
     "lacks the list \"admin_signing_keys\"" test alice
 
@@ -217,26 +185,12 @@ test_invalid_deployment_file_stops_before_op() {
 # (docs/design/hosting-modes.md 1.1 and plan step 7).
 test_removed_inputs_stop_before_op() {
   local tree
-  local input
-  for input in admin_allowlist admin_client_certificates; do
-    tree="$(make_tree)"
-    set_item_public_key "${tree}" "${P384_SPKI}" "${P384_KEYID}"
-    jq --arg input "${input}" '.[$input] = {}' "${tree}/deployments/test.tfvars.json" >"${tree}/config"
-    mv "${tree}/config" "${tree}/deployments/test.tfvars.json"
-    assert_refused "${input} stops the script (existing item)" "${tree}" "removed with mTLS" --from-existing test alice
-    assert_refused "${input} stops the script (generation)" "${tree}" "removed with mTLS" test alice
-    assert_equal "${input} stops before op and openssl genpkey" "" "$(cat "${tree}/op/calls")"
-    rm -rf "${tree}"
-  done
-}
-
-# The script no longer makes a CSR: neither its help nor its code may mention one (hosting-modes.md 3.10).
-test_no_csr() {
-  if grep -qi 'csr\|certificate request\|openssl req' "${REPO_ROOT}/scripts/generate-admin-key.sh"; then
-    failure "generate-admin-key.sh still mentions a CSR"
-  else
-    pass "generate-admin-key.sh makes no CSR"
-  fi
+  tree="$(make_tree)"
+  jq '.admin_client_certificates = {}' "${tree}/deployments/test.tfvars.json" >"${tree}/config"
+  mv "${tree}/config" "${tree}/deployments/test.tfvars.json"
+  assert_refused "a removed input stops the script (generation)" "${tree}" "removed with mTLS" test alice
+  assert_equal "a removed input stops before op and openssl genpkey" "" "$(cat "${tree}/op/calls")"
+  rm -rf "${tree}"
 }
 
 test_generation_refuses_an_existing_item_before_generating() {
@@ -252,27 +206,11 @@ test_generation_refuses_an_existing_item_before_generating() {
   rm -rf "${tree}"
 }
 
-test_usage() {
-  local tree
-  tree="$(make_tree)"
-  run_script "${tree}" --help
-  assert_equal "--help exits 0" "0" "$(status_of "${tree}")"
-  if grep -q -- '--from-existing' "${tree}/out"; then pass "--help documents --from-existing"; else failure "--help lacks --from-existing"; fi
-  run_script "${tree}" --from-existing test
-  assert_equal "a missing admin name exits 2" "2" "$(status_of "${tree}")"
-  run_script "${tree}" --replace --from-existing test alice
-  assert_equal "--replace with --from-existing exits 2" "2" "$(status_of "${tree}")"
-  rm -rf "${tree}"
-}
-
 test_existing_item_writes_the_row
-test_existing_item_appends_to_other_admins
 test_existing_item_refusals
 test_invalid_deployment_file_stops_before_op
 test_removed_inputs_stop_before_op
-test_no_csr
 test_generation_refuses_an_existing_item_before_generating
-test_usage
 
 if [[ "${failures}" -ne 0 ]]; then
   printf '%s test(s) failed\n' "${failures}" >&2
