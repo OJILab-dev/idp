@@ -14,7 +14,7 @@
 | e2e テスト | Playwright（ブラックボックス） | HTTP とブラウザ操作で IdP を外から叩くので実装言語に依存せず、Rust に移行しても同じテストを流せる。仮想オーセンティケータでパスキーの操作を自動化できる |
 | 画面 | TypeScript + Vite（UI のフレームワークなし） | ページは 3 つだけで、CSP を `default-src 'self'` に保てる。Vite は `cf` が Cloudflare Vite plugin のために使うので、道具が増えない。要求と応答の型を共有コアと共有する（[認証フロー](authentication.md)の画面と言語を参照） |
 | 基盤の構成管理 | Terraform（Cloudflare provider）と、`cf` を使うシェルスクリプト | 宣言できる基盤は Terraform、手続きの操作（マイグレーション、デプロイ、Secret の登録、鍵の生成）はスクリプトに分ける（[デプロイと設定](deployment.md)参照） |
-| Worker の中のレート制限 | Workers の Rate Limiting バインディング（IdP の Worker と管理用の Worker。名前空間は別） | IdP はゾーンのルールセットを持たない（[ドメインの置き場所](domain-placement.md)の決定 ③）ので、ゾーンの WAF のレート制限ルールは使わない。バインディングは、ゾーンのプランとホスティングのモードによらず IdP のホスト名にだけ効き、IdP の Worker では認証前の D1 の書き込みを、管理用の Worker では署名の検証の CPU 時間を守れる。近似で、Durable Objects のような厳密な数えはしないが、家族規模の IdP にそこまでは要らない（[無料枠](free-tier.md)、[ドメインの置き場所](domain-placement.md)の共存の設計の 4） |
+| Worker の中のレート制限 | Workers の Rate Limiting バインディング（IdP の Worker と管理用の Worker。名前空間は別） | IdP はゾーンのルールセットを持たない（[ドメインの置き場所](domain-placement.md)の決定 ③）ので、ゾーンの WAF のレート制限ルールは使わない。バインディングは、ゾーンのプランとホスティングのモードによらず IdP のホスト名にだけ効き、IdP の Worker では認証前の D1 の書き込みを、管理用の Worker では署名の検証の CPU 時間を守れる。近似で、Durable Objects のような厳密な数えはしないが、少人数規模の IdP にそこまでは要らない（[無料枠](free-tier.md)、[ドメインの置き場所](domain-placement.md)の共存の設計の 4） |
 | ストレージに使わないもの | KV | 結果整合で使い捨て値に向かず、無料枠の書き込みが 1 日 1,000 件と少ない |
 
 **コードの構成**
