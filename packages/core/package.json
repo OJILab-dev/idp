@@ -10,6 +10,7 @@
     "./admin": "./src/admin/index.ts"
   },
   "dependencies": {
+    "@idp/accept-language": "workspace:*",
     "@idp/base64url": "workspace:*",
     "@idp/cose-key": "workspace:*",
     "@idp/digest-fields": "workspace:*",

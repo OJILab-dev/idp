@@ -1,14 +1,13 @@
 // The UI language: ui_locales first, then the browser's languages, then English (docs/design/authentication.md,
 // "画面と言語"). An unsupported language is skipped rather than rejected (OIDC Core §3.1.2.1, SHOULD NOT error).
+// The browser's wildcard range "*" never selects a language: it matches no supported primary subtag.
+import { parseAcceptLanguage } from "@idp/accept-language";
 
 /** A language the sign-in page and the error page have a dictionary for (BCP 47; the contract's "UI の言語"). */
 export type UiLocale = "en" | "ja";
 
 const SUPPORTED: readonly UiLocale[] = ["en", "ja"];
 const DEFAULT_LOCALE: UiLocale = "en";
-
-// RFC 9110 §12.4.2: a qvalue is 0 to 1 with at most three decimals.
-const QVALUE = /^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/;
 
 /**
  * Chooses the UI language for an authorization request.
@@ -21,7 +20,8 @@ const QVALUE = /^(?:0(?:\.\d{0,3})?|1(?:\.0{0,3})?)$/;
  * @returns The first supported language, or `en`.
  */
 export function selectUiLocale(uiLocales: string | undefined, acceptLanguage: string | undefined): UiLocale {
-  const candidates = [...(uiLocales?.split(" ") ?? []), ...parseAcceptLanguage(acceptLanguage)];
+  const browserTags = acceptLanguage === undefined ? [] : parseAcceptLanguage(acceptLanguage).map((preference) => preference.range);
+  const candidates = [...(uiLocales?.split(" ") ?? []), ...browserTags];
   for (const tag of candidates) {
     const match = toSupported(tag);
     if (match !== undefined) return match;
@@ -42,23 +42,4 @@ export function asUiLocale(value: unknown): UiLocale | undefined {
 function toSupported(tag: string): UiLocale | undefined {
   const primary = tag.split("-")[0]?.toLowerCase();
   return SUPPORTED.find((locale) => locale === primary);
-}
-
-// Returns the tags with a positive quality, highest first; a malformed entry is dropped, never guessed at.
-function parseAcceptLanguage(header: string | undefined): readonly string[] {
-  if (header === undefined) return [];
-  const entries: { readonly tag: string; readonly q: number; readonly index: number }[] = [];
-  header.split(",").forEach((raw, index) => {
-    const [tagPart, ...paramParts] = raw.split(";").map((part) => part.trim());
-    if (tagPart === undefined || tagPart === "" || tagPart === "*") return;
-    let q = 1;
-    for (const param of paramParts) {
-      const [name, value] = param.split("=").map((part) => part.trim());
-      if (name?.toLowerCase() !== "q") continue;
-      if (value === undefined || !QVALUE.test(value)) return;
-      q = Number(value);
-    }
-    if (q > 0) entries.push({ tag: tagPart, q, index });
-  });
-  return entries.sort((a, b) => b.q - a.q || a.index - b.index).map((entry) => entry.tag);
 }
