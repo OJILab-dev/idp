@@ -5,7 +5,8 @@
 import type { D1Database } from "@cloudflare/workers-types";
 import { createD1Database } from "../../packages/cloudflare/src/d1/index.js";
 import { executeOperation, findOperation, type AdminContext, type OperationName } from "../../packages/core/src/admin/index.js";
-import { parseIssuer, randomToken } from "../../packages/core/src/shared/index.js";
+import { parseIssuer } from "../../packages/core/src/issuer/index.js";
+import { randomToken } from "../../packages/core/src/identifiers/index.js";
 import { ISSUER } from "./idp.js";
 
 /** The RP stand-in's redirect URI; Chromium maps rp.test to the stand-in's local HTTPS server (support/rp.ts). */

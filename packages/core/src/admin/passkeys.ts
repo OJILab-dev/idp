@@ -3,14 +3,13 @@
 import { enrollLinkIssueOutput, passkeyRevokeOutput } from "./outputs.js";
 import { z } from "zod";
 import { sha256Base64url } from "@idp/jwk-thumbprint";
+import { isCredentialId, randomToken } from "../identifiers/index.js";
 import {
-  isCredentialId,
   passkeyBelowLimitCondition,
   passkeyRevocableCondition,
-  randomToken,
   userEnabledCondition,
   MAX_PASSKEYS_PER_USER,
-} from "../shared/index.js";
+} from "../passkeys/index.js";
 import type { WriteOperation } from "./operation.js";
 import { AdminProblem } from "./problem.js";
 import { uuidSchema } from "./schemas.js";

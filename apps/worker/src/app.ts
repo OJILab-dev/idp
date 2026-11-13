@@ -19,7 +19,7 @@ import {
   type RandomSource,
 } from "@idp/core/user";
 import { isAcceptedTlsVersion } from "@idp/cloudflare/workers/tls";
-import type { Issuer } from "@idp/core/shared";
+import type { Issuer } from "@idp/core/issuer";
 import { InvalidConfigError, workerConfig, type Env, type WorkerConfig } from "./config.js";
 import { renderErrorPage } from "./error-page.js";
 import { renderLogoutConfirmPage, renderLogoutErrorPage, renderSignedOutPage } from "./logout-page.js";

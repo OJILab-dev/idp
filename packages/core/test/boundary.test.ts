@@ -10,12 +10,15 @@ async function lintAs(filePath: string, code: string): Promise<readonly string[]
   return (result?.messages ?? []).map((m) => m.ruleId ?? m.message);
 }
 
-describe("user-facing code cannot import the admin modules", () => {
+// User-facing code never imports the admin modules, and the concern directories import neither use-case layer.
+describe("core module boundaries", () => {
   it.each([
     ["apps/worker/src/probe.ts", 'import "@idp/core/admin";'],
     ["apps/worker/src/probe.ts", 'import "@idp/core/admin/users";'],
     ["packages/core/src/user/probe.ts", 'import "../admin/index.js";'],
-    ["packages/core/src/shared/probe.ts", 'import "../admin/index.js";'],
+    ["packages/core/src/audit/probe.ts", 'import "../admin/index.js";'],
+    ["packages/core/src/db/probe.ts", 'import "../user/index.js";'],
+    ["packages/core/src/passkeys/probe.ts", 'import "../user/webauthn/ceremony.js";'],
     ["apps/worker/src/probe.ts", 'import "@idp/cloudflare/d1/admin";'],
     ["apps/worker/src/probe.ts", 'import "../../../packages/cloudflare/src/d1/admin.js";'],
   ])("%s rejects %s", async (file, code) => {
@@ -24,7 +27,9 @@ describe("user-facing code cannot import the admin modules", () => {
 
   it.each([
     ["apps/worker/src/probe.ts", 'import "@idp/core/user";'],
-    ["apps/worker/src/probe.ts", 'import "@idp/core/shared";'],
+    ["apps/worker/src/probe.ts", 'import "@idp/core/db";'],
+    ["packages/core/src/user/probe.ts", 'import "../audit/index.js";'],
+    ["packages/core/src/audit/probe.ts", 'import "../db/index.js";'],
     ["apps/admin-worker/src/probe.ts", 'import "@idp/core/admin";'],
   ])("%s allows %s", async (file, code) => {
     expect(await lintAs(file, code)).not.toContain("no-restricted-imports");
@@ -72,7 +77,7 @@ describe("@idp/cloudflare boundaries", () => {
     ["packages/core/src/user/probe.ts", 'import "../../../cloudflare/src/d1/index.js";'],
     ["packages/cloudflare/src/d1/probe.ts", 'import "@idp/cloudflare/workers/tls";'],
     ["packages/cloudflare/src/d1/probe.ts", 'import "../workers/tls/index.js";'],
-    ["packages/cloudflare/src/workers/tls/probe.ts", 'import "@idp/core/shared";'],
+    ["packages/cloudflare/src/workers/tls/probe.ts", 'import "@idp/core/db";'],
     ["packages/cloudflare/src/workers/tls/probe.ts", 'import "@idp/cloudflare/d1";'],
     ["packages/cloudflare/src/workers/tls/probe.ts", 'import "../../d1/index.js";'],
   ])("%s rejects %s", async (file, code) => {
@@ -80,7 +85,7 @@ describe("@idp/cloudflare boundaries", () => {
   });
 
   it.each([
-    ["packages/cloudflare/src/d1/probe.ts", 'import "@idp/core/shared";'],
+    ["packages/cloudflare/src/d1/probe.ts", 'import "@idp/core/db";'],
     ["packages/cloudflare/src/d1/probe.ts", 'import "@idp/base64url";'],
     ["packages/cloudflare/src/d1/probe.ts", 'import "./d1.js";'],
     ["apps/worker/src/probe.ts", 'import "@idp/cloudflare/d1";'],

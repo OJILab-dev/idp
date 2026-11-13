@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { AdminProblem } from "../../src/admin/index.js";
 import { sessionRevoke, userCreate, userDisable, userEnable, userGet, userRename, usersList } from "../../src/admin/users.js";
-import { isUuidV4 } from "../../src/shared/index.js";
+import { isUuidV4 } from "../../src/identifiers/index.js";
 import { ROOT, T0, auditRows, effectiveAccess, query, run, seedClient, seedGrant, seedPasskey, seedSession, useHarness } from "./harness.js";
 
 const h = useHarness();

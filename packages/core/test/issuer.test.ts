@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { InvalidIssuerError, parseIssuer } from "../src/shared/index.js";
+import { InvalidIssuerError, parseIssuer } from "../src/issuer/index.js";
 import { vectors } from "./vectors.js";
 
 describe("parseIssuer", () => {

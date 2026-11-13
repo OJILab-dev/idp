@@ -3,7 +3,7 @@
 // types are generated from, checked in at contract/openapi/admin.json and compared in the tests.
 import { z } from "zod";
 import { PROBLEM_STATUS, enablementEventSchema, problemType } from "@idp/core/admin";
-import { PROBLEM_KINDS, type ProblemKind } from "@idp/core/shared";
+import { PROBLEM_KINDS, type ProblemKind } from "@idp/core/problems";
 import { inputField, pathParams, ROUTES, type Route } from "./routes.js";
 
 type JsonSchema = Record<string, unknown>;

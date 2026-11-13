@@ -7,7 +7,9 @@ import {
   type AdminOperation,
   type OperationOutcome,
 } from "../../src/admin/index.js";
-import { parseIssuer, randomToken, type Database, type SqlRow, type SqlValue } from "../../src/shared/index.js";
+import { parseIssuer } from "../../src/issuer/index.js";
+import { randomToken } from "../../src/identifiers/index.js";
+import type { Database, SqlRow, SqlValue } from "../../src/db/index.js";
 import { createD1Database } from "../../../cloudflare/src/d1/index.js";
 import { createTestD1, type TestD1 } from "../../../../contract/test/d1.js";
 

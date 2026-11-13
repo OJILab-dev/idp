@@ -2,7 +2,7 @@
 // advertise an algorithm the IdP cannot sign with (docs/design/standards-compliance.md, the Discovery row).
 import type { JwkSet, JwsAlgorithm } from "@idp/jws";
 import type { ProviderMetadata } from "@idp/oidc-discovery";
-import type { Issuer } from "../shared/index.js";
+import type { Issuer } from "../issuer/index.js";
 import type { SigningKeySet } from "./signing-keys.js";
 
 /** The OpenID Provider Metadata the IdP publishes, with each member narrowed to the value it always has. */

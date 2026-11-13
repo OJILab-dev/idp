@@ -3,9 +3,14 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./shared": "./src/shared/index.ts",
-    "./shared/hosting": "./src/shared/hosting.ts",
-    "./shared/issuer": "./src/shared/issuer.ts",
+    "./audit": "./src/audit/index.ts",
+    "./clients": "./src/clients/index.ts",
+    "./db": "./src/db/index.ts",
+    "./hosting": "./src/hosting/hosting.ts",
+    "./identifiers": "./src/identifiers/index.ts",
+    "./issuer": "./src/issuer/issuer.ts",
+    "./passkeys": "./src/passkeys/index.ts",
+    "./problems": "./src/problems/index.ts",
     "./user": "./src/user/index.ts",
     "./admin": "./src/admin/index.ts"
   },

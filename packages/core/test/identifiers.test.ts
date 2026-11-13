@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isClientId, isRandomTokenFormat, isUuidV4, newUuidV4, randomToken } from "../src/shared/index.js";
+import { isClientId, isRandomTokenFormat, isUuidV4, newUuidV4, randomToken } from "../src/identifiers/index.js";
 import { vectors } from "./vectors.js";
 
 describe("isUuidV4", () => {

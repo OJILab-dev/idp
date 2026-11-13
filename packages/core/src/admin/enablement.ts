@@ -3,7 +3,7 @@
 // counts as disabled (fail-closed), so the same rule is spelled as COALESCE(..., 'disabled') in SQL and here.
 import { enablementOutput } from "./outputs.js";
 import { z } from "zod";
-import type { SqlCondition, SqlRow, SqlStatement } from "../shared/index.js";
+import type { SqlCondition, SqlRow, SqlStatement } from "../db/index.js";
 import type { Concern, OperationName, WriteOperation } from "./operation.js";
 import { AdminProblem } from "./problem.js";
 import { clientIdSchema, uuidSchema } from "./schemas.js";

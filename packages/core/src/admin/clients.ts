@@ -9,11 +9,10 @@ import {
   classifyRedirectUri,
   isPostLogoutRedirectUriRegistrable,
   isRedirectUriAllowed,
-  randomToken,
   type ClientType,
-  type SqlCondition,
-  type SqlRow,
-} from "../shared/index.js";
+} from "../clients/index.js";
+import { randomToken } from "../identifiers/index.js";
+import type { SqlCondition, SqlRow } from "../db/index.js";
 import { enablementOperation, type Enablement } from "./enablement.js";
 import type { AdminContext, ReadOperation, WriteOperation } from "./operation.js";
 import { readPage, type Page, type PageQuery } from "./paging.js";

@@ -3,10 +3,10 @@
 // which takes them from the deployment settings file (the mode, and the issuer it derives from issuer_host or
 // workers_dev_subdomain) and from a lookup by the database name (the D1 ID).
 import { bindings, defineConfig, exports, type WorkerConfig as CloudflareWorkerConfig } from "cf/config";
-// Through the per-module exports, not "@idp/core/shared": cf evaluates this file with Node's own loader, which does
-// not map the index's `.js` specifiers to `.ts`. Both modules import nothing themselves.
-import { IDP_WORKER_NAME, checkHostingHosts, parseHostingMode } from "@idp/core/shared/hosting";
-import { parseIssuer } from "@idp/core/shared/issuer";
+// @idp/core/hosting and @idp/core/issuer point straight at their modules, not at an index: cf evaluates this file with
+// Node's own loader, which does not map an index's `.js` specifiers to `.ts`. Both modules import nothing themselves.
+import { IDP_WORKER_NAME, checkHostingHosts, parseHostingMode } from "@idp/core/hosting";
+import { parseIssuer } from "@idp/core/issuer";
 
 /** The deploy script's environment; every value is untrusted until checked. */
 export type DeployEnv = {

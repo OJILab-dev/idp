@@ -2,7 +2,7 @@
 // RP of the fixture issuer, and a database wrapper that runs a step just before a chosen batch, so a test can make
 // the state change between a ceremony's read and its write.
 import { base64urlEncode } from "@idp/base64url";
-import type { Database, SqlStatement, SqlStatementResult } from "../src/shared/index.js";
+import type { Database, SqlStatement, SqlStatementResult } from "../src/db/index.js";
 import type { PasskeyDeps } from "../src/user/index.js";
 import { createFixture, issuer, type Fixture } from "./oidc-fixture.js";
 import { generateCredential, type SoftCredential, type TestAlgorithm } from "../../webauthn/test/support/webauthn-authenticator.js";

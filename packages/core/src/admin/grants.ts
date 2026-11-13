@@ -2,7 +2,8 @@
 // access_check. A grant is principal × client, the same for users and groups; effective_access is the only judge.
 import { accessCheckOutput, grantAddOutput, grantRemoveOutput, grantsListOutput } from "./outputs.js";
 import { z } from "zod";
-import { isUuidV4, type SqlRow } from "../shared/index.js";
+import { isUuidV4 } from "../identifiers/index.js";
+import type { SqlRow } from "../db/index.js";
 import { pairsAsJson, pairsEnabledByGrant, toPairs, type AccessPair, type Principal } from "./access.js";
 import { currentEnablementSql, type Enablement } from "./enablement.js";
 import type { ReadOperation, WriteOperation } from "./operation.js";

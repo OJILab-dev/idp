@@ -1,7 +1,7 @@
 // The passkey rules both Workers enforce (docs/design/authentication.md, docs/design/idpctl.md): the per-user limit
 // and "the last passkey cannot be revoked". Each is a SQL condition meant for the WHERE of the very statement that
 // inserts or deletes the credential, so two concurrent ceremonies cannot both pass a check made earlier.
-import type { SqlCondition } from "./audit.js";
+import type { SqlCondition } from "../db/index.js";
 import { MAX_PASSKEYS_PER_USER } from "./limits.js";
 
 function passkeyCount(): string {

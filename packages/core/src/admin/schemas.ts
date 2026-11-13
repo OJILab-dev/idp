@@ -1,7 +1,7 @@
-// Input schemas shared by the admin operations. The formats come from src/shared (the contract), so a value the
+// Input schemas shared by the admin operations. The formats come from src/identifiers (the contract), so a value the
 // schema accepts is exactly a value the IdP Worker accepts; zod only adds the field structure and JSON Pointers.
 import { z } from "zod";
-import { isClientId, isUuidV4 } from "../shared/index.js";
+import { isClientId, isUuidV4 } from "../identifiers/index.js";
 import { AdminProblem } from "./problem.js";
 
 /** The largest page an admin list returns (docs/design/idpctl.md, "一覧のページング"). */

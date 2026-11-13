@@ -3,7 +3,9 @@
 // discoverable credential leaves the user unknown until the assertion arrives. A verified sign-in creates the session
 // that /authorize/resume (authorize.ts) then turns into a code.
 import { sha256Base64url } from "@idp/jwk-thumbprint";
-import { isRandomTokenFormat, userEnabledCondition, type SqlCondition } from "../../shared/index.js";
+import { isRandomTokenFormat } from "../../identifiers/index.js";
+import { userEnabledCondition } from "../../passkeys/index.js";
+import type { SqlCondition } from "../../db/index.js";
 import type { PasskeyDeps } from "../deps.js";
 import { SESSION_LIFETIME_SECONDS } from "../sessions.js";
 import {

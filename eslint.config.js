@@ -38,7 +38,7 @@ function standardsImportBan(dependencies) {
 }
 
 // The IdP Worker must never contain admin use cases (design principle 1, docs/design/technology.md).
-// User-facing code may import only the user-facing and shared modules of the core.
+// User-facing code may import only the user-facing modules and the concern directories of the core.
 export const adminImportBan = {
   patterns: [
     {
@@ -54,6 +54,16 @@ export const adminImportBan = {
         "**/cloudflare/src/d1/admin.js",
       ],
       message: "User-facing code must not depend on the admin modules (docs/design/technology.md).",
+    },
+  ],
+};
+
+// The concern directories of the core are below the user-facing use cases, so they never import them.
+const userImportBan = {
+  patterns: [
+    {
+      group: ["@idp/core/user", "@idp/core/user/*", "**/core/src/user", "**/core/src/user/*", "**/user/*", "../user"],
+      message: "A concern directory of the core must not depend on the user-facing use cases (docs/design/packages.md).",
     },
   ],
 };
@@ -136,12 +146,32 @@ export default tseslint.config(
     files: ["apps/worker/**/*.ts"],
     rules: { "no-restricted-imports": ["error", { patterns: [...adminImportBan.patterns, ...sampleImportBan.patterns] }] },
   },
+  // Every directory of the core except admin/ is user-facing: the IdP Worker bundles it.
   {
-    files: ["packages/core/src/user/**/*.ts", "packages/core/src/shared/**/*.ts"],
+    files: ["packages/core/src/**/*.ts"],
+    ignores: ["packages/core/src/admin/**"],
     rules: {
       "no-restricted-imports": [
         "error",
         { patterns: [...adminImportBan.patterns, ...cloudflareImportBan.patterns, ...sampleImportBan.patterns] },
+      ],
+    },
+  },
+  // The concern directories (db/, identifiers/, audit/, ...) sit below both use-case layers and import neither.
+  {
+    files: ["packages/core/src/**/*.ts"],
+    ignores: ["packages/core/src/admin/**", "packages/core/src/user/**"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            ...adminImportBan.patterns,
+            ...userImportBan.patterns,
+            ...cloudflareImportBan.patterns,
+            ...sampleImportBan.patterns,
+          ],
+        },
       ],
     },
   },

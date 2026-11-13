@@ -13,6 +13,12 @@ export type SqlStatement = {
 /** One result row, keyed by column name. */
 export type SqlRow = Readonly<Record<string, SqlValue>>;
 
+/** A boolean SQL expression and its parameters, evaluated in the WHERE of a guarded statement. */
+export type SqlCondition = {
+  readonly sql: string;
+  readonly params: readonly SqlValue[];
+};
+
 /** What one statement of a batch returned. */
 export type SqlStatementResult = {
   /** The rows the statement returned, in order; empty for statements that return none. */

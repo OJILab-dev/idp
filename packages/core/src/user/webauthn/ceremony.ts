@@ -3,14 +3,8 @@
 // ceremony, because each one binds its challenge to a different issuer (docs/design/data-model.md, challenges).
 import { base64urlEncode } from "@idp/base64url";
 import type { CoseAlgorithm } from "@idp/cose-key";
-import {
-  userEnabledCondition,
-  type Database,
-  type SqlCondition,
-  type SqlRow,
-  type SqlStatement,
-  type SqlValue,
-} from "../../shared/index.js";
+import { userEnabledCondition } from "../../passkeys/index.js";
+import type { Database, SqlCondition, SqlRow, SqlStatement, SqlValue } from "../../db/index.js";
 import { CorruptRowError } from "../clients.js";
 import type { PasskeyDeps } from "../deps.js";
 import type { StoredCredential } from "@idp/webauthn";

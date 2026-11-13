@@ -1,6 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { signJwt } from "@idp/jws";
-import { isRandomTokenFormat, parseIssuer } from "../src/shared/index.js";
+import { isRandomTokenFormat } from "../src/identifiers/index.js";
+import { parseIssuer } from "../src/issuer/index.js";
 import {
   InvalidTokenError,
   SigningAlgorithmUnavailableError,

@@ -2,15 +2,9 @@
 // signing keys are validated before the first request is served, and a bad value refuses every request instead of
 // being defaulted (design principle 4: fail-closed).
 import { createD1Database } from "@idp/cloudflare/d1";
-import {
-  InvalidHostingError,
-  InvalidIssuerError,
-  checkHostingHosts,
-  parseHostingMode,
-  parseIssuer,
-  type Database,
-  type Issuer,
-} from "@idp/core/shared";
+import { InvalidHostingError, checkHostingHosts, parseHostingMode } from "@idp/core/hosting";
+import { InvalidIssuerError, parseIssuer, type Issuer } from "@idp/core/issuer";
+import type { Database } from "@idp/core/db";
 import { InvalidSigningKeyConfigError, loadSigningKeys, type SigningKeySet } from "@idp/core/user";
 
 /** The bindings, variables, and Secrets the deployment gives the IdP Worker. Every member is untrusted until parsed. */
