@@ -2,6 +2,9 @@
   "name": "@idp/issuer",
   "private": true,
   "type": "module",
+  "idp": {
+    "kind": "domain"
+  },
   "exports": {
     ".": "./src/issuer.ts"
   }

@@ -2,6 +2,9 @@
   "name": "@idp/identifiers",
   "private": true,
   "type": "module",
+  "idp": {
+    "kind": "domain"
+  },
   "exports": {
     ".": "./src/index.ts"
   },

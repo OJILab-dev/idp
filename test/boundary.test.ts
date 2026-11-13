@@ -1,8 +1,35 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ESLint } from "eslint";
 import { describe, expect, it } from "vitest";
 
 const root = join(import.meta.dirname, "..");
+
+type Kind = "standard" | "domain" | "infra";
+
+type PackageManifest = {
+  readonly name: string;
+  readonly idp?: { readonly kind?: string };
+  readonly dependencies?: Readonly<Record<string, string>>;
+};
+
+const manifests: readonly (PackageManifest & { readonly dir: string })[] = readdirSync(join(root, "packages"), { withFileTypes: true })
+  .filter((entry) => entry.isDirectory() && existsSync(join(root, "packages", entry.name, "package.json")))
+  .map((entry) => ({
+    dir: entry.name,
+    ...(JSON.parse(readFileSync(join(root, "packages", entry.name, "package.json"), "utf8")) as PackageManifest),
+  }));
+
+// The kinds each kind of package may depend on (docs/design/packages.md, "パッケージの種類").
+const ALLOWED_DEPENDENCY_KINDS: Readonly<Record<Kind, readonly Kind[]>> = {
+  standard: ["standard"],
+  domain: ["standard", "domain"],
+  infra: ["standard", "domain"],
+};
+
+function isKind(value: string | undefined): value is Kind {
+  return value === "standard" || value === "domain" || value === "infra";
+}
 
 async function lintAs(filePath: string, code: string): Promise<readonly string[]> {
   const eslint = new ESLint({ cwd: root });
@@ -119,11 +146,52 @@ describe("@idp/cloudflare boundaries", () => {
 
   it.each([
     ["packages/cloudflare/src/d1/probe.ts", 'import "@idp/db";'],
-    ["packages/cloudflare/src/d1/probe.ts", 'import "@idp/base64url";'],
     ["packages/cloudflare/src/d1/probe.ts", 'import "./d1.js";'],
     ["apps/worker/src/probe.ts", 'import "@idp/cloudflare/d1";'],
     ["apps/worker/src/probe.ts", 'import "@idp/cloudflare/workers/tls";'],
   ])("%s allows %s", async (file, code) => {
+    expect(await lintAs(file, code)).not.toContain("no-restricted-imports");
+  });
+});
+
+// Every package declares its kind, its manifest declares only the edges its kind allows, and the lint derived from the
+// tags lets it import only what it declares (docs/design/packages.md, "パッケージの種類").
+describe("package kinds", () => {
+  const kindOf = new Map(manifests.map((m) => [m.name, m.idp?.kind]));
+
+  it.each(manifests.map((m) => [m.dir, m] as const))("packages/%s declares a kind", (_, manifest) => {
+    expect(isKind(manifest.idp?.kind), `"idp": { "kind": "standard" | "domain" | "infra" }`).toBe(true);
+  });
+
+  it.each(manifests.map((m) => [m.dir, m] as const))("packages/%s depends only on the kinds its kind allows", (_, manifest) => {
+    const kind = manifest.idp?.kind;
+    if (!isKind(kind)) throw new Error(`packages/${manifest.dir} has no kind`);
+    for (const dependency of Object.keys(manifest.dependencies ?? {}).filter((d) => d.startsWith("@idp/"))) {
+      // An app is not a package, so a dependency on one has no kind and fails here as well.
+      const dependencyKind = kindOf.get(dependency);
+      expect(isKind(dependencyKind) && ALLOWED_DEPENDENCY_KINDS[kind].includes(dependencyKind), `${manifest.name} -> ${dependency}`).toBe(true);
+    }
+  });
+
+  it.each([
+    ["packages/db/src/probe.ts", 'import "@idp/audit";'],
+    ["packages/db/src/probe.ts", 'import "hono";'],
+    ["packages/db/src/probe.ts", 'import "cloudflare:workers";'],
+    ["packages/db/src/probe.ts", 'import "node:crypto";'],
+    ["packages/identifiers/src/probe.ts", 'import "@idp/jws";'],
+    ["packages/cloudflare/src/d1/probe.ts", 'import "@idp/audit";'],
+    ["packages/cloudflare/src/d1/probe.ts", 'import "@idp/base64url";'],
+    ["packages/cloudflare/src/d1/probe.ts", 'import "../../../../apps/worker/src/index.js";'],
+    ["packages/base64url/src/probe.ts", 'import "@idp/db";'],
+  ])("%s rejects the undeclared or forbidden %s", async (file, code) => {
+    expect(await lintAs(file, code)).toContain("no-restricted-imports");
+  });
+
+  it.each([
+    ["packages/audit/src/probe.ts", 'import "@idp/clients";'],
+    ["packages/identifiers/src/probe.ts", 'import "@idp/base64url";'],
+    ["packages/cloudflare/src/d1/probe.ts", 'import "@idp/db";'],
+  ])("%s allows the declared %s", async (file, code) => {
     expect(await lintAs(file, code)).not.toContain("no-restricted-imports");
   });
 });

@@ -2,6 +2,9 @@
   "name": "@idp/cbor",
   "private": true,
   "type": "module",
+  "idp": {
+    "kind": "standard"
+  },
   "exports": {
     ".": "./src/index.ts"
   },

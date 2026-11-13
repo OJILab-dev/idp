@@ -2,6 +2,9 @@
   "name": "@idp/cloudflare",
   "private": true,
   "type": "module",
+  "idp": {
+    "kind": "infra"
+  },
   "exports": {
     "./d1": "./src/d1/index.ts",
     "./workers/tls": "./src/workers/tls/index.ts"

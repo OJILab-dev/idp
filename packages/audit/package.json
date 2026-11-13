@@ -2,6 +2,9 @@
   "name": "@idp/audit",
   "private": true,
   "type": "module",
+  "idp": {
+    "kind": "domain"
+  },
   "exports": {
     ".": "./src/index.ts"
   },
