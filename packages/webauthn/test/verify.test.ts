@@ -12,7 +12,7 @@ import {
   verifyRegistration,
   WebAuthnVerificationError,
   type StoredCredential,
-} from "../src/user/webauthn/verify.js";
+} from "../src/index.js";
 import {
   authenticationResponse,
   encodeCbor,
@@ -23,7 +23,7 @@ import {
   type CeremonyOverrides,
   type SoftCredential,
   type TestAlgorithm,
-} from "./webauthn-authenticator.js";
+} from "./support/webauthn-authenticator.js";
 
 const rp = { rpId: "idp.example.com", origin: "https://idp.example.com" };
 const CHALLENGE = base64urlEncode(new Uint8Array(32).fill(7));

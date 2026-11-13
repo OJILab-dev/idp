@@ -21,7 +21,7 @@ import {
   registrationResponse,
   type CeremonyOverrides,
   type SoftCredential,
-} from "./webauthn-authenticator.js";
+} from "../../webauthn/test/support/webauthn-authenticator.js";
 
 const USER = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const OTHER_USER = "7c9e6679-7425-40de-944b-e07fc1f90ae7";

@@ -19,7 +19,7 @@ import {
   type PasskeyRejection,
 } from "./ceremony.js";
 import { explainRefusal, storePasskeyStatements } from "./registration.js";
-import { WebAuthnVerificationError, claimedChallenge, parseRegistrationResponse, verifyRegistration, type RegistrationResponse } from "./verify.js";
+import { WebAuthnVerificationError, claimedChallenge, parseRegistrationResponse, verifyRegistration, type RegistrationResponse } from "@idp/webauthn";
 
 /** The result of {@link enrollOptions}. */
 export type EnrollOptionsResult = { readonly kind: "options"; readonly options: CreationOptionsJson } | PasskeyRejection;

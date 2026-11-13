@@ -23,7 +23,7 @@ pnpm の workspace に次のパッケージを置く。`idpctl` は Go なので
 
 | パッケージ | 中身 | D1 への接続 |
 | --- | --- | --- |
-| `packages/<規格の名前>`（標準パッケージ） | 標準規格の実装を規格ごとに置いた、コピーで使えるパッケージ。今は `@idp/base64url`（RFC 4648 §5）、`@idp/jwk-thumbprint`（RFC 7638）、`@idp/cbor`（RFC 8949 の WebAuthn が使う部分集合）、`@idp/cose-key`（RFC 9052 §7、RFC 9053、RFC 8230）、`@idp/jws`（RFC 7515 のコンパクト形式）。依存は Web 標準の API と、宣言したほかの標準パッケージだけ（[標準の実装のパッケージへの分割](packages.md)参照） | 触れない |
+| `packages/<規格の名前>`（標準パッケージ） | 標準規格の実装を規格ごとに置いた、コピーで使えるパッケージ。今は `@idp/base64url`（RFC 4648 §5）、`@idp/jwk-thumbprint`（RFC 7638）、`@idp/cbor`（RFC 8949 の WebAuthn が使う部分集合）、`@idp/cose-key`（RFC 9052 §7、RFC 9053、RFC 8230）、`@idp/jws`（RFC 7515 のコンパクト形式）、`@idp/webauthn`（WebAuthn Level 3 §7.1、§7.2）。依存は Web 標準の API と、宣言したほかの標準パッケージだけ（[標準の実装のパッケージへの分割](packages.md)参照） | 触れない |
 | `packages/core` | ドメインの規則（パスキーの上限、最後の 1 本は失効できない規則、無効化されたユーザーの確認など）、入力のスキーマと検証、SQL 文、利用者向けのユースケースと `idpctl` の全 30 操作のユースケース、操作ごとの分類のメタデータ、D1 を操作するポート（インターフェース） | 触れない。ポート越しに、実行する文のバッチを渡すだけ |
 | `packages/d1-adapter` | コアの D1 のポートを D1 バインディングで実装する薄いアダプタと、その適合テスト。2 つの Worker が同じものを使う | D1 バインディング（Worker から渡される） |
 | `apps/worker` | IdP の Worker。`packages/d1-adapter` に D1 バインディングを渡す配線と、公開する HTTP（OIDC、パスキー API、静的アセット） | D1 バインディング |
