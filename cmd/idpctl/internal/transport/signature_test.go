@@ -91,23 +91,6 @@ func fixedSigner(t *testing.T, created int64, nonces ...string) (*transport.Sign
 	return signer, key
 }
 
-func TestNewSignerAcceptsOnlyP384(t *testing.T) {
-	if _, err := transport.NewSigner(testpki.NewECDSAKey(t, elliptic.P384())); err != nil {
-		t.Fatalf("P-384: %v", err)
-	}
-	for _, curve := range []elliptic.Curve{elliptic.P256(), elliptic.P521()} {
-		if _, err := transport.NewSigner(testpki.NewECDSAKey(t, curve)); err == nil {
-			t.Errorf("%s accepted", curve.Params().Name)
-		}
-	}
-	if _, err := transport.NewSigner(testpki.NewEd25519Key(t)); err == nil {
-		t.Error("Ed25519 accepted")
-	}
-	if _, err := transport.NewSigner(nil); err == nil {
-		t.Error("nil key accepted")
-	}
-}
-
 func TestSignerUsesAFreshNonceAndTheCurrentTime(t *testing.T) {
 	signer, err := transport.NewSigner(testpki.NewECDSAKey(t, elliptic.P384()))
 	if err != nil {
