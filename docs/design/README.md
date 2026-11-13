@@ -96,5 +96,6 @@ flowchart LR
 | [無料枠の見積もりと制約](free-tier.md) | Workers と D1 の無料枠に対する見込みと、最初に確定すべき制約 |
 | [将来拡張](future-extensions.md) | ledger / entitlements、管理権限の分離、MCP など、IdP の外側に足す拡張 |
 | [Rust 移行計画](rust-migration.md) | IdP の Worker を Rust に置き換える条件、今のうちに守る書き方、共有コアの扱い、段階移行の順番 |
+| [Workload Identity Federation の実現可能性](workload-identity-federation.md) | IdP をクラウド（Google Cloud、AWS、Entra）が信頼する issuer にする調査。各プロバイダーの要件（Ed25519 を受け付けず RS256 が共通）、`private_key_jwt` によるワークロードの認証、足りないもの、段階的な PR の計画、運用者の決定（レビュー中の提案） |
 | [未決事項・要検証](open-questions.md) | 実装の前に確かめる前提と、作りながら実測で確かめること（実装前に決めることは各ドキュメントに記録済み） |
 | [参考資料](references.md) | 標準規格、先行事例、CVE、Cloudflare、ライブラリへのリンク |
