@@ -2,6 +2,9 @@
   "name": "@idp/hosting",
   "private": true,
   "type": "module",
+  "idp": {
+    "kind": "domain"
+  },
   "exports": {
     ".": "./src/hosting.ts"
   }

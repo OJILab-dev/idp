@@ -2,6 +2,9 @@
   "name": "@idp/clients",
   "private": true,
   "type": "module",
+  "idp": {
+    "kind": "domain"
+  },
   "exports": {
     ".": "./src/index.ts"
   },

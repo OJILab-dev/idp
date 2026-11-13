@@ -2,6 +2,9 @@
   "name": "@idp/json-canonicalization",
   "private": true,
   "type": "module",
+  "idp": {
+    "kind": "standard"
+  },
   "exports": {
     ".": "./src/index.ts"
   },
