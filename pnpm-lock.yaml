@@ -126,6 +126,9 @@ importers:
       '@idp/jws':
         specifier: workspace:*
         version: link:../jws
+      '@idp/oauth-native-apps':
+        specifier: workspace:*
+        version: link:../oauth-native-apps
       '@idp/oidc-discovery':
         specifier: workspace:*
         version: link:../oidc-discovery
@@ -179,6 +182,8 @@ importers:
       '@idp/base64url':
         specifier: workspace:*
         version: link:../base64url
+
+  packages/oauth-native-apps: {}
 
   packages/oidc-discovery: {}
 

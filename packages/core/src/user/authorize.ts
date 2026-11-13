@@ -3,12 +3,12 @@
 // §4.1.2.1), and after that every error goes to the validated redirect_uri with iss and state (RFC 9207, RFC 6749
 // §4.1.2.1). The HTTP layer only renders the returned decision.
 import { sha256Base64url } from "@idp/jwk-thumbprint";
+import { isRegisteredRedirectUri } from "@idp/oauth-native-apps";
 import { isS256CodeChallenge } from "@idp/pkce";
 import { isClientId, isRandomTokenFormat, type Issuer, type SqlRow } from "../shared/index.js";
 import { CorruptRowError, loadClient, type RegisteredClient } from "./clients.js";
 import type { OidcDeps } from "./deps.js";
 import { asUiLocale, selectUiLocale, type UiLocale } from "./locale.js";
-import { isRegisteredRedirectUri } from "./redirect-uri.js";
 import { findActiveSession, hasAccess, type ActiveSession } from "./sessions.js";
 import { InvalidTokenError, verifyIdTokenHint, type GrantedScope } from "./tokens.js";
 

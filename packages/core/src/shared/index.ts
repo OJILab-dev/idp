@@ -33,11 +33,9 @@ export { passkeyBelowLimitCondition, passkeyRevocableCondition, userEnabledCondi
 export { PROBLEM_KINDS, isProblemKind, type ProblemKind } from "./problems.js";
 export { ACCEPTED_TLS_VERSIONS, isAcceptedTlsVersion } from "./tls.js";
 export {
-  LOOPBACK_REDIRECT_HOSTS,
   POST_LOGOUT_REDIRECT_URI_RULES,
   classifyRedirectUri,
   isPostLogoutRedirectUriRegistrable,
   isRedirectUriAllowed,
   type ClientType,
-  type RedirectUriKind,
 } from "./redirect-uri-registration.js";
