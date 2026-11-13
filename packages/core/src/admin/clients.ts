@@ -38,8 +38,14 @@ export const MAX_POST_LOGOUT_REDIRECT_URIS = 10;
 // RP-Initiated Logout 1.0 §3.1 (authentication.md, "RP からのログアウト"): the https form of the redirect URI rules,
 // for every client type. A post-logout redirect carries no code, so the loopback and custom-scheme forms native apps
 // need are not admitted; zero URIs (no redirect) is allowed.
+// A registered URI with its own `state` would put two `state` values in the redirect, since the IdP appends the
+// request's state to the registered query (§3); the RP could then read the fixed one and its check would prove nothing.
+function isPostLogoutRedirectUri(uri: string): boolean {
+  return classifyRedirectUri(uri) === "https" && !new URL(uri).searchParams.has("state");
+}
+
 const postLogoutRedirectUrisSchema = z
-  .array(z.string().refine((uri) => classifyRedirectUri(uri) === "https", { message: "must be an https URI without a fragment" }))
+  .array(z.string().refine(isPostLogoutRedirectUri, { message: "must be an https URI without a fragment or a state parameter" }))
   .max(MAX_POST_LOGOUT_REDIRECT_URIS)
   .refine((uris) => new Set(uris).size === uris.length, { message: "must not repeat a URI" });
 

@@ -7,7 +7,8 @@ import type { Issuer } from "@idp/core/shared";
 // Set on every response the Worker returns, the static pages served through the assets binding included; _headers
 // carries the same values for the pages as a second copy (free-tier.md).
 const SECURITY_HEADERS: Readonly<Record<string, string>> = {
-  // The only HTML the Worker renders is the error page, which needs nothing but its stylesheet.
+  // The HTML the Worker renders (the /authorize error page and the RP-Initiated Logout pages) needs nothing but its
+  // stylesheet and same-origin form posts; no script runs on any of them.
   "content-security-policy": "default-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'",
   "x-frame-options": "DENY",
   "x-content-type-options": "nosniff",
