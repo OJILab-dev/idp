@@ -104,11 +104,16 @@ importers:
 
   packages/base64url: {}
 
+  packages/cbor: {}
+
   packages/core:
     dependencies:
       '@idp/base64url':
         specifier: workspace:*
         version: link:../base64url
+      '@idp/cbor':
+        specifier: workspace:*
+        version: link:../cbor
       '@idp/jwk-thumbprint':
         specifier: workspace:*
         version: link:../jwk-thumbprint

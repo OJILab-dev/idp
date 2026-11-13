@@ -2,7 +2,7 @@
 // (docs/design/standards-compliance.md): -8 (EdDSA over Ed25519), -7 (ES256), and -257 (RS256). Any other key type,
 // curve, or algorithm is rejected at registration, so a stored key is always one these functions can verify with.
 import { base64urlEncode } from "@idp/base64url";
-import { InvalidCborError, decodeCbor, type CborValue } from "./cbor.js";
+import { InvalidCborError, decodeCbor, type CborValue } from "@idp/cbor";
 
 /** The COSE algorithms offered and accepted, in the order the IdP prefers them (WebAuthn Level 3 §5.4). */
 export const COSE_ALGORITHMS = [-8, -7, -257] as const;
