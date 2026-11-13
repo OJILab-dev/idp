@@ -1,9 +1,9 @@
-// Conformance of the D1 nonce store to the AdminNonceStore port (packages/core/src/admin/nonces.ts), against a real
-// local D1 with every migration applied (docs/design/hosting-modes.md 3.6).
+// The admin nonce store (src/admin/nonces.ts) on a Database over a real local D1 with every migration applied
+// (docs/design/hosting-modes.md 3.6).
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { AdminNonceStoreError, type AdminNonceStore } from "@idp/core/admin";
+import { AdminNonceStoreError, createAdminNonceStore, type AdminNonceStore } from "../../src/admin/index.js";
+import { createD1Database } from "../../../cloudflare/src/d1/index.js";
 import { createTestD1, type TestD1 } from "../../../../contract/test/d1.js";
-import { createD1AdminNonceStore } from "../../src/d1/admin.js";
 
 const NOW = 1_767_225_600;
 const NONCE = "DeSswvZ-qFqcZhVfI2rcdFVorRiuH6QVrl8Hy7i2liM";
@@ -13,7 +13,7 @@ let store: AdminNonceStore;
 
 beforeEach(async () => {
   t = await createTestD1();
-  store = createD1AdminNonceStore(t.db);
+  store = createAdminNonceStore(createD1Database(t.db));
 });
 
 afterEach(async () => {
@@ -24,7 +24,7 @@ async function rows(): Promise<readonly unknown[]> {
   return (await t.db.prepare("SELECT nonce, expires_at FROM admin_request_nonces ORDER BY nonce").all()).results;
 }
 
-describe("createD1AdminNonceStore", () => {
+describe("createAdminNonceStore", () => {
   it("stores a new nonce with its expiry and reports it fresh", async () => {
     await expect(store.claim(NONCE, NOW + 60, NOW)).resolves.toBe("fresh");
     expect(await rows()).toEqual([{ nonce: NONCE, expires_at: NOW + 60 }]);

@@ -1,7 +1,7 @@
-// The replay check of the admin signatures (docs/design/hosting-modes.md 3.6, item 10 of 3.8): the port the admin
-// Worker calls after verifyAdminSignature passed, and the SQL an adapter runs for it. The SQL stays here, with the
-// other rules of the core, so an adapter only runs the statements and reads the result.
-import type { SqlStatement } from "../db/index.js";
+// The replay check of the admin signatures (docs/design/hosting-modes.md 3.6, item 10 of 3.8): the store the admin
+// Worker calls after verifyAdminSignature passed, written against the Database port so that the SQL and the reading
+// of its result stay with the other admin rules; the platform only supplies the Database.
+import { DatabaseError, type Database, type SqlStatement } from "../db/index.js";
 import { ADMIN_SIGNATURE_WINDOW_SECONDS } from "./signature.js";
 
 /** Thrown when the nonce store fails for a reason other than the nonce being taken. */
@@ -50,7 +50,7 @@ export interface AdminNonceStore {
  * @throws {AdminNonceStoreError} `expiresAt` or `now` is not a safe integer: a NaN clock would make the sweep's
  *   comparison meaningless, so no statement is built.
  */
-export function adminNonceClaimStatements(nonce: string, expiresAt: number, now: number): readonly [SqlStatement, SqlStatement] {
+function adminNonceClaimStatements(nonce: string, expiresAt: number, now: number): readonly [SqlStatement, SqlStatement] {
   if (!Number.isSafeInteger(expiresAt) || !Number.isSafeInteger(now)) {
     throw new AdminNonceStoreError("expiresAt and now must be safe integers");
   }
@@ -59,4 +59,33 @@ export function adminNonceClaimStatements(nonce: string, expiresAt: number, now:
     { sql: "DELETE FROM admin_request_nonces WHERE expires_at < ?", params: [now - ADMIN_SIGNATURE_WINDOW_SECONDS] },
     { sql: "INSERT INTO admin_request_nonces (nonce, expires_at) VALUES (?, ?) ON CONFLICT (nonce) DO NOTHING", params: [nonce, expiresAt] },
   ];
+}
+
+/**
+ * Builds the {@link AdminNonceStore} on a {@link Database}.
+ *
+ * Each claim runs the sweep and the insert of {@link adminNonceClaimStatements} as one batch, so they commit together,
+ * and reads the insert's change count: one row means the nonce was new, none means it was already stored.
+ *
+ * @param db The database the admin Worker composed from its D1 binding.
+ * @returns An {@link AdminNonceStore} whose `claim` rejects only with {@link AdminNonceStoreError}: a
+ *   {@link DatabaseError} from the batch is wrapped with the cause kept, and a change count other than 0 or 1 is
+ *   refused rather than guessed at.
+ */
+export function createAdminNonceStore(db: Database): AdminNonceStore {
+  return {
+    async claim(nonce: string, expiresAt: number, now: number): Promise<AdminNonceClaim> {
+      let changes: number | undefined;
+      try {
+        changes = (await db.batch(adminNonceClaimStatements(nonce, expiresAt, now)))[1]?.changes;
+      } catch (cause) {
+        if (cause instanceof DatabaseError) throw new AdminNonceStoreError(`nonce claim failed: ${cause.message}`, { cause });
+        throw cause;
+      }
+      if (changes === 1) return "fresh";
+      if (changes === 0) return "replayed";
+      // Any other count means the statement did not do what this module wrote; refuse rather than guess.
+      throw new AdminNonceStoreError(`nonce insert changed ${String(changes)} rows`);
+    },
+  };
 }
