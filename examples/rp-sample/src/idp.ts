@@ -23,11 +23,33 @@ export type Discovery = {
   readonly tokenEndpoint: string;
   readonly userinfoEndpoint: string;
   readonly jwksUri: string;
+  /** RP-Initiated Logout 1.0 §2.1, checked apart from the rest so that a bad value breaks only the logout. */
+  readonly endSession: EndSessionEndpoint;
 };
+
+/** What discovery says about `end_session_endpoint`. */
+export type EndSessionEndpoint =
+  /** Not advertised: logout stays local to this RP. */
+  | { readonly kind: "none" }
+  /** An https URL (§2.1 MUST). */
+  | { readonly kind: "https"; readonly url: string }
+  /** Advertised but not an https URL: not used. */
+  | { readonly kind: "invalid" };
+
+function endSessionEndpoint(value: unknown): EndSessionEndpoint {
+  if (value === undefined) return { kind: "none" };
+  try {
+    return { kind: "https", url: httpsUrl(value, "end_session_endpoint") };
+  } catch {
+    return { kind: "invalid" };
+  }
+}
 
 /** The result of a completed login: the checked ID token claims and the /userinfo response for the same sub. */
 export type LoginResult = {
   readonly idToken: IdTokenClaims;
+  /** The ID token as issued, kept for the logout request's `id_token_hint` (RP-Initiated Logout 1.0 §2). */
+  readonly idTokenJwt: string;
   readonly userinfo: Readonly<Record<string, unknown>>;
 };
 
@@ -168,6 +190,7 @@ export function createIdpClient(fetcher: Fetcher, now: () => number): (config: C
         tokenEndpoint: httpsUrl(document.token_endpoint, "token_endpoint"),
         userinfoEndpoint: httpsUrl(document.userinfo_endpoint, "userinfo_endpoint"),
         jwksUri: httpsUrl(document.jwks_uri, "jwks_uri"),
+        endSession: endSessionEndpoint(document.end_session_endpoint),
       };
       discoveryCache = { value, expiresAt: now() + CACHE_SECONDS };
       return value;
@@ -220,7 +243,7 @@ export function createIdpClient(fetcher: Fetcher, now: () => number): (config: C
       const userinfo = await requestJson(discovery.userinfoEndpoint, { headers: { authorization: `Bearer ${accessToken}` } }, "userinfo");
       // OIDC Core §5.3.2: the UserInfo sub MUST match the ID token's, or the response MUST NOT be used.
       if (typeof userinfo.sub !== "string" || userinfo.sub !== claims.sub) throw new IdpError("userinfo: sub does not match the ID token");
-      return { idToken: claims, userinfo };
+      return { idToken: claims, idTokenJwt: idToken, userinfo };
     }
 
     return { discover, redeem };

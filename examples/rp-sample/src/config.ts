@@ -26,6 +26,8 @@ export type Config = {
   readonly clientId: string;
   readonly origin: string;
   readonly redirectUri: string;
+  /** `<origin>/signed-out`, registered with idpctl client_set_post_logout_redirects (RP-Initiated Logout 1.0 §3.1). */
+  readonly postLogoutRedirectUri: string;
   readonly clientSecret: string;
   readonly sessionKey: CryptoKey;
 };
@@ -74,5 +76,5 @@ export async function loadConfig(env: Env): Promise<Config> {
   const clientSecret = env.CLIENT_SECRET;
   if (clientSecret === undefined || clientSecret === "") throw new ConfigError("CLIENT_SECRET is not set");
   const sessionKey = await importSealingKey(env.SESSION_KEY);
-  return { issuer, clientId, origin, redirectUri: `${origin}/callback`, clientSecret, sessionKey };
+  return { issuer, clientId, origin, redirectUri: `${origin}/callback`, postLogoutRedirectUri: `${origin}/signed-out`, clientSecret, sessionKey };
 }

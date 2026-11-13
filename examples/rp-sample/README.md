@@ -13,17 +13,28 @@
 | `GET /` | セッションがあれば、`sub`、ID トークンの主なクレーム（`iss`、`aud`、`auth_time`、`iat`、`exp`、`name`）、`/userinfo` の応答とログアウトのボタンを表示する。なければサインインのリンクを表示する。出力はすべてエスケープする |
 | `GET /login` | discovery から `authorization_endpoint` を読み、認可コードフローを始める。`scope` は `openid profile`、PKCE は S256、`state` と `nonce` を付ける。`state`、`nonce`、PKCE の verifier は 10 分で切れる `__Host-` Cookie に暗号化して置く |
 | `GET /callback` | `state` を確かめ、`iss` パラメータが issuer と一致することを確かめる（RFC 9207 §2.4。IdP は `authorization_response_iss_parameter_supported` を広告するので、`iss` のない応答も拒否する）。confidential client として `client_secret_basic` でコードを交換し、ID トークンを検証してから `/userinfo` を呼び、セッションを作る |
-| `POST /logout` | この RP のセッションだけを消す。`Sec-Fetch-Site` が `same-origin` か、それがなければ `Origin` がこの RP のオリジンと一致するリクエストだけを受け付ける |
+| `POST /logout` | この RP のセッションを消し、RP-Initiated Logout 1.0 で IdP のセッションも終わらせる（下の「ログアウト」）。`Sec-Fetch-Site` が `same-origin` か、それがなければ `Origin` がこの RP のオリジンと一致するリクエストだけを受け付ける |
+| `GET /signed-out` | IdP のログアウトの後の戻り先（`post_logout_redirect_uri`）。返ってきた `state` を、ログアウトのときに置いた 1 回だけ使える暗号化した Cookie と比べ、一致したときだけ「IdP からもサインアウトしました」と表示する |
 
 ID トークンの検証は OIDC Core 1.0 §3.1.3.7 に従います（要件ごとの対応は「標準への準拠」の節）。ヘッダーの知らないメンバーは無視し（RFC 7515 §4）、`crit` と鍵を運ぶメンバー（`jwk`、`jku`、`x5u`、`x5c`）は拒否します。`alg` は `Ed25519` だけにし（RFC 9864。`EdDSA` は受け付けない）、JWKS から `kty: OKP`、`crv: Ed25519` の署名用の鍵を 1 つ選んで（`kid` があればその鍵、なければ使える鍵がちょうど 1 つのときだけ）署名を確かめます。そのうえで `iss`（完全一致）、`aud`（client\_id だけ）、`exp`、`iat`（どちらも 60 秒の時刻のずれを許す）、`nonce` を確かめます。`/userinfo` の `sub` が ID トークンの `sub` と違えば使いません（OIDC Core §5.3.2）。
 
-セッションは `__Host-` Cookie（HttpOnly、Secure、SameSite=Lax、Path=/）に、Worker Secret の鍵で AES-256-GCM により暗号化して置きます。Cookie の名前を追加データに含めるので、ログイン途中の Cookie をセッションとして使い回すことはできません。期限は 1 時間で、延長しません。保存するのは画面に出す ID トークンのクレームと `/userinfo` の応答だけで、トークンそのものは保存しません。
+セッションは `__Host-` Cookie（HttpOnly、Secure、SameSite=Lax、Path=/）に、Worker Secret の鍵で AES-256-GCM により暗号化して置きます。Cookie の名前を追加データに含めるので、ログイン途中の Cookie をセッションとして使い回すことはできません。期限は 1 時間で、延長しません。保存するのは、検証した ID トークンそのものと `/userinfo` の応答です。ID トークンはログアウトの `id_token_hint` に使い、画面に出すクレームもそこから読みます（同じ値を 2 回保存しない）。ID トークンは Cookie の中で暗号化したままにします。アクセストークンは保存しません。
 
-## ログアウトはこの RP だけ
+## ログアウト（RP-Initiated Logout 1.0）
 
-IdP は RP-Initiated Logout などの OIDC のログアウト仕様を v1 では実装しません（[認証フロー](../../docs/design/authentication.md) の「サインアウト」、[スコープ](../../docs/design/scope.md)）。discovery にも `end_session_endpoint` はありません。IdP の `POST /logout` は IdP 自身のページからの同一オリジンのリクエストだけを受け付けるので、RP からは呼べません。
+IdP は OpenID Connect RP-Initiated Logout 1.0 を実装し、discovery に `end_session_endpoint` を載せます（[認証フロー](../../docs/design/authentication.md) の「RP からのログアウト」）。このサンプルのログアウトは次のように進みます。
 
-そのため、このサンプルのログアウトは RP のセッションを消すだけです。IdP のセッション（サインインから 1 時間）は残り、その間にもう一度サインインすると、パスキーの操作なしで戻ってくることがあります。IdP からもサインアウトするには、IdP のアカウントページでサインアウトします。
+1. `POST /logout` で、まずこの RP のセッションの Cookie を消す。この後に何が起きても、RP のセッションは残らない。
+2. discovery の `end_session_endpoint` に、`id_token_hint`（セッションに保存した ID トークン）、`post_logout_redirect_uri`（`<ORIGIN>/signed-out`）、`state`（新しい乱数）、`client_id` を送る。送り方は、自動で送信するフォームの `POST` にする。§2 は GET と POST の両方を許すが、GET では ID トークンが URL に載り、ブラウザの履歴やアクセスログに残るため。
+3. フォームのページの CSP は、送信する 1 行のスクリプトだけをハッシュ（`script-src 'sha256-…'`）で許し、`form-action` を IdP のオリジンとこの RP 自身（IdP が `/signed-out` へリダイレクトで戻すため）に限る。nonce と `'unsafe-inline'` は使わない。スクリプトが動かなくても、ページのボタンで送信できる。ほかのページは、これまでどおりスクリプトを一切許さない。
+4. IdP は、hint が今の IdP のセッションのものならそのままセッションを終わらせ、そうでなければ利用者に確認してから終わらせる。そのうえで `<ORIGIN>/signed-out?state=…` に戻す。確認のページで利用者が「サインインしたままにする」を選ぶと、IdP のセッションは残り、利用者は IdP のアカウントページ（`/account`）にとどまって、この RP には戻らない（ログアウトしないまま RP に戻すと、RP はログアウトが済んだと受け取るため。IdP の設計）。この RP のセッションは手順 1 で消えているので、もう一度使うにはサインインする（パスキーは省かれることがある）。
+5. `/signed-out` は、返ってきた `state` を、手順 2 で置いた 10 分で切れる暗号化した `__Host-` Cookie と比べ、Cookie を消す（1 回だけ使える）。一致すれば「IdP からもサインアウトしました」と表示し、一致しなければ 400 で「確かめられませんでした」と表示する。確かめる理由は、`/signed-out` へのリンクは誰でも作れるので、確かめないと、IdP のセッションが終わっていないのに終わったと表示できてしまうため。共用の端末では、利用者が信じてよいのはこの表示だけになる。RP のセッションは手順 1 で消してあるので、失敗しても変わるのは表示だけである。
+
+discovery に `end_session_endpoint` がなければ、この RP のセッションを消すだけにして `/` に戻す（ローカルのログアウト）。`end_session_endpoint` が https の URL でないとき（§2.1 の MUST）と、ログアウトのときに discovery が失敗したときは、IdP には送らず、この RP のセッションはすでに終わっていて IdP のセッションは残っているかもしれないことを 502 のページで知らせる。
+
+workers\_dev のモードでは、IdP とこのサンプルは同じサイトなので（下の「IdP と同じアカウントに置くことの注意」）、手順 2 の `POST` にも IdP の SameSite=Lax のセッションの Cookie が付き、hint が今のセッションのものなら確認なしでログアウトできる。IdP と別のサイトにある RP では、サイトをまたぐ `POST` に Lax の Cookie が付かないので、IdP は確認のページを出す（IdP の設計。確認すればログアウトできる）。
+
+ログアウトしても、すでに発行されたアクセストークンは期限（5 分）まで有効です（IdP は失効させず、Back-Channel Logout もありません）。このサンプルはアクセストークンを保存しないので、影響はありません。
 
 ## 設定
 
@@ -46,6 +57,11 @@ IdP は RP-Initiated Logout などの OIDC のログアウト仕様を v1 では
 - redirect URI は `https://rp-sample.<workers_dev_subdomain>.workers.dev/callback`（easyidp では `https://rp-sample.easyidp.workers.dev/callback`）。
 - ID トークンの署名アルゴリズムは既定の `Ed25519`（`--id-token-alg` を付けない）。
 - クライアントシークレットは `--secret-out` で権限 `0600` のファイルに書き出させる。
+- ログアウト後の戻り先（`post_logout_redirect_uris`）は `https://rp-sample.<workers_dev_subdomain>.workers.dev/signed-out`。新しく登録するなら `client_create` の `--post-logout-redirect-uri` で、登録済みの client には運用者がデプロイの後に次を実行する（easyidp の場合）。
+
+  `idpctl client_set_post_logout_redirects rp-sample https://rp-sample.easyidp.workers.dev/signed-out`
+
+  登録がなくても、IdP のセッションは終わるが、IdP はこの RP に戻さず自分のサインアウト済みのページを出す（RP-Initiated Logout 1.0 §3）。
 
 サインインできるのは、`grant_add` でこの client を許可したユーザーかグループだけです。
 
@@ -57,6 +73,7 @@ IdP は RP-Initiated Logout などの OIDC のログアウト仕様を v1 では
 2. `scripts/deploy-rp-sample.sh <deployment> <client_id>` で、`cf build` と `cf deploy` を実行する。アカウントの workers.dev のサブドメインがデプロイの設定ファイルと一致することを先に確かめ、デプロイの後に、workers.dev が有効でプレビューの URL が無効なことと、ホストの応答を確かめる。新しい Worker の workers.dev のルートが有効になるまでの平文の 404 は、待って再試行する。最初のデプロイでは、秘密がまだないので 500 の設定エラーが返るのが正しい。
 3. `scripts/set-rp-sample-secrets.sh <deployment> <client-secret-file>` で、2 つの Worker Secret を設定する。クライアントシークレットは `--secret-out` のファイル（通常のファイルで、本人の所有、権限 `0600` か `0400`）から読み、ファイルの代わりに `-` を渡すと標準入力から読む。引数に秘密そのものは渡さない。`SESSION_KEY` はパイプの中で `openssl rand` が作る。どちらの値も表示しない。このスクリプトは xtrace（`-x`）なしで動く。
 4. `--secret-out` のファイルを消す。
+5. ログアウト後の戻り先を登録する：`idpctl client_set_post_logout_redirects <client_id> https://rp-sample.<workers_dev_subdomain>.workers.dev/signed-out`（上の節）。
 
 `set-rp-sample-secrets.sh` は実行するたびに `SESSION_KEY` を作り直すので、再実行するとサンプルの全員がサインアウトします。クライアントシークレットを `client_rotate_secret` で替えたときも、このスクリプトをもう一度実行します。
 
@@ -74,7 +91,8 @@ IdP は RP-Initiated Logout などの OIDC のログアウト仕様を v1 では
 
 - 1 つのブラウザで同時に進められるログインは 1 つだけ。別のタブで `/login` を開くと、先のログインの Cookie が置き換わり、先の `/callback` は失敗する。
 - リフレッシュトークンはない（IdP が発行しない）。RP のセッションが切れたら、もう一度サインインする。
-- セッションの Cookie が名前と値で 4096 オクテット（UTF-8 で数える）を超えるなら、サインインを 502 で失敗にする。ブラウザはそれより大きい Cookie を黙って捨てるため。
+- セッションの Cookie が名前と値で 4096 オクテット（UTF-8 で数える）を超えるなら、サインインを 502 で失敗にする。ブラウザはそれより大きい Cookie を黙って捨てるため。ログアウトのために保存する ID トークンもこの大きさに数える。
+- 1 つのブラウザで同時に進められるログアウトも 1 つだけ（`/signed-out` の Cookie は最後のログアウトのもの）。
 
 ## 標準への準拠
 
@@ -140,6 +158,14 @@ IdP は discovery の `id_token_signing_alg_values_supported` に `Ed25519` を�
 | RFC 9700 | §4.2.4 | 認可応答の URL を Referer で漏らさない | `index.ts`（`Referrer-Policy: no-referrer`）、`app.ts`（`/callback` はすぐに 303） | `app.test.ts`「sets the security headers on every page」 |
 | RFC 9700 | §2.1、§4.7.1 | client は CSRF を防がなければならない（MUST）。PKCE、OIDC の `nonce`、1 回だけ使う `state` のどれでもよい（3 つとも使う） | `app.ts`（`/callback` はフローの Cookie を最初に消す） | `app.test.ts`「exchanges the code as a confidential client」（フローの Cookie の `Max-Age=0`）「another state」 |
 | RFC 9700 | §2.1、§4.11.1 | client は開いたリダイレクタになってはならない（MUST NOT） | `app.ts`（リダイレクト先は固定か discovery の endpoint だけ） | `app.test.ts`「answers 404 on an unknown path」 |
+| RP-Initiated Logout 1.0 | §2.1 | `end_session_endpoint` は discovery から読む。https でなければならない（MUST） | `idp.ts`（`endSessionEndpoint`）、`app.ts`（`/logout`） | `app.test.ts`「posts the logout request to the discovered end_session_endpoint」「refuses an end_session_endpoint that is not https」「falls back to a local logout when discovery has no end_session_endpoint」「clears the RP session and says so when discovery fails during logout」 |
+| RP-Initiated Logout 1.0 | §2 | RP は GET か POST で送ってよい（MAY）。POST はフォームの直列化 | `app.ts`、`html.ts`（`logoutFormPage`。ID トークンを URL に載せないため POST） | `app.test.ts`「keeps the ID token out of the URL」、`workerd.test.ts`「signs in end to end」 |
+| RP-Initiated Logout 1.0 | §2 | `id_token_hint` は推奨（RECOMMENDED）。IdP が以前にこの RP へ発行した ID トークン | `app.ts`（`/callback` で暗号化したセッションに保存し、`/logout` で送る） | `app.test.ts`「posts the logout request…」（偽の IdP が発行したトークンと一致）「counts the kept ID token (the logout hint) against the 4096-octet limit」「keeps the ID token once」 |
+| RP-Initiated Logout 1.0 | §2 | `client_id` を送ってよい。hint と一緒なら、IdP は一致を確かめる（MUST） | `app.ts`（設定の client\_id） | `app.test.ts`「posts the logout request…」 |
+| RP-Initiated Logout 1.0 | §2、§3 | `post_logout_redirect_uri` は事前に登録した値でなければならない（MUST）。IdP は完全一致でだけリダイレクトする | `config.ts`（`<ORIGIN>/signed-out`）、登録は運用者の `idpctl client_set_post_logout_redirects`（上の「クライアントの登録」） | `app.test.ts`「posts the logout request…」 |
+| RP-Initiated Logout 1.0 | §2、§3 | `state` は RP が状態を保つための値で、IdP はリダイレクトで返す。RP は自分が送った値であることを確かめる | `app.ts`（`/logout` で乱数を暗号化した 1 回だけの `__Host-` Cookie に置き、`/signed-out` で一定時間の比較） | `app.test.ts`「keeps the returned state in a sealed, single-use __Host- cookie」「confirms the IdP logout when the returned state matches」「does not claim an IdP logout for another state」「refuses an expired logout cookie」「refuses a session cookie replayed as the logout cookie」 |
+| RP-Initiated Logout 1.0 | §6 | hint のない要求はサービス妨害の手段になる。IdP は確認を求めるべき | 保存した hint を必ず送る。IdP が確認なしで終わらせるのは、hint が今の IdP のセッションのものと分かるときだけで、それには IdP のセッションの Cookie が要る。workers\_dev のモードでは IdP と同じサイトなので Cookie が付くが、IdP と別のサイトにある RP では、サイトをまたぐ `POST` に SameSite=Lax の Cookie が付かず、hint があっても IdP は確認のページを出す。hint を持たない古いセッションでは送らず、IdP が確認を求める（`app.ts`） | `app.test.ts`「posts the logout request…」「sends no id_token_hint for a session sealed before the hint was kept」 |
+| CSP Level 3 | `script-src` のハッシュ、`form-action` | 自動送信のスクリプトだけをハッシュで許し、フォームの送り先を IdP とこの RP に限る | `html.ts`（`logoutContentSecurityPolicy`、`AUTO_SUBMIT_SCRIPT_SHA256`）、`index.ts`（ほかのページはスクリプトなし） | `app.test.ts`「allows exactly the auto-submit script by hash」「pins the script hash constant to the script」「sets the security headers on every page」 |
 | RFC 6265bis（-22） | §4.1.3.2 | `__Host-` の Cookie は Secure、`Path=/`、Domain なし | `app.ts`（`COOKIE_OPTIONS`） | `app.test.ts`「keeps state, nonce, and the verifier in a short-lived, sealed __Host- cookie」「exchanges the code as a confidential client」 |
 | RFC 6265bis（-22） | §4.1.2.7、§5.6.7.1、§8.8.2 | `SameSite=Lax` の Cookie は、サイトをまたぐトップレベルの安全な遷移（IdP から `/callback` への GET）には付き、サイトをまたぐ POST には付かない | `app.ts`（`COOKIE_OPTIONS`） | 同上 |
 | RFC 6265bis（-22） | §5.6 | 名前と値が 4096 オクテットを超える Cookie はブラウザが捨てる | `app.ts`（`MAX_COOKIE_OCTETS`） | `app.test.ts`「refuses a sign-in whose session would exceed 4096 octets」 |
@@ -150,7 +176,8 @@ IdP は discovery の `id_token_signing_alg_values_supported` に `Ed25519` を�
 | 項目 | 根拠 | 理由 |
 | --- | --- | --- |
 | `at_hash` の検証 | OIDC Core §3.1.3.8（MAY） | 上の表のとおり。IdP は発行せず、Ed25519 で `at_hash` に使うハッシュは OIDC Core が定めていない（§3.1.3.6 は `alg` のハッシュの左半分とするが、`Ed25519` はハッシュを名前に含まない） |
-| RP-Initiated Logout | OpenID Connect RP-Initiated Logout 1.0 | IdP が実装しない（上の「ログアウトはこの RP だけ」） |
+| Front-Channel Logout、Back-Channel Logout | OpenID Connect Front-Channel Logout 1.0、Back-Channel Logout 1.0 | IdP が実装しない。IdP 側で始まったサインアウトは、この RP には届かない |
+| `logout_hint`、`ui_locales` のログアウトの要求 | RP-Initiated Logout 1.0 §2（OPTIONAL） | `id_token_hint` で利用者を示すので `logout_hint` は要らない。画面は IdP の既定の言語の決め方に任せる |
 | リフレッシュトークン | RFC 6749 §6 | IdP が発行しない |
 | `prompt`、`max_age`、`acr_values`、`claims` | OIDC Core §3.1.2.1、§5.5（OPTIONAL） | 最小のサンプルなので送らない。送らないので §3.1.3.7 の 12、13 も該当しない |
 | 署名または暗号化した UserInfo（`application/jwt`） | OIDC Core §5.3.2 | 登録しないので、`application/json` 以外の応答は拒否する |
