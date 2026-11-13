@@ -12,6 +12,7 @@
   "dependencies": {
     "@idp/base64url": "workspace:*",
     "@idp/cose-key": "workspace:*",
+    "@idp/digest-fields": "workspace:*",
     "@idp/jws": "workspace:*",
     "@idp/structured-fields": "workspace:*",
     "@idp/webauthn": "workspace:*",

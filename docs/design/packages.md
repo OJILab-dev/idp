@@ -54,7 +54,7 @@ Nov 13, 2026 · @Shinra Yamakawa
 | `@idp/jws` | RFC 7515、RFC 7518、RFC 8037、RFC 9864、RFC 7517 | JWS のコンパクト形式の署名と検証、アルゴリズム（`Ed25519`、`RS256`）、公開鍵の JWK と JWK Set の型 | `user/jws.ts`、`user/signing-keys.ts` の型 | base64url | RFC 8037 付録 A.4、RFC 7515 付録 A.2 |
 | `@idp/webauthn` | WebAuthn Level 3 §7.1、§7.2 | 登録と認証の応答の解析と検証 | `user/webauthn/verify.ts` | base64url、cbor、cose-key | WebAuthn Level 3 の仕様にあるテストベクタ（下の前提 6） |
 | `@idp/structured-fields` | RFC 9651 | List、Dictionary、Item（Date と Display String を含むすべての Bare Item）の解析と直列化。RFC 9651 が回復を指示する箇所（重複したキーの後勝ちなど）を呼び出し側に知らせる口を持つ | `admin/structured-fields.ts` | なし | HTTP WG の structured-field-tests と RFC 9651 の本文の例（下の結合の問題 7） |
-| `@idp/digest-fields` | RFC 9530 | `Content-Digest` の解析（`sha-256`）と本文のダイジェストの定数時間の比較 | `admin/signature.ts` の一部 | structured-fields | RFC 9530 付録 B |
+| `@idp/digest-fields` | RFC 9530 | `Content-Digest` の解析（`sha-256`）と本文のダイジェストの定数時間の比較 | `admin/signature.ts` の一部 | なし（フィールドの解析は呼び出し側が structured-fields で行う） | RFC 9530 付録 B |
 | `@idp/http-message-signatures` | RFC 9421（検証） | `Signature-Input` と `Signature` の取り出し、署名の基底（§2.5）の組み立て、`ecdsa-p384-sha384` の検証 | `admin/signature.ts` の一部 | structured-fields | RFC 9421 付録 B.2 の署名の基底 |
 | `@idp/problem-details` | RFC 9457 | problem details のオブジェクトの型と `application/problem+json` | `admin/problem.ts` の型 | なし | なし（規格にない） |
 | `@idp/pkce` | RFC 7636 | `code_verifier` の形（§4.1）、S256 の `code_challenge` の計算（§4.2）と形 | `user/token.ts`、`user/authorize.ts` の一部 | base64url | RFC 7636 付録 B |
@@ -130,7 +130,6 @@ flowchart LR
   webauthn --> base64url
   webauthn --> cbor
   webauthn --> cose
-  digest --> sf
   hms --> sf
   pkce --> base64url
 
