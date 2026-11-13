@@ -129,6 +129,9 @@ importers:
       '@idp/pkce':
         specifier: workspace:*
         version: link:../pkce
+      '@idp/problem-details':
+        specifier: workspace:*
+        version: link:../problem-details
       '@idp/structured-fields':
         specifier: workspace:*
         version: link:../structured-fields
@@ -179,6 +182,8 @@ importers:
       '@idp/base64url':
         specifier: workspace:*
         version: link:../base64url
+
+  packages/problem-details: {}
 
   packages/structured-fields: {}
 

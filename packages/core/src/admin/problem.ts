@@ -1,5 +1,6 @@
 // RFC 9457 problem details for the admin API (docs/design/idpctl.md, "エラーの形"). The core decides the kind; the
 // admin Worker only serialises it, so every rule's outcome has one spelling across HTTP, idpctl, and the audit log.
+import type { ProblemDetails as Rfc9457ProblemDetails } from "@idp/problem-details";
 import type { ProblemKind } from "../shared/index.js";
 
 /** The HTTP status of each problem kind. */
@@ -32,15 +33,18 @@ const PROBLEM_TITLE: Readonly<Record<ProblemKind, string>> = {
   internal: "Internal error",
 };
 
-/** The `application/problem+json` body (RFC 9457 §3.1), plus the failing fields of a validation problem. */
-export type ProblemDetails = {
+/**
+ * The `application/problem+json` body of the admin API: an RFC 9457 problem details object whose type, title,
+ * status, and detail are always present, plus the failing fields of a validation problem as an extension member.
+ */
+export type ProblemDetails = Rfc9457ProblemDetails<{
   readonly type: `urn:ojilab:idp:problem:${ProblemKind}`;
   readonly title: string;
   readonly status: number;
   readonly detail: string;
   /** JSON Pointers (RFC 6901) into the operation input; present only for `validation-failed`. */
   readonly errors?: readonly string[];
-};
+}>;
 
 /**
  * Builds the problem `type` URI of a kind.
