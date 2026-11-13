@@ -2,6 +2,13 @@
 
 最初に作るのは OIDC の認可コードフロー、パスキー、アプリ単位のアクセス制御、管理 CLI の 4 つだけ。それ以外は作らないか、必要になってから足す。
 
+**原則：ほかのサービスの認証に影響しない（運用者の決定、2026-11-13）**
+
+この IdP は趣味のプロジェクトで、セキュリティと統制は確立した製品より意図して弱い。そのため、ほかのサービスの認証に影響しうる機能は入れない。IdP が侵害されても、影響はこの IdP を信頼すると決めた自分の RP の中にとどまらなければならない。すべての機能の提案をこの原則と照らし、IdP のトークンや信頼が外のサービスに届くものは、作らないか作り直す。
+
+- IdP を、ほかのサービス（クラウドの Workload Identity Federation など）が信頼する issuer にしない。
+- 外部のトークンを受け付けるときは、読むだけの信頼にとどめ、外部の基盤に書き込まず、外部の基盤の上で何もしない。その結果として発行するトークンは、IdP に登録した RP だけで使えるものにする（[Workload Identity Federation](workload-identity-federation.md)参照）。
+
 | 機能 | 判断 | 理由・備考 |
 | --- | --- | --- |
 | OIDC（discovery / JWKS / authorize / token / userinfo） | 作る | 認可コード + PKCE S256 のみ |
@@ -23,5 +30,7 @@
 | ブラウザだけで動く SPA（public client）と client\_secret\_post | 作らない | SPA は BFF を置いて Web アプリとして登録する（RFC 10017）。confidential client の認証は client\_secret\_basic だけにする |
 | リフレッシュトークン | 作らない | Secure by Default の方針。必要が生じたら、ローテーションと再利用検知を前提に再検討する |
 | アプリ内ロール・API スコープ（認可レベル 2・3） | 後回し | 必要になったらマイグレーションでテーブルを足す |
+| IdP をクラウドなど外部のサービスが信頼する issuer にする（Workload Identity Federation の issuer の側） | 作らない | 上の原則。IdP の侵害が外部のサービスの資格情報に及ぶ（[Workload Identity Federation](workload-identity-federation.md)の付録） |
+| 外部のワークロードのトークンを受け付け、自分の RP あてのトークンを発行する（Workload Identity Federation） | 提案中（運用者のレビュー待ち） | 宛先を登録した RP だけにして上の原則を守る設計を[Workload Identity Federation](workload-identity-federation.md)に置いた。決まったら、この行とパスキーの行（「人の唯一の認証手段」）を書き換える |
 | 課金・権利（entitlements） | IdP に入れない | 別サービス（ledger）で管理する |
 | パスワード / TOTP / SAML / LDAP / ソーシャルログイン | 作らない | 思想の外 |
