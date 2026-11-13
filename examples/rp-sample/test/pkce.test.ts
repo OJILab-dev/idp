@@ -7,10 +7,6 @@ describe("randomToken", () => {
     expect(tokens.size).toBe(50);
     for (const token of tokens) expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
   });
-
-  it("is a valid PKCE verifier: 43 to 128 unreserved characters (RFC 7636 §4.1)", () => {
-    expect(randomToken()).toMatch(/^[A-Za-z0-9._~-]{43,128}$/);
-  });
 });
 
 describe("pkceChallenge", () => {

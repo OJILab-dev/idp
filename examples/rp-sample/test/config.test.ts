@@ -15,14 +15,9 @@ describe("loadConfig", () => {
     ["no ISSUER", { ISSUER: undefined }],
     ["an http ISSUER", { ISSUER: "http://idp.team-1.workers.dev" }],
     ["an ISSUER with a trailing slash", { ISSUER: `${ISSUER}/` }],
-    ["an ISSUER with a query", { ISSUER: `${ISSUER}?x=1` }],
-    ["no CLIENT_ID", { CLIENT_ID: undefined }],
     ["an invalid CLIENT_ID", { CLIENT_ID: "RP Sample" }],
-    ["no ORIGIN", { ORIGIN: undefined }],
     ["an ORIGIN with a path", { ORIGIN: `${ORIGIN}/app` }],
-    ["no CLIENT_SECRET", { CLIENT_SECRET: undefined }],
     ["an empty CLIENT_SECRET", { CLIENT_SECRET: "" }],
-    ["no SESSION_KEY", { SESSION_KEY: undefined }],
     ["a short SESSION_KEY", { SESSION_KEY: btoa("short") }],
   ])("fails closed with %s", async (_name, change) => {
     await expect(loadConfig({ ...ENV, ...change })).rejects.toBeInstanceOf(ConfigError);

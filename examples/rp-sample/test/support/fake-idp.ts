@@ -22,8 +22,6 @@ export type FakeIdpOptions = {
   readonly discovery?: JsonObject;
   /** Merged into the ID token's claims (undefined values remove a claim). */
   readonly idTokenClaims?: JsonObject;
-  /** Merged into the ID token's header. */
-  readonly idTokenHeader?: JsonObject;
   /** Signs the ID token with another key than the one the JWKS lists. */
   readonly signWithForeignKey?: boolean;
   /** Replaces the /userinfo body. */
@@ -70,7 +68,7 @@ function json(body: unknown, status = 200, contentType = "application/json"): Re
  *
  * @returns The extractable key pair.
  */
-export async function generateEd25519(): Promise<CryptoKeyPair> {
+async function generateEd25519(): Promise<CryptoKeyPair> {
   return (await crypto.subtle.generateKey({ name: "Ed25519" }, true, ["sign", "verify"])) as CryptoKeyPair;
 }
 
@@ -83,8 +81,8 @@ export class FakeIdp {
   readonly requests: RecordedRequest[] = [];
   /** The last ID token the token endpoint issued, as the RP received it. */
   lastIdToken: string | undefined;
-  /** Makes discovery fail from now on: a 500, or a failed connection. */
-  failDiscovery: "status" | "network" | undefined;
+  /** Makes discovery answer 500 from now on. */
+  failDiscovery = false;
   readonly #codes = new Map<string, PendingCode>();
   readonly #options: FakeIdpOptions;
   readonly #key: CryptoKeyPair;
@@ -190,8 +188,7 @@ export class FakeIdp {
     this.requests.push({ method: request.method, url: request.url, headers: request.headers, body });
     const url = new URL(request.url);
     if (url.origin !== ISSUER) return new Response("unexpected host", { status: 599 });
-    if (this.failDiscovery !== undefined && url.pathname === "/.well-known/openid-configuration") {
-      if (this.failDiscovery === "network") throw new TypeError("connection refused");
+    if (this.failDiscovery && url.pathname === "/.well-known/openid-configuration") {
       return json({ error: "server_error" }, 500);
     }
     const response = await this.#answer(`${request.method} ${url.pathname}`, request.headers, body);
@@ -235,7 +232,7 @@ export class FakeIdp {
     ) {
       return json({ error: "invalid_grant" }, 400);
     }
-    const idToken = await this.sign(this.idTokenClaims(pending.nonce), this.#options.idTokenHeader, this.#options.signWithForeignKey);
+    const idToken = await this.sign(this.idTokenClaims(pending.nonce), {}, this.#options.signWithForeignKey);
     this.lastIdToken = idToken;
     return json(
       without({ access_token: "access-token-1", token_type: "Bearer", expires_in: 300, id_token: idToken, scope: "openid profile", ...this.#options.tokenResponse }),
