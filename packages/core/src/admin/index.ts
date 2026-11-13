@@ -46,7 +46,6 @@ export {
 } from "./operation.js";
 export { AdminNonceStoreError, adminNonceClaimStatements, type AdminNonceClaim, type AdminNonceStore } from "./nonces.js";
 export {
-  ADMIN_SIGNATURE_BYTES,
   ADMIN_SIGNATURE_TAG,
   ADMIN_SIGNATURE_WINDOW_SECONDS,
   verifyAdminSignature,

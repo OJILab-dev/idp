@@ -2,14 +2,14 @@
 // The same vectors also run inside workerd in admin-signature-vectors.test.ts; this file pins the refusal reason
 // of every case and the checks the vectors do not cover.
 import { beforeAll, describe, expect, it } from "vitest";
+import { signatureBase } from "@idp/http-message-signatures";
+import { parseDictionary } from "@idp/structured-fields";
 import {
   ADMIN_SIGNATURE_WINDOW_SECONDS,
-  signatureBase,
   verifyAdminSignature,
   type AdminSigningKey,
   type AdminSignatureRequest,
 } from "../../src/admin/signature.js";
-import { parseDictionary } from "@idp/structured-fields";
 import { EXPECTED_REFUSALS, makeTestKeys, materialize, signBase, toHeaders, type TestKeys } from "../admin-signature-fixture.js";
 import { vectors, type VerifyCase } from "../vectors.js";
 
