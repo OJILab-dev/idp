@@ -248,7 +248,8 @@ flowchart LR
 | `packages/core/test/` の利用者向けのテスト（`authorize`、`discovery`、`end-session`、`jws`、`locale`、`passkey-*`、`signing-keys`、`token`、`tokens`、`userinfo`）とフィクスチャ（`oidc-fixture.ts`、`passkey-fixture.ts`、`keys.ts`） | `apps/worker/test/domain/` | `keys.ts` を使う `apps/admin-worker/test/` と `e2e/` の import も直す |
 | `packages/core/test/admin/`、`admin-signature-fixture.ts`、`admin-signature-vectors.test.ts`、`support/admin-signature-probe.ts` | `apps/admin-worker/test/domain/` | 契約のテストベクタ（`admin_signature`）を読むテストも一緒に動く |
 | `packages/cloudflare/test/d1/admin-nonces.test.ts` | `apps/admin-worker/test/domain/nonces.test.ts` | `createD1Database` で包んだローカルの D1 に対して同じ性質を確かめる |
-| `packages/core/test/vectors.ts` と、core に残る関心のテスト | 残る | 動いたテストは `vectors.ts` を相対パスで読む |
+| `packages/core/test/vectors.ts` | `contract/test/vectors.ts` | 契約のテストベクタの読み込みは契約の側に置き、core と 2 つのアプリのテストが同じ場所から読む（23 の点検で移した） |
+| core に残る関心のテスト | 残る | |
 
 以下は標準パッケージへの分割のときの表。
 

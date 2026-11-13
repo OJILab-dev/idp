@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InvalidIssuerError, parseIssuer } from "../src/issuer/index.js";
-import { vectors } from "./vectors.js";
+import { vectors } from "../../../contract/test/vectors.js";
 
 describe("parseIssuer", () => {
   it.each(vectors.issuer.valid)("accepts $value", ({ value, rp_id, origin }) => {

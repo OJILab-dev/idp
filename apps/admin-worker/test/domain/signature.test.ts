@@ -11,7 +11,7 @@ import {
   type AdminSignatureRequest,
 } from "../../src/domain/signature.js";
 import { EXPECTED_REFUSALS, makeTestKeys, materialize, signBase, toHeaders, type TestKeys } from "./admin-signature-fixture.js";
-import { vectors, type VerifyCase } from "../../../../packages/core/test/vectors.js";
+import { vectors, type VerifyCase } from "../../../../contract/test/vectors.js";
 
 const sig = vectors.admin_signature;
 const NOW = sig.verify.now;

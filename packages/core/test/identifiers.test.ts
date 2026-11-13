@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isClientId, isRandomTokenFormat, isUuidV4, newUuidV4, randomToken } from "../src/identifiers/index.js";
-import { vectors } from "./vectors.js";
+import { vectors } from "../../../contract/test/vectors.js";
 
 describe("isUuidV4", () => {
   it.each(vectors.uuid_v4.valid)("accepts %s", (value) => {

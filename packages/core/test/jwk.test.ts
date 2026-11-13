@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InvalidJwkError, jwkThumbprint } from "@idp/jwk-thumbprint";
-import { vectors } from "./vectors.js";
+import { vectors } from "../../../contract/test/vectors.js";
 
 // The contract's kid vectors, checked against the package core uses (docs/design/packages.md, coupling 10).
 describe("jwkThumbprint", () => {

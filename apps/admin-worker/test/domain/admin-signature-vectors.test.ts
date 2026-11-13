@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { migrationNames, readMigration, splitStatements } from "../../../../contract/test/d1.js";
 import { base64urlDecode } from "@idp/base64url";
 import { EXPECTED_REFUSALS, makeTestKeys, materialize, signBase, spkiBase64, substitute, tamper, type TestKeys } from "./admin-signature-fixture.js";
-import { type SignedRequest, type VerifyCase, vectors } from "../../../../packages/core/test/vectors.js";
+import { type SignedRequest, type VerifyCase, vectors } from "../../../../contract/test/vectors.js";
 
 const sig = vectors.admin_signature;
 

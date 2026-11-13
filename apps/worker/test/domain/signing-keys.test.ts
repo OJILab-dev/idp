@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { InvalidSigningKeyConfigError, loadSigningKeys, type SigningKeySecrets } from "../../src/domain/index.js";
 import { generateEd25519Jwk, generateRsaJwk } from "./keys.js";
-import { vectors } from "../../../../packages/core/test/vectors.js";
+import { vectors } from "../../../../contract/test/vectors.js";
 
 let ed25519A: string;
 let ed25519B: string;

@@ -3,7 +3,7 @@
 // `signature_base` with the placeholders filled in (docs/design/cross-language-contract.md).
 import { createHash } from "node:crypto";
 import type { AdminSignatureRefusal } from "../../src/domain/signature.js";
-import type { SignedRequest, VerifyCase } from "../../../../packages/core/test/vectors.js";
+import type { SignedRequest, VerifyCase } from "../../../../contract/test/vectors.js";
 
 const subtle = crypto.subtle;
 const P384 = { name: "ECDSA", namedCurve: "P-384" } as const;
