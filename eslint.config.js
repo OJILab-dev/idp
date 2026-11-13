@@ -37,36 +37,64 @@ function standardsImportBan(dependencies) {
   };
 }
 
-// The IdP Worker must never contain admin use cases (design principle 1, docs/design/technology.md).
-// User-facing code may import only the user-facing modules and the concern directories of the core.
-export const adminImportBan = {
+// The IdP Worker must never contain the admin use cases (design principle 1, docs/design/technology.md). They live in
+// the admin Worker, so the IdP Worker never imports that app.
+const adminWorkerImportBan = {
   patterns: [
     {
-      group: [
-        "@idp/core/admin",
-        "@idp/core/admin/*",
-        "**/core/src/admin",
-        "**/core/src/admin/*",
-        "**/admin/*",
-        // The admin use cases live in the admin Worker.
-        "@idp/admin-worker",
-        "@idp/admin-worker/*",
-        "**/admin-worker/**",
-      ],
-      message: "User-facing code must not depend on the admin modules (docs/design/technology.md).",
+      group: ["@idp/admin-worker", "@idp/admin-worker/*", "**/admin-worker", "**/admin-worker/**"],
+      message: "The IdP Worker must not depend on the admin Worker (docs/design/technology.md).",
     },
   ],
 };
 
-// The concern directories of the core are below the user-facing use cases, so they never import them.
-const userImportBan = {
+// zod is for the admin API's schemas; keeping it out of the IdP Worker and the core it bundles keeps it out of the
+// IdP Worker's bundle (docs/design/technology.md). apps/worker/test/no-zod.test.ts checks the sources as well.
+const zodImportBan = {
+  patterns: [{ group: ["zod", "zod/*"], message: "Only the admin Worker may import zod (docs/design/technology.md)." }],
+};
+
+// The core sits below the apps: it never imports them (docs/design/packages.md, "配置の規則").
+const appImportBan = {
   patterns: [
     {
-      group: ["@idp/core/user", "@idp/core/user/*", "**/core/src/user", "**/core/src/user/*", "**/user/*", "../user"],
-      message: "A concern directory of the core must not depend on the user-facing use cases (docs/design/packages.md).",
+      group: ["@idp/worker", "@idp/worker/*", "@idp/admin-worker", "@idp/admin-worker/*", "**/apps/**"],
+      message: "The core must not depend on the apps (docs/design/packages.md).",
     },
   ],
 };
+
+// An app's domain layer holds its use cases and rules and stays testable without the framework or the platform: it
+// imports only @idp/core, the standards packages, and itself (docs/design/packages.md, "アプリのドメインの層").
+// `escape` is the relative prefix that leaves src/domain/ from the file's depth, so the HTTP layer and the other app
+// are out of reach while the domain's own subdirectories may import each other.
+function domainImportBan(escape) {
+  return {
+    patterns: [
+      {
+        group: ["hono", "hono/*", "cloudflare:*", "@cloudflare/*", "@idp/cloudflare", "@idp/cloudflare/**", "**/packages/cloudflare/**"],
+        message: "The domain layer must not depend on the framework or the platform; the HTTP layer composes them (docs/design/packages.md).",
+      },
+      {
+        group: [`${escape}**`, "@idp/worker", "@idp/worker/*", "@idp/admin-worker", "@idp/admin-worker/*", "**/apps/**"],
+        message: "The domain layer must not depend on the app's HTTP layer or on another app (docs/design/packages.md).",
+      },
+    ],
+  };
+}
+
+// One block per depth below src/domain/, since a relative import escapes the domain at a different prefix from each.
+function domainBlocks(app, extraPatterns) {
+  return ["", "*/", "*/*/"].map((subdirs, depth) => ({
+    files: [`apps/${app}/src/domain/${subdirs}*.ts`],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: [...domainImportBan("../".repeat(depth + 1)).patterns, ...extraPatterns, ...sampleImportBan.patterns] },
+      ],
+    },
+  }));
+}
 
 // The samples under examples/ are relying parties, deployed on their own: no IdP code may depend on them.
 export const sampleImportBan = {
@@ -138,43 +166,34 @@ export default tseslint.config(
     rules: { "no-restricted-imports": ["error", sampleImportBan] },
   },
   // A later block replaces the rule's options for the files it matches, so each block repeats the bans it keeps.
+  // The core holds only the concerns both apps share, and the IdP Worker bundles all of it.
   {
     files: ["packages/core/src/**/*.ts"],
-    rules: { "no-restricted-imports": ["error", { patterns: [...cloudflareImportBan.patterns, ...sampleImportBan.patterns] }] },
-  },
-  {
-    files: ["apps/worker/**/*.ts"],
-    rules: { "no-restricted-imports": ["error", { patterns: [...adminImportBan.patterns, ...sampleImportBan.patterns] }] },
-  },
-  // Every directory of the core except admin/ is user-facing: the IdP Worker bundles it.
-  {
-    files: ["packages/core/src/**/*.ts"],
-    ignores: ["packages/core/src/admin/**"],
-    rules: {
-      "no-restricted-imports": [
-        "error",
-        { patterns: [...adminImportBan.patterns, ...cloudflareImportBan.patterns, ...sampleImportBan.patterns] },
-      ],
-    },
-  },
-  // The concern directories (db/, identifiers/, audit/, ...) sit below both use-case layers and import neither.
-  {
-    files: ["packages/core/src/**/*.ts"],
-    ignores: ["packages/core/src/admin/**", "packages/core/src/user/**"],
     rules: {
       "no-restricted-imports": [
         "error",
         {
           patterns: [
-            ...adminImportBan.patterns,
-            ...userImportBan.patterns,
             ...cloudflareImportBan.patterns,
+            ...appImportBan.patterns,
+            ...zodImportBan.patterns,
             ...sampleImportBan.patterns,
           ],
         },
       ],
     },
   },
+  {
+    files: ["apps/worker/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        { patterns: [...adminWorkerImportBan.patterns, ...zodImportBan.patterns, ...sampleImportBan.patterns] },
+      ],
+    },
+  },
+  ...domainBlocks("worker", zodImportBan.patterns),
+  ...domainBlocks("admin-worker", []),
   {
     files: ["packages/cloudflare/src/d1/**/*.ts"],
     rules: { "no-restricted-imports": ["error", cloudflareD1ImportBan] },
