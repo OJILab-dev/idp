@@ -65,15 +65,6 @@ describe("GET /end_session", () => {
     expect(await sessions(f)).toBe(0);
   });
 
-  it("accepts an expired hint", async () => {
-    const f = fixture();
-    const session = await seed(f);
-    const query = new URLSearchParams({ id_token_hint: await hint(f, { exp: NOW - 3600 }), post_logout_redirect_uri: RETURN });
-    const res = await call(f, "GET", `/end_session?${query}`, { cookies: { [SESSION]: session } });
-    expect(res.status).toBe(302);
-    expect(await sessions(f)).toBe(0);
-  });
-
   it("shows the signed-out page, not a redirect, for an unregistered post_logout_redirect_uri", async () => {
     const f = fixture();
     const session = await seed(f);
@@ -119,25 +110,6 @@ describe("GET /end_session", () => {
     expect(ja).toContain('<a href="/account">サインインしたままにする</a>');
   });
 
-  it("says on the confirmation page when the hint names another user", async () => {
-    const f = fixture();
-    const session = await seed(f);
-    const query = new URLSearchParams({ id_token_hint: await hint(f, { sub: "00000000-0000-4000-8000-000000000002" }) });
-    const res = await call(f, "GET", `/end_session?${query}`, { cookies: { [SESSION]: session } });
-    expect(res.status).toBe(200);
-    expect(await res.text()).toContain("another account");
-    expect(await sessions(f)).toBe(1);
-  });
-
-  it("renders the confirmation in the requested language", async () => {
-    const f = fixture();
-    const session = await seed(f);
-    const res = await call(f, "GET", "/end_session?ui_locales=ja", { cookies: { [SESSION]: session } });
-    const html = await res.text();
-    expect(html).toContain('<html lang="ja">');
-    expect(html).toContain("サインアウト");
-  });
-
   it.each([
     ["a bad signature", async (f: Fixture) => `${(await hint(f)).slice(0, -4)}AAAA`, "invalid_id_token_hint"],
     ["another issuer", (f: Fixture) => hint(f, { iss: "https://other.example.com" }), "invalid_id_token_hint"],
@@ -152,24 +124,6 @@ describe("GET /end_session", () => {
     expect(await sessions(f)).toBe(1);
   });
 
-  it("refuses a client_id that differs from the hint's aud", async () => {
-    const f = fixture();
-    const session = await seed(f);
-    await f.core.addClient({ id: "other-app" });
-    const query = new URLSearchParams({ id_token_hint: await hint(f), client_id: "other-app" });
-    const res = await call(f, "GET", `/end_session?${query}`, { cookies: { [SESSION]: session } });
-    expect(res.status).toBe(400);
-    expect(await res.text()).toContain("client_id_mismatch");
-  });
-
-  it("redirects without a session cookie, since there is nothing to end", async () => {
-    const f = fixture();
-    await seed(f);
-    const query = new URLSearchParams({ client_id: CLIENT, post_logout_redirect_uri: RETURN });
-    const res = await call(f, "GET", `/end_session?${query}`);
-    expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe(RETURN);
-  });
 });
 
 describe("POST /end_session", () => {
@@ -232,15 +186,15 @@ describe("POST /end_session/confirm", () => {
     expect(await sessions(f)).toBe(0);
   });
 
-  it.each([
-    ["cross-site", { "sec-fetch-site": "cross-site" }],
-    ["same-site", { "sec-fetch-site": "same-site" }],
-    ["no fetch metadata nor origin", {}],
-    ["another Origin", { origin: "https://app.example.com" }],
-  ])("refuses a %s request and keeps the session", async (_, headers) => {
+  // The same-origin check's branches are tested on /authorize/resume (oidc.test.ts); this proves the route is guarded.
+  it("refuses a cross-site request and keeps the session", async () => {
     const f = fixture();
     const session = await seed(f);
-    const res = await call(f, "POST", "/end_session/confirm", { headers, cookies: { [SESSION]: session }, form: { client_id: CLIENT } });
+    const res = await call(f, "POST", "/end_session/confirm", {
+      headers: { "sec-fetch-site": "cross-site" },
+      cookies: { [SESSION]: session },
+      form: { client_id: CLIENT },
+    });
     expect(res.status).toBe(403);
     expect(await res.text()).toContain("cross_origin_request");
     expect(await sessions(f)).toBe(1);

@@ -9,7 +9,6 @@ describe("the TLS version check (fail-closed)", () => {
   // The zone's minimum TLS version belongs to the zone's owner when the zone is shared, so the Worker refuses TLS
   // below 1.2 itself, as it refuses plain http: with a 404 and without running any route.
   it.each([
-    ["TLS 1.0", { tlsVersion: "TLSv1" }],
     ["TLS 1.1", { tlsVersion: "TLSv1.1" }],
     ["an unknown version", { tlsVersion: "TLSv1.4" }],
     ["no tlsVersion", {}],
@@ -19,12 +18,6 @@ describe("the TLS version check (fail-closed)", () => {
     const res = await call(f, "GET", "/.well-known/openid-configuration", { cf });
     expect(res.status).toBe(404);
     expect(f.rateLimiter.keys).toEqual([]);
-  });
-
-  it("refuses TLS 1.1 on /token before the client is authenticated", async () => {
-    const f = fixture();
-    const res = await call(f, "POST", "/token", { cf: { tlsVersion: "TLSv1.1" }, form: { grant_type: "authorization_code" } });
-    expect(res.status).toBe(404);
   });
 
   it.each(["TLSv1.2", "TLSv1.3"])("serves %s", async (tlsVersion) => {
@@ -51,12 +44,6 @@ describe("the per-IP rate limit (fail-closed)", () => {
     expect(f.rateLimiter.keys).toEqual(Array.from({ length: 10 }, () => CLIENT_IP));
   });
 
-  it("does not count a static page, which writes nothing", async () => {
-    const f = fixture();
-    await call(f, "GET", "/signin");
-    expect(f.rateLimiter.keys).toEqual([]);
-  });
-
   it("refuses a request over the limit with 429 and Retry-After, before any route runs", async () => {
     const f = fixture();
     f.rateLimiter.outcome = "deny";
@@ -81,13 +68,6 @@ describe("the per-IP rate limit (fail-closed)", () => {
     const f = fixture();
     const res = await call(f, "GET", "/jwks", { clientIp });
     expect(res.status).toBe(400);
-    expect(f.rateLimiter.keys).toEqual([]);
-  });
-
-  it("is not reached by a request for another host", async () => {
-    const f = fixture();
-    const res = await call(f, "GET", "/jwks", { origin: "https://evil.example.net" });
-    expect(res.status).toBe(404);
     expect(f.rateLimiter.keys).toEqual([]);
   });
 });

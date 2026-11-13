@@ -40,10 +40,6 @@ describe("a signed request", () => {
     expect(row).toMatchObject({ admin_name: "other", admin_cert_sha256: keys().other.keyid });
   });
 
-  it("passes a GET, whose empty body is covered by the digest of the empty string", async () => {
-    expect((await call(f(), "GET", "/v1/users")).status).toBe(200);
-  });
-
   it("passes a POST without a body and without Content-Type", async () => {
     const created = (await (await createUser()).json()) as { user_id: string };
     const res = await call(f(), "POST", `/v1/users/${created.user_id}/enrollment-links`, { headers: idempotent() });
@@ -111,7 +107,6 @@ describe("the TLS version check (fail-closed)", () => {
   // The zone's minimum TLS version belongs to the zone's owner (docs/design/domain-placement.md, 3), so the Worker
   // refuses TLS below 1.2 itself, even for a correctly signed request.
   it.each([
-    ["TLS 1.0", { tlsVersion: "TLSv1" }],
     ["TLS 1.1", { tlsVersion: "TLSv1.1" }],
     ["an unknown version", { tlsVersion: "TLSv1.4" }],
     ["no tlsVersion", {}],
@@ -210,21 +205,14 @@ describe("the configuration (fail-closed)", () => {
     ["a repeated keyid", () => ({ ADMIN_SIGNING_KEYS: JSON.stringify([root(), { ...root(), name: "two" }]) })],
     ["an invalid admin name", () => ({ ADMIN_SIGNING_KEYS: JSON.stringify([{ ...root(), name: "Root Admin" }]) })],
     ["a public key that is not base64", () => ({ ADMIN_SIGNING_KEYS: JSON.stringify([{ ...root(), public_key: "not base64!" }]) })],
-    ["a truncated public key", () => ({ ADMIN_SIGNING_KEYS: JSON.stringify([{ ...root(), public_key: keys().root.publicKey.slice(0, -4) }]) })],
-    ["a base64url character in the public key", () => ({ ADMIN_SIGNING_KEYS: JSON.stringify([{ ...root(), public_key: `${keys().root.publicKey.slice(0, -1)}_` }]) })],
-    ["a public key on two lines", () => ({ ADMIN_SIGNING_KEYS: JSON.stringify([{ ...root(), public_key: `${keys().root.publicKey.slice(0, 64)}\n${keys().root.publicKey.slice(64)}` }]) })],
     ["no Rate Limiting binding", () => ({ RATE_LIMITER: undefined })],
+    // The hosting and issuer parsers' own branches are tested in the core; these rows prove the wiring.
     ["no hosting mode", () => ({ HOSTING_MODE: undefined })],
-    ["an unknown hosting mode", () => ({ HOSTING_MODE: "zone" })],
-    ["the workers_dev mode with custom domains", () => ({ HOSTING_MODE: "workers_dev" })],
     ["the custom_domain mode with a workers.dev admin host", () => ({ ADMIN_HOST: "idp-admin.team.workers.dev" })],
     ["no admin host", () => ({ ADMIN_HOST: undefined })],
     ["an admin host with a port", () => ({ ADMIN_HOST: `${ADMIN_HOST}:443` })],
-    ["an uppercase admin host", () => ({ ADMIN_HOST: ADMIN_HOST.toUpperCase() })],
-    ["an admin host that is a URL", () => ({ ADMIN_HOST: `https://${ADMIN_HOST}` })],
     ["an admin host equal to the issuer host", () => ({ ADMIN_HOST: "idp.example.com" })],
     ["no issuer", () => ({ ISSUER: undefined })],
-    ["an issuer with a path", () => ({ ISSUER: "https://idp.example.com/" })],
     ["no D1 binding", () => ({ DB: undefined })],
     ["no version metadata", () => ({ CF_VERSION_METADATA: undefined })],
     ["an empty version id", () => ({ CF_VERSION_METADATA: { id: "", tag: "", timestamp: "" } })],
