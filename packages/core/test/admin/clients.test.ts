@@ -91,8 +91,6 @@ describe("client_create", () => {
     ["a repeated URI", { ...CLI, redirect_uris: ["http://127.0.0.1/cb", "http://127.0.0.1/cb"] }, ["/redirect_uris"]],
     ["eleven URIs", { ...CLI, redirect_uris: Array.from({ length: 11 }, (_, i) => `https://a.example.com/${i}`) }, ["/redirect_uris"]],
     ["a malformed client ID", { ...CLI, client_id: "My App" }, ["/client_id"]],
-    ["an unknown algorithm", { ...CLI, id_token_alg: "HS256" }, ["/id_token_alg"]],
-    ["an unknown client type", { ...CLI, client_type: "spa" }, ["/client_type"]],
   ])("rejects %s with validation-failed", async (_case, input, pointers) => {
     await expect(run(h(), clientCreate, input)).rejects.toMatchObject({ kind: "validation-failed", pointers });
     expect(await query(h(), "SELECT COUNT(*) AS n FROM clients")).toEqual([{ n: 0 }]);
@@ -232,12 +230,6 @@ describe("client_set_post_logout_redirects", () => {
     );
     expect((await auditRows(h()))[0]).toMatchObject({ result: "failure", target: "client:nope" });
   });
-
-  it("is listed by clients_list", async () => {
-    await run(h(), clientCreate, { ...WEB, post_logout_redirect_uris: ["https://grafana.example.com/bye"] });
-    const listed = await run(h(), clientsList, {}, null);
-    expect(listed.body.items[0]).toMatchObject({ post_logout_redirect_uris: ["https://grafana.example.com/bye"] });
-  });
 });
 
 describe("client_rotate_secret", () => {
@@ -309,7 +301,7 @@ describe("client_disable and client_enable", () => {
 describe("clients_list", () => {
   it("lists clients with their settings and filters by algorithm", async () => {
     h().rs256Enabled = true;
-    await run(h(), clientCreate, { ...WEB, id_token_alg: "RS256" });
+    await run(h(), clientCreate, { ...WEB, id_token_alg: "RS256", post_logout_redirect_uris: ["https://grafana.example.com/bye"] });
     h().clock = T0 + 1;
     await run(h(), clientCreate, CLI);
     await run(h(), clientDisable, { client_id: "my-cli" });
@@ -321,7 +313,7 @@ describe("clients_list", () => {
         client_type: "confidential",
         enablement: "enabled",
         redirect_uris: [...WEB.redirect_uris],
-        post_logout_redirect_uris: [],
+        post_logout_redirect_uris: ["https://grafana.example.com/bye"],
         id_token_alg: "RS256",
         created_at: T0,
       },

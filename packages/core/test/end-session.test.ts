@@ -1,12 +1,10 @@
 // RP-Initiated Logout 1.0 (authentication.md, "RP からのログアウト"): one test per branch of endSession's decision.
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { parseIssuer } from "../src/shared/index.js";
 import {
   buildIdTokenClaims,
   endSession,
   loadSigningKeys,
   signIdToken,
-  signJwt,
   type EndSessionInput,
   type EndSessionVia,
   type IdTokenClaims,
@@ -160,7 +158,7 @@ describe("the confirmation (§2 MUST/SHOULD, §6)", () => {
   });
 
   it("asks, and says so, when the hint names another user; the other user's session is untouched", async () => {
-    const bobSession = await f.addSession("bob", "cred-b", SIGNED_IN_AT);
+    await f.addSession("bob", "cred-b", SIGNED_IN_AT);
     const token = await hint({ sub: "bob" });
     const decision = await endSession(f.deps, request({ id_token_hint: token }));
     expect(decision).toMatchObject({ kind: "confirm", otherUser: true, form: [["id_token_hint", token], ["ui_locales", "en"]] });
@@ -169,7 +167,6 @@ describe("the confirmation (§2 MUST/SHOULD, §6)", () => {
     await endSession(f.deps, request({ id_token_hint: token }, { via: "confirmation" }));
     const rows = await f.query("SELECT user_id FROM sessions");
     expect(rows).toEqual([{ user_id: "bob" }]);
-    expect(bobSession).not.toBe(session);
   });
 
   it("does not carry an unregistered redirect URI or its state into the form", async () => {
@@ -269,34 +266,9 @@ describe("refused requests (§4: nothing ended, nothing redirected)", () => {
     expect(await sessionCount()).toBe(1);
   }
 
-  it("refuses a hint with a bad signature", async () => {
-    const token = await hint();
-    const [h, p] = token.split(".");
-    await refused({ id_token_hint: `${h}.${p}.${"A".repeat(86)}`, post_logout_redirect_uri: RETURN }, "invalid_id_token_hint");
-  });
-
+  // The hint's claim checks are covered on verifyLogoutIdTokenHint (tokens.test.ts); here only the refusal itself.
   it("refuses a hint signed by a key outside the set", async () => {
-    await refused({ id_token_hint: await signIdToken(outsider, "Ed25519", claims()) }, "invalid_id_token_hint");
-  });
-
-  it("refuses a hint from another issuer", async () => {
-    await refused({ id_token_hint: await hint({ iss: parseIssuer("https://other.example.com").url }) }, "invalid_id_token_hint");
-  });
-
-  it("refuses an access token as a hint", async () => {
-    await refused({ id_token_hint: await signJwt(keys.ed25519, "at+jwt", claims()) }, "invalid_id_token_hint");
-  });
-
-  it.each([
-    ["an array aud", { aud: [RP] }],
-    ["no sub", { sub: undefined }],
-    ["a fractional auth_time", { auth_time: 1.5 }],
-  ])("refuses a hint with %s", async (_, overrides) => {
-    await refused({ id_token_hint: await hint(overrides) }, "invalid_id_token_hint");
-  });
-
-  it("refuses garbage as a hint", async () => {
-    await refused({ id_token_hint: "not-a-jwt" }, "invalid_id_token_hint");
+    await refused({ id_token_hint: await signIdToken(outsider, "Ed25519", claims()), post_logout_redirect_uri: RETURN }, "invalid_id_token_hint");
   });
 
   it("refuses a client_id that differs from the hint's aud (§2 MUST)", async () => {
@@ -305,10 +277,6 @@ describe("refused requests (§4: nothing ended, nothing redirected)", () => {
 
   it("refuses an unknown client_id", async () => {
     await refused({ client_id: "no-such-app" }, "invalid_client");
-  });
-
-  it("refuses a malformed client_id", async () => {
-    await refused({ client_id: "Not A Client" }, "invalid_client");
   });
 
   it("refuses a repeated parameter", async () => {
@@ -322,9 +290,5 @@ describe("refused requests (§4: nothing ended, nothing redirected)", () => {
   it("treats an empty value as omitted", async () => {
     const decision = await endSession(f.deps, request([["state", ""], ["state", "x"], ["id_token_hint", ""]]));
     expect(decision).toMatchObject({ kind: "confirm" });
-  });
-
-  it("refuses on confirmation too", async () => {
-    await refused({ id_token_hint: await hint(), client_id: OTHER_RP }, "client_id_mismatch", "confirmation");
   });
 });

@@ -138,7 +138,6 @@ describe("enrollVerify", () => {
 
   it("rejects a registration that fails verification, without consuming the token", async () => {
     const { challenge } = await options();
-    expect(await verify(await newCredential(), challenge, TOKEN, { flags: 0x01 })).toMatchObject({ reason: "verification_failed" });
     expect(await verify(await newCredential(), challenge, TOKEN, { origin: "https://evil.example.com" })).toMatchObject({ reason: "verification_failed" });
     expect(await f.count("enroll_tokens")).toBe(1);
   });

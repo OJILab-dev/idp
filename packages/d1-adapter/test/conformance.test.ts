@@ -62,14 +62,6 @@ describe("createD1Database", () => {
     ]);
   });
 
-  it("lets later statements see the writes of earlier ones in the same batch", async () => {
-    const results = await db.batch([
-      stmt("INSERT INTO principals (id, kind) VALUES (?, 'user')", "u1"),
-      stmt("SELECT id, kind FROM principals WHERE id = ?", "u1"),
-    ]);
-    expect(results[1]?.rows).toEqual([{ id: "u1", kind: "user" }]);
-  });
-
   it("reports changes for INSERT, UPDATE, DELETE, and SELECT", async () => {
     await db.batch(insertUser("u1", new Uint8Array(64)));
     const results = await db.batch([

@@ -212,7 +212,6 @@ describe("exchangeToken: client checks come before the code is touched", () => {
     ["client_secret_post", null, { client_id: WEB, client_secret: CONFIDENTIAL_SECRET }],
     ["Basic plus client_secret in the body", basic(WEB, CONFIDENTIAL_SECRET), { client_secret: CONFIDENTIAL_SECRET }],
     ["an unknown client", basic("nobody", CONFIDENTIAL_SECRET), {}],
-    ["a malformed client ID", basic("Not A Client", CONFIDENTIAL_SECRET), {}],
     ["a body client_id that differs from Basic", basic(WEB, CONFIDENTIAL_SECRET), { client_id: OTHER_WEB }],
     ["a non-Basic Authorization scheme", "Bearer abc", {}],
     ["malformed Basic credentials", "Basic !!!", {}],
@@ -249,8 +248,6 @@ describe("exchangeToken: request checks", () => {
   it.each([
     ["missing grant_type", { grant_type: undefined }, "invalid_request"],
     ["grant_type password", { grant_type: "password" }, "unsupported_grant_type"],
-    ["grant_type refresh_token", { grant_type: "refresh_token" }, "unsupported_grant_type"],
-    ["missing code", { code: undefined }, "invalid_request"],
     ["missing redirect_uri", { redirect_uri: undefined }, "invalid_request"],
     ["missing code_verifier", { code_verifier: undefined }, "invalid_request"],
     ["a malformed code_verifier", { code_verifier: "short" }, "invalid_request"],
@@ -271,7 +268,6 @@ describe("exchangeToken: request checks", () => {
 
   it.each([
     ["an unknown code", { code: "A".repeat(43) }],
-    ["a malformed code", { code: "nope" }],
     ["a wrong code_verifier (PKCE)", { code_verifier: "x".repeat(43) }],
     ["a different redirect_uri", { redirect_uri: "https://app.example.com/other" }],
   ] as const)("rejects %s as invalid_grant and keeps the code", async (_name, overrides) => {

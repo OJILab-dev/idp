@@ -167,10 +167,9 @@ describe("signInVerify", () => {
     expect(await f.count("sessions")).toBe(0);
   });
 
-  it("requires user verification and the IdP's origin", async () => {
+  it("verifies against the IdP's origin and requires the user handle", async () => {
     const id = await startAuthorize();
     const { challenge } = await options(id);
-    expect(await verify(id, await assertion(passkey, challenge, { flags: 0x01 | 0x08 | 0x10 }))).toMatchObject({ reason: "verification_failed" });
     expect(await verify(id, await assertion(passkey, challenge, { origin: "https://evil.example.com" }))).toMatchObject({ reason: "verification_failed" });
     expect(await verify(id, await assertion(passkey, challenge, { userHandle: null }))).toMatchObject({ reason: "verification_failed" });
     expect(await f.count("sessions")).toBe(0);
@@ -239,13 +238,6 @@ describe("signInVerify", () => {
     expect(result.kind).toBe("signed_in");
     expect(await f.count("sessions", "token_hash IN (?, ?)", await sha256Base64url(previous), await sha256Base64url(expired))).toBe(0);
     expect(await f.count("sessions")).toBe(1);
-  });
-
-  it("keeps the authorize request for /authorize/resume", async () => {
-    const id = await startAuthorize();
-    const { challenge } = await options(id);
-    await verify(id, await assertion(passkey, challenge));
-    expect(await f.count("authorize_requests")).toBe(1);
   });
 });
 

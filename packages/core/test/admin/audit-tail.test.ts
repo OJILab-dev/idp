@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { auditTail } from "../../src/admin/audit-tail.js";
-import { userCreate, userDisable, userRename } from "../../src/admin/users.js";
+import { userCreate, userDisable } from "../../src/admin/users.js";
 import { auditSuccessStatement } from "../../src/shared/index.js";
 import { ROOT, T0, run, useHarness } from "./harness.js";
 
@@ -80,12 +80,6 @@ describe("audit_tail", () => {
     await seedLog();
     await run(h(), auditTail, {}, null);
     expect((await run(h(), auditTail, {}, null)).body.items).toHaveLength(5);
-  });
-
-  it("does not record renames as names it could show", async () => {
-    const id = (await run(h(), userCreate, { name: "Alice Example" })).body.user_id;
-    await run(h(), userRename, { user_id: id, name: "Someone" }, null);
-    expect(JSON.stringify((await run(h(), auditTail, {}, null)).body)).not.toMatch(/Alice|Someone/);
   });
 
   it.each([

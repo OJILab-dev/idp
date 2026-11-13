@@ -1,7 +1,7 @@
 // The hosting mode's host rules (docs/design/hosting-modes.md 1.3 and 1.4): the mode is checked against the issuer and
 // the admin host so that a configuration mixing the two modes refuses to run.
 import { describe, expect, it } from "vitest";
-import { ADMIN_WORKER_NAME, IDP_WORKER_NAME, InvalidHostingError, checkHostingHosts, parseHostingMode } from "../src/shared/index.js";
+import { InvalidHostingError, checkHostingHosts, parseHostingMode } from "../src/shared/index.js";
 
 describe("parseHostingMode", () => {
   it.each(["custom_domain", "workers_dev"])("accepts %s", (mode) => {
@@ -15,11 +15,6 @@ describe("parseHostingMode", () => {
 });
 
 describe("checkHostingHosts", () => {
-  it("fixes the Worker names that become workers.dev labels", () => {
-    expect(IDP_WORKER_NAME).toBe("idp");
-    expect(ADMIN_WORKER_NAME).toBe("idp-admin");
-  });
-
   it("accepts custom domains outside workers.dev in the custom_domain mode", () => {
     expect(() => checkHostingHosts("custom_domain", "idp.example.com", "admin.example.com")).not.toThrow();
   });

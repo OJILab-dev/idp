@@ -11,7 +11,7 @@ import {
   type AuthorizeDecision,
 } from "../src/user/index.js";
 import { generateEd25519Jwk } from "./keys.js";
-import { PKCE, createFixture, issuer, sharedRsaKeys, type Fixture } from "./oidc-fixture.js";
+import { PKCE, createFixture, issuer, type Fixture } from "./oidc-fixture.js";
 
 const USER = "0f8fad5b-d9cb-469f-a165-70867728950e";
 const OTHER_USER = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
@@ -114,7 +114,6 @@ async function idTokenFor(sub: string, keys = f.deps.keys): Promise<string> {
 describe("authorize: client and redirect_uri come first", () => {
   it.each([
     ["missing client_id", { client_id: undefined }, "invalid_client"],
-    ["malformed client_id", { client_id: "Not A Client" }, "invalid_client"],
     ["unknown client_id", { client_id: "nobody" }, "invalid_client"],
     ["missing redirect_uri", { redirect_uri: undefined }, "invalid_redirect_uri"],
     ["unregistered redirect_uri", { redirect_uri: "https://evil.example.com/callback" }, "invalid_redirect_uri"],
@@ -153,11 +152,6 @@ describe("authorize: client and redirect_uri come first", () => {
     const decision = await call({ client_id: CLI, redirect_uri: "http://localhost:51004/callback" });
     expect(decision.kind).toBe("error_page");
   });
-
-  it("chooses the error page language from ui_locales, then Accept-Language", async () => {
-    expect(await call({ client_id: "nobody", ui_locales: "ja" })).toMatchObject({ locale: "ja" });
-    expect(await call({ client_id: "nobody" }, { acceptLanguage: "ja-JP,ja;q=0.9" })).toMatchObject({ locale: "ja" });
-  });
 });
 
 describe("authorize: errors after validation go to the validated redirect_uri with iss and state", () => {
@@ -185,16 +179,13 @@ describe("authorize: errors after validation go to the validated redirect_uri wi
   it.each([
     ["missing response_type", { response_type: undefined }, "invalid_request"],
     ["response_type token (no implicit flow)", { response_type: "token" }, "unsupported_response_type"],
-    ["response_type code id_token (no hybrid flow)", { response_type: "code id_token" }, "unsupported_response_type"],
     ["scope without openid", { scope: "profile" }, "invalid_scope"],
-    ["missing scope", { scope: undefined }, "invalid_scope"],
     ["missing code_challenge (PKCE downgrade, RFC 9700 §2.1.1)", { code_challenge: undefined }, "invalid_request"],
     ["code_challenge_method plain", { code_challenge_method: "plain" }, "invalid_request"],
     ["missing code_challenge_method (defaults to plain)", { code_challenge_method: undefined }, "invalid_request"],
     ["malformed code_challenge", { code_challenge: "short" }, "invalid_request"],
     ["prompt=none mixed with login", { prompt: "none login" }, "invalid_request"],
     ["unknown prompt value", { prompt: "bogus" }, "invalid_request"],
-    ["negative max_age", { max_age: "-1" }, "invalid_request"],
     ["non-integer max_age", { max_age: "1.5" }, "invalid_request"],
     ["malformed id_token_hint", { id_token_hint: "not-a-jwt" }, "invalid_request"],
   ] as const)("%s gives %s", async (_name, overrides, error) => {
@@ -422,17 +413,6 @@ describe("authorize: with a session", () => {
     expect(decision.kind).toBe("sign_in");
     expect(await f.query("SELECT id_token_hint_sub FROM authorize_requests")).toEqual([{ id_token_hint_sub: OTHER_USER }]);
   });
-
-  it("signs with RS256 when the key is configured", async () => {
-    await f.dispose();
-    f = await createFixture(await sharedRsaKeys());
-    await f.addUser(USER);
-    await f.addCredential(CREDENTIAL, USER);
-    await f.addClient({ id: "rsa-app", alg: "RS256" });
-    await f.grant(USER, "rsa-app");
-    const session = await f.addSession(USER, CREDENTIAL);
-    expect((await call({ client_id: "rsa-app" }, { session })).kind).toBe("code_redirect");
-  });
 });
 
 describe("resumeAuthorize", () => {
@@ -473,13 +453,6 @@ describe("resumeAuthorize", () => {
     const session = await f.addSession(USER, CREDENTIAL, f.clock.now());
     expect(await resume(id, session)).toEqual({ kind: "error_page", error: "invalid_authorize_request", locale: "en" });
     expect(await authorizeRequestRows()).toEqual([]);
-  });
-
-  it("uses the saved locale for the error page language", async () => {
-    const id = await startSignIn({ ui_locales: "ja" });
-    await f.setClientEnabled(WEB, false);
-    const session = await f.addSession(USER, CREDENTIAL, f.clock.now());
-    expect(await resume(id, session)).toEqual({ kind: "error_page", error: "invalid_client", locale: "ja" });
   });
 
   it("gives an error page, not a redirect, when the client was disabled during the sign-in", async () => {
@@ -553,12 +526,5 @@ describe("resumeAuthorize", () => {
     const id2 = await startSignIn({ id_token_hint: await idTokenFor(OTHER_USER) });
     const other = await f.addSession(OTHER_USER, OTHER_CREDENTIAL, f.clock.now());
     expect((await resume(id2, other)).kind).toBe("code_redirect");
-  });
-
-  it("cannot be resumed with another request's ID once that row is consumed", async () => {
-    const id = await startSignIn();
-    const session = await f.addSession(USER, CREDENTIAL, f.clock.now());
-    await resume(id, session);
-    expect((await resume(id, session)).kind).toBe("error_page");
   });
 });

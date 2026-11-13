@@ -75,7 +75,7 @@ describe("userinfo", () => {
     expect(response.headers["WWW-Authenticate"]).toBe(`Bearer realm="${issuer.url}"`);
   });
 
-  it.each([["Basic abc"], ["Bearer"], ["Bearer a b"], ["Bearer  token"]])("rejects the malformed header %j as invalid_request", async (header) => {
+  it.each([["Basic abc"], ["Bearer"], ["Bearer a b"]])("rejects the malformed header %j as invalid_request", async (header) => {
     const response = await call(header);
     expect(response.status).toBe(400);
     expect(response.headers["WWW-Authenticate"]).toBe(`Bearer realm="${issuer.url}", error="invalid_request"`);

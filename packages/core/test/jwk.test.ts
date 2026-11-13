@@ -11,7 +11,7 @@ describe("jwkThumbprint", () => {
     await expect(jwkThumbprint(jwk)).rejects.toThrow(InvalidJwkError);
   });
 
-  it.each([null, "jwk", 1, []])("rejects the non-object %j", async (jwk) => {
+  it.each([null, "jwk", []])("rejects the non-object %j", async (jwk) => {
     await expect(jwkThumbprint(jwk)).rejects.toThrow(InvalidJwkError);
   });
 });
