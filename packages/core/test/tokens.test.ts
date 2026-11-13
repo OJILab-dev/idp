@@ -12,6 +12,7 @@ import {
   signJwt,
   verifyAccessToken,
   verifyIdTokenHint,
+  verifyLogoutIdTokenHint,
   type AccessTokenClaims,
   type IdTokenClaims,
   type SigningKeySet,
@@ -208,5 +209,47 @@ describe("verifyIdTokenHint", () => {
   it("rejects a token signed by a key outside the set", async () => {
     const token = await signIdToken(outsider, "Ed25519", idClaims());
     await expect(verifyIdTokenHint(token, { issuer, keys })).rejects.toThrow(InvalidTokenError);
+  });
+});
+
+describe("verifyLogoutIdTokenHint", () => {
+  function idClaims(overrides: Record<string, unknown> = {}): IdTokenClaims {
+    return {
+      ...buildIdTokenClaims({ issuer, sub, clientId: "my-app", authTime: now - 60, nonce: "n", scopes: ["openid"], name: "A", now }),
+      ...overrides,
+    } as IdTokenClaims;
+  }
+
+  it.each(["Ed25519", "RS256"] as const)("returns sub, aud, and auth_time of an expired %s ID token it issued", async (alg) => {
+    const token = await signIdToken(keys, alg, idClaims({ exp: now - 3600 }));
+    expect(await verifyLogoutIdTokenHint(token, { issuer, keys })).toEqual({ sub, aud: "my-app", authTime: now - 60 });
+  });
+
+  it("accepts a hint signed with the previous Ed25519 key", async () => {
+    const previous = keys.all[1];
+    if (previous === undefined) throw new Error("no previous key");
+    const token = await signJwt(previous, "JWT", idClaims());
+    await expect(verifyLogoutIdTokenHint(token, { issuer, keys })).resolves.toMatchObject({ sub });
+  });
+
+  it("returns no auth_time for a hint without one", async () => {
+    const token = await signIdToken(keys, "Ed25519", idClaims({ auth_time: undefined }));
+    expect(await verifyLogoutIdTokenHint(token, { issuer, keys })).toEqual({ sub, aud: "my-app", authTime: undefined });
+  });
+
+  it.each([
+    ["another iss", { iss: otherIssuer.url }],
+    ["no sub", { sub: undefined }],
+    ["an array aud", { aud: ["my-app"] }],
+    ["an aud that is not a client ID", { aud: "Not A Client" }],
+    ["a string auth_time", { auth_time: "1" }],
+  ])("rejects %s", async (_name, overrides) => {
+    const token = await signIdToken(keys, "Ed25519", idClaims(overrides));
+    await expect(verifyLogoutIdTokenHint(token, { issuer, keys })).rejects.toThrow(InvalidTokenError);
+  });
+
+  it("rejects an access token and a token signed outside the set", async () => {
+    await expect(verifyLogoutIdTokenHint(await signAccessToken(keys, accessClaims()), { issuer, keys })).rejects.toThrow(InvalidTokenError);
+    await expect(verifyLogoutIdTokenHint(await signIdToken(outsider, "Ed25519", idClaims()), { issuer, keys })).rejects.toThrow(InvalidTokenError);
   });
 });

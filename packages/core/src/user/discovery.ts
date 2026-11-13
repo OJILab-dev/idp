@@ -10,6 +10,8 @@ export type DiscoveryDocument = {
   readonly token_endpoint: string;
   readonly userinfo_endpoint: string;
   readonly jwks_uri: string;
+  /** RP-Initiated Logout 1.0 §2.1; the endpoint accepts GET and POST (§2). */
+  readonly end_session_endpoint: string;
   readonly response_types_supported: readonly ["code"];
   readonly subject_types_supported: readonly ["public"];
   readonly grant_types_supported: readonly ["authorization_code"];
@@ -54,6 +56,7 @@ export function buildDiscoveryDocument(issuer: Issuer, keys: SigningKeySet): Dis
     token_endpoint: `${issuer.url}/token`,
     userinfo_endpoint: `${issuer.url}/userinfo`,
     jwks_uri: `${issuer.url}/jwks`,
+    end_session_endpoint: `${issuer.url}/end_session`,
     response_types_supported: ["code"],
     subject_types_supported: ["public"],
     grant_types_supported: ["authorization_code"],
