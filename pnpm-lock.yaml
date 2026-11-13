@@ -102,12 +102,17 @@ importers:
         specifier: 8.3.5
         version: 8.3.5(@types/node@26.6.5)
 
+  packages/accept-language: {}
+
   packages/base64url: {}
 
   packages/cbor: {}
 
   packages/core:
     dependencies:
+      '@idp/accept-language':
+        specifier: workspace:*
+        version: link:../accept-language
       '@idp/base64url':
         specifier: workspace:*
         version: link:../base64url
