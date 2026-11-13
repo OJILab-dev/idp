@@ -1,7 +1,7 @@
 // The hosting mode the suite runs in (docs/design/hosting-modes.md 1). `pnpm run e2e` runs the whole suite once per
 // mode, so every scenario is checked against both host shapes a deployment can have; E2E_HOSTING_MODE picks the run.
 // The hosts are only names: Chromium maps them to the local servers (support/fixtures.ts), and nothing resolves them.
-import { ADMIN_WORKER_NAME, IDP_WORKER_NAME, checkHostingHosts, parseHostingMode, type HostingMode } from "../../packages/core/src/hosting/index.js";
+import { ADMIN_WORKER_NAME, IDP_WORKER_NAME, checkHostingHosts, parseHostingMode, type HostingMode } from "../../packages/hosting/src/index.js";
 
 /**
  * The workers.dev subdomain of the account the workers_dev run stands in for. Any one DNS label would do; this one is

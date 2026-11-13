@@ -2,7 +2,7 @@
 // (docs/design/security-checklist.md, "セッションと通信").
 import type { Context } from "hono";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
-import type { Issuer } from "@idp/core/issuer";
+import type { Issuer } from "@idp/issuer";
 
 // Set on every response the Worker returns, the static pages served through the assets binding included; _headers
 // carries the same values for the pages as a second copy (free-tier.md).

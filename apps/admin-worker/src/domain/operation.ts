@@ -1,9 +1,9 @@
 // The shape of an admin operation: its classification metadata, its input schema, and how it runs
 // (docs/design/idpctl.md, "操作の一覧" and "操作の分類"). Every idpctl operation is one value of these types.
 import type { z } from "zod";
-import type { AuditComputedMember, AuditDetail, AuditTarget } from "@idp/core/audit";
-import type { Database, SqlCondition, SqlRow, SqlStatement, SqlStatementResult } from "@idp/core/db";
-import type { Issuer } from "@idp/core/issuer";
+import type { AuditComputedMember, AuditDetail, AuditTarget } from "@idp/audit";
+import type { Database, SqlCondition, SqlRow, SqlStatement, SqlStatementResult } from "@idp/db";
+import type { Issuer } from "@idp/issuer";
 
 /** Every idpctl operation name: the CLI subcommand, the use case, the OpenAPI operationId, and audit_log.operation. */
 export const OPERATION_NAMES = [

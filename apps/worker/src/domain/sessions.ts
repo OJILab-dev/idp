@@ -1,8 +1,8 @@
 // The IdP session as the OIDC endpoints read it. Sessions are created by the passkey sign-in, not here; these helpers
 // only look a session up by its cookie and check access through effective_access, the one access definition.
 import { sha256Base64url } from "@idp/jwk-thumbprint";
-import { isRandomTokenFormat } from "@idp/core/identifiers";
-import type { Database } from "@idp/core/db";
+import { isRandomTokenFormat } from "@idp/identifiers";
+import type { Database } from "@idp/db";
 import { CorruptRowError } from "./clients.js";
 import type { OidcDeps } from "./deps.js";
 

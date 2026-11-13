@@ -1,7 +1,7 @@
 // Runs an admin operation: validation, Idempotency-Key, the guarded batch with its success audit row, and the
 // failure audit row after a rollback (docs/design/data-model.md, the audit_log rules).
-import { DatabaseError, type SqlRow, type SqlStatement } from "@idp/core/db";
-import { auditFailureStatement, auditSuccessStatement, type AuditTarget } from "@idp/core/audit";
+import { DatabaseError, type SqlRow, type SqlStatement } from "@idp/db";
+import { auditFailureStatement, auditSuccessStatement, type AuditTarget } from "@idp/audit";
 import {
   idempotencyCleanupStatement,
   idempotencyInsertStatement,

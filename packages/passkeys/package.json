@@ -1,0 +1,11 @@
+{
+  "name": "@idp/passkeys",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@idp/db": "workspace:*"
+  }
+}

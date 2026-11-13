@@ -1,0 +1,11 @@
+{
+  "name": "@idp/identifiers",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@idp/base64url": "workspace:*"
+  }
+}

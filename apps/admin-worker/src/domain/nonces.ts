@@ -1,7 +1,7 @@
 // The replay check of the admin signatures (docs/design/hosting-modes.md 3.6, item 10 of 3.8): the store the admin
 // Worker calls after verifyAdminSignature passed, written against the Database port so that the SQL and the reading
 // of its result stay with the other admin rules; the platform only supplies the Database.
-import { DatabaseError, type Database, type SqlStatement } from "@idp/core/db";
+import { DatabaseError, type Database, type SqlStatement } from "@idp/db";
 import { ADMIN_SIGNATURE_WINDOW_SECONDS } from "./signature.js";
 
 /** Thrown when the nonce store fails for a reason other than the nonce being taken. */

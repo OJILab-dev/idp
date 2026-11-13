@@ -3,9 +3,12 @@ import { join } from "node:path";
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 
+// The IdP's domain packages: the concerns both apps share and the ports the platform implements.
+const DOMAIN_PACKAGES = ["audit", "clients", "db", "hosting", "identifiers", "issuer", "passkeys", "problems"];
+
 // The packages under packages/ that hold IdP or platform code. Every other directory there is a standards package
 // (docs/design/packages.md), so a new package gets the strict rules below unless it is listed here.
-const IDP_PACKAGES = new Set(["core", "cloudflare"]);
+const IDP_PACKAGES = new Set([...DOMAIN_PACKAGES, "cloudflare"]);
 
 const standardsPackages = readdirSync(join(import.meta.dirname, "packages"), { withFileTypes: true })
   // A directory without a manifest is not a package (for example node_modules left behind by another branch).
@@ -48,24 +51,29 @@ const adminWorkerImportBan = {
   ],
 };
 
-// zod is for the admin API's schemas; keeping it out of the IdP Worker and the core it bundles keeps it out of the
-// IdP Worker's bundle (docs/design/technology.md). apps/worker/test/no-zod.test.ts checks the sources as well.
+// zod is for the admin API's schemas; keeping it out of the IdP Worker and the domain packages it bundles keeps it out
+// of the IdP Worker's bundle (docs/design/technology.md). apps/worker/test/no-zod.test.ts checks the sources as well.
 const zodImportBan = {
   patterns: [{ group: ["zod", "zod/*"], message: "Only the admin Worker may import zod (docs/design/technology.md)." }],
 };
 
-// The core sits below the apps: it never imports them (docs/design/packages.md, "配置の規則").
-const appImportBan = {
+// The domain packages sit below the apps and import one another by package name only, so every edge between them is
+// declared in a manifest (docs/design/packages.md, "配置の規則").
+const domainPackageImportBan = {
   patterns: [
     {
       group: ["@idp/worker", "@idp/worker/*", "@idp/admin-worker", "@idp/admin-worker/*", "**/apps/**"],
-      message: "The core must not depend on the apps (docs/design/packages.md).",
+      message: "A domain package must not depend on the apps (docs/design/packages.md).",
+    },
+    {
+      group: ["../../*", "**/packages/**"],
+      message: "A domain package imports another package by its name, never by a path (docs/design/packages.md).",
     },
   ],
 };
 
 // An app's domain layer holds its use cases and rules and stays testable without the framework or the platform: it
-// imports only @idp/core, the standards packages, and itself (docs/design/packages.md, "アプリのドメインの層").
+// imports only the domain and standards packages and itself (docs/design/packages.md, "アプリのドメインの層").
 // `escape` is the relative prefix that leaves src/domain/ from the file's depth, so the HTTP layer and the other app
 // are out of reach while the domain's own subdirectories may import each other.
 function domainImportBan(escape) {
@@ -106,24 +114,24 @@ export const sampleImportBan = {
   ],
 };
 
-// Cloudflare-specific code lives in @idp/cloudflare, which the apps wire to the core; the core never reaches for it,
-// so the core and the standards packages stay free of any platform (docs/design/packages.md, "@idp/cloudflare の規則").
+// Cloudflare-specific code lives in @idp/cloudflare, which the apps wire to the domain packages; those never reach for
+// it, so they and the standards packages stay free of any platform (docs/design/packages.md, "@idp/cloudflare の規則").
 const cloudflareImportBan = {
   patterns: [
     {
       group: ["@idp/cloudflare", "@idp/cloudflare/*", "@idp/cloudflare/**", "**/cloudflare/src/**"],
-      message: "The core must not depend on @idp/cloudflare; the apps wire the two together (docs/design/packages.md).",
+      message: "A domain package must not depend on @idp/cloudflare; the apps wire the two together (docs/design/packages.md).",
     },
   ],
 };
 
 // The subpaths of @idp/cloudflare import each other only along declared edges, and there are none yet: the D1
-// adapter implements the core's ports, and the TLS check needs neither the core nor D1.
+// adapter implements the @idp/db port, and the TLS check needs neither the port nor D1.
 const cloudflareD1ImportBan = {
   patterns: [
     {
       group: ["@idp/cloudflare", "@idp/cloudflare/*", "@idp/cloudflare/**", "**/workers/**", "hono", "hono/*"],
-      message: "@idp/cloudflare/d1 may import only @idp/core and the standards packages (docs/design/packages.md).",
+      message: "@idp/cloudflare/d1 may import only the domain ports and the standards packages (docs/design/packages.md).",
     },
     ...sampleImportBan.patterns,
   ],
@@ -133,7 +141,7 @@ const cloudflareTlsImportBan = {
   patterns: [
     {
       group: ["@idp/*", "@idp/*/**", "**/d1/**", "**/packages/**", "**/apps/**", "hono", "hono/*"],
-      message: "@idp/cloudflare/workers/tls imports neither the core nor the D1 adapter (docs/design/packages.md).",
+      message: "@idp/cloudflare/workers/tls imports neither the domain packages nor the D1 adapter (docs/design/packages.md).",
     },
     ...sampleImportBan.patterns,
   ],
@@ -166,16 +174,16 @@ export default tseslint.config(
     rules: { "no-restricted-imports": ["error", sampleImportBan] },
   },
   // A later block replaces the rule's options for the files it matches, so each block repeats the bans it keeps.
-  // The core holds only the concerns both apps share, and the IdP Worker bundles all of it.
+  // The domain packages hold only the concerns both apps share, and the IdP Worker bundles them.
   {
-    files: ["packages/core/src/**/*.ts"],
+    files: DOMAIN_PACKAGES.map((dir) => `packages/${dir}/src/**/*.ts`),
     rules: {
       "no-restricted-imports": [
         "error",
         {
           patterns: [
             ...cloudflareImportBan.patterns,
-            ...appImportBan.patterns,
+            ...domainPackageImportBan.patterns,
             ...zodImportBan.patterns,
             ...sampleImportBan.patterns,
           ],

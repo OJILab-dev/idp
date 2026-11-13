@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { AdminProblem } from "../../src/domain/index.js";
 import { groupCreate, groupDisable, groupEnable, groupMemberAdd, groupMemberRemove, groupRename, groupsList } from "../../src/domain/groups.js";
 import { userCreate, userDisable } from "../../src/domain/users.js";
-import { isUuidV4 } from "@idp/core/identifiers";
+import { isUuidV4 } from "@idp/identifiers";
 import { T0, auditRows, effectiveAccess, query, run, seedClient, seedGrant, useHarness } from "./harness.js";
 
 const h = useHarness();

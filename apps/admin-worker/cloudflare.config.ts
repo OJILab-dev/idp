@@ -3,10 +3,10 @@
 // settings file (the hosting mode, the hosts, the namespace ID, admin_signing_keys) and from a lookup by the
 // database name (the D1 ID). Every value is checked here, and the Worker checks them again at start.
 import { bindings, defineConfig, type WorkerConfig as CloudflareWorkerConfig } from "cf/config";
-// @idp/core/hosting and @idp/core/issuer point straight at their modules, not at an index: cf evaluates this file with
+// @idp/hosting and @idp/issuer point straight at their modules, not at an index: cf evaluates this file with
 // Node's own loader, which does not map an index's `.js` specifiers to `.ts`. Both modules import nothing themselves.
-import { ADMIN_WORKER_NAME, IDP_WORKER_NAME, checkHostingHosts, parseHostingMode } from "@idp/core/hosting";
-import { parseIssuer } from "@idp/core/issuer";
+import { ADMIN_WORKER_NAME, IDP_WORKER_NAME, checkHostingHosts, parseHostingMode } from "@idp/hosting";
+import { parseIssuer } from "@idp/issuer";
 
 /** The deploy script's environment; every value is untrusted until checked. */
 export type AdminDeployEnv = {

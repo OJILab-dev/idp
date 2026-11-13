@@ -3,8 +3,8 @@
 // request never burns a code (security-checklist.md, Pocket ID CVE-2026-28513).
 import { sha256Base64url } from "@idp/jwk-thumbprint";
 import { isCodeVerifier, s256CodeChallenge } from "@idp/pkce";
-import { isClientId, isRandomTokenFormat } from "@idp/core/identifiers";
-import type { SqlRow } from "@idp/core/db";
+import { isClientId, isRandomTokenFormat } from "@idp/identifiers";
+import type { SqlRow } from "@idp/db";
 import { CorruptRowError, loadClient, type RegisteredClient } from "./clients.js";
 import type { OidcDeps } from "./deps.js";
 import {

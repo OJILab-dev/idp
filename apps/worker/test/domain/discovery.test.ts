@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { parseIssuer } from "@idp/core/issuer";
+import { parseIssuer } from "@idp/issuer";
 import { buildDiscoveryDocument, buildJwks, loadSigningKeys, type SigningKeySet } from "../../src/domain/index.js";
 import { generateEd25519Jwk, generateRsaJwk } from "./keys.js";
 import { vectors } from "../../../../contract/test/vectors.js";

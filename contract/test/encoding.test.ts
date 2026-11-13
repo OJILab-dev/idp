@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { InvalidBase64urlError, base64urlDecode, base64urlEncode } from "@idp/base64url";
-import { sha256Base64url } from "@idp/jwk-thumbprint";
-import { s256CodeChallenge } from "@idp/pkce";
-import { hexToBytes, vectors } from "../../../contract/test/vectors.js";
+import { InvalidBase64urlError, base64urlDecode, base64urlEncode } from "../../packages/base64url/src/index.js";
+import { sha256Base64url } from "../../packages/jwk-thumbprint/src/index.js";
+import { s256CodeChallenge } from "../../packages/pkce/src/index.js";
+import { hexToBytes, vectors } from "./vectors.js";
 
 describe("base64url", () => {
   it.each(vectors.base64url.valid)("encodes hex '$hex' as '$encoded'", ({ hex, encoded }) => {

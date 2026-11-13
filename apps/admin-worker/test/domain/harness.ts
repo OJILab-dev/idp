@@ -7,9 +7,9 @@ import {
   type AdminOperation,
   type OperationOutcome,
 } from "../../src/domain/index.js";
-import { parseIssuer } from "@idp/core/issuer";
-import { randomToken } from "@idp/core/identifiers";
-import type { Database, SqlRow, SqlValue } from "@idp/core/db";
+import { parseIssuer } from "@idp/issuer";
+import { randomToken } from "@idp/identifiers";
+import type { Database, SqlRow, SqlValue } from "@idp/db";
 import { createD1Database } from "@idp/cloudflare/d1";
 import { createTestD1, type TestD1 } from "../../../../contract/test/d1.js";
 

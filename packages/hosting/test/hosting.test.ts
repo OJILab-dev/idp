@@ -1,7 +1,7 @@
 // The hosting mode's host rules (docs/design/hosting-modes.md 1.3 and 1.4): the mode is checked against the issuer and
 // the admin host so that a configuration mixing the two modes refuses to run.
 import { describe, expect, it } from "vitest";
-import { InvalidHostingError, checkHostingHosts, parseHostingMode } from "../src/hosting/index.js";
+import { InvalidHostingError, checkHostingHosts, parseHostingMode } from "../src/index.js";
 
 describe("parseHostingMode", () => {
   it.each(["custom_domain", "workers_dev"])("accepts %s", (mode) => {

@@ -4,7 +4,7 @@
 //
 // The binding targets the IdP Worker's internal RPC entrypoint (IdpInternal), not its public fetch handler: a binding
 // call has no request.cf.tlsVersion and no CF-Connecting-IP, so the public path's TLS and rate-limit checks refuse it.
-import type { Issuer } from "@idp/core/issuer";
+import type { Issuer } from "@idp/issuer";
 import type { IdpInternalBinding } from "./config.js";
 
 /**

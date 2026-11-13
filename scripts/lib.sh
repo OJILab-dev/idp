@@ -12,7 +12,7 @@
 # and its Secret binding.
 readonly IDP_WORKER_NAME="idp"
 # The admin Worker's name; in the workers_dev mode it is the admin host's first label, so it is code too. Keep it in
-# sync with ADMIN_WORKER_NAME of packages/core/src/hosting/hosting.ts (docs/design/hosting-modes.md 1.2 and 1.3).
+# sync with ADMIN_WORKER_NAME of packages/hosting/src/hosting.ts (docs/design/hosting-modes.md 1.2 and 1.3).
 readonly ADMIN_WORKER_NAME="idp-admin"
 readonly SIGNING_KEY_SECRET_NAME="SIGNING_KEY_ED25519_CURRENT"
 
@@ -34,7 +34,7 @@ readonly OP_FIELD_R2_SECRET_ACCESS_KEY="r2_secret_access_key"
 IDP_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 readonly IDP_REPO_ROOT
 
-# The IdP's client_id rule (packages/core/src/identifiers/identifiers.ts).
+# The IdP's client_id rule (packages/identifiers/src/identifiers.ts).
 readonly CLIENT_ID_PATTERN='^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$'
 
 # Same rule as the admin names of ADMIN_SIGNING_KEYS (docs/design/idpctl.md).

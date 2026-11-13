@@ -3,7 +3,7 @@
 // only move the window over rows the admin may already list. Offsets are avoided because D1 counts skipped rows as
 // reads and an insert shifts offset pages.
 import { InvalidBase64urlError, base64urlDecode, base64urlEncode } from "@idp/base64url";
-import type { Database, SqlCondition, SqlRow, SqlStatement } from "@idp/core/db";
+import type { Database, SqlCondition, SqlRow, SqlStatement } from "@idp/db";
 import { AdminProblem } from "./problem.js";
 import type { PageInput } from "./schemas.js";
 

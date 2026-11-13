@@ -52,7 +52,7 @@ flowchart LR
     adminapi["管理 API<br/>ゲート（レート制限、RFC 9421 の署名の検証、許可リスト、nonce）<br/>idpctl の全操作"]
   end
 
-  core["共有コア（packages/core）<br/>規則・検証・SQL・ユースケース"]
+  core["共有コア（packages/ のドメインのパッケージと各 Worker の src/domain）<br/>規則・検証・SQL・ユースケース"]
   secret["Worker Secret<br/>署名鍵（Ed25519 JWK、RS256 を有効にしたときだけ RSA JWK）"]
   d1[("D1<br/>全状態（APAC に配置）")]
 

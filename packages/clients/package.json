@@ -1,0 +1,11 @@
+{
+  "name": "@idp/clients",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@idp/oauth-native-apps": "workspace:*"
+  }
+}

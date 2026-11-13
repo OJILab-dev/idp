@@ -1,8 +1,8 @@
-// Conformance of the D1 adapter to the Database port (packages/core/src/db/database.ts), run against a real local D1
+// Conformance of the D1 adapter to the Database port (packages/db/src/database.ts), run against a real local D1
 // (workerd's SQLite) with migration 0001 applied, so the properties the core relies on are checked on the engine
 // itself rather than on a mock.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DatabaseError, type Database, type SqlStatement } from "@idp/core/db";
+import { DatabaseError, type Database, type SqlStatement } from "@idp/db";
 import { createTestD1, type TestD1 } from "../../../../contract/test/d1.js";
 import { createD1Database } from "../../src/d1/index.js";
 

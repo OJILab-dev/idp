@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { base64urlEncode } from "@idp/base64url";
 import { sha256Base64url } from "@idp/jwk-thumbprint";
-import { MAX_PASSKEYS_PER_USER } from "@idp/core/passkeys";
+import { MAX_PASSKEYS_PER_USER } from "@idp/passkeys";
 import { enrollOptions, enrollVerify, type CreationOptionsJson } from "../../src/domain/index.js";
 import { NOW } from "./oidc-fixture.js";
 import { WRITER_VERSION, createPasskeyFixture, idOf, rp, type PasskeyFixture } from "./passkey-fixture.js";

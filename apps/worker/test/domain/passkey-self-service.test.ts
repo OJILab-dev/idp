@@ -3,7 +3,7 @@
 // passkey, disabled user, audit row, and the foreign-key cascade of a revocation).
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { sha256Base64url } from "@idp/jwk-thumbprint";
-import { MAX_PASSKEYS_PER_USER } from "@idp/core/passkeys";
+import { MAX_PASSKEYS_PER_USER } from "@idp/passkeys";
 import {
   addBegin,
   addOptions,

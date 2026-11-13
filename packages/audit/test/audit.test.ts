@@ -6,8 +6,8 @@ import {
   auditFailureStatement,
   auditSuccessStatement,
   type AuditActor,
-} from "../src/audit/index.js";
-import type { Database } from "../src/db/index.js";
+} from "../src/index.js";
+import type { Database } from "@idp/db";
 import { createD1Database } from "../../cloudflare/src/d1/index.js";
 import { createTestD1, type TestD1 } from "../../../contract/test/d1.js";
 

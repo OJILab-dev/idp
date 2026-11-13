@@ -1,7 +1,7 @@
 // RFC 9457 problem details for the admin API (docs/design/idpctl.md, "エラーの形"). The core decides the kind; the
 // admin Worker only serialises it, so every rule's outcome has one spelling across HTTP, idpctl, and the audit log.
 import type { ProblemDetails as Rfc9457ProblemDetails } from "@idp/problem-details";
-import type { ProblemKind } from "@idp/core/problems";
+import type { ProblemKind } from "@idp/problems";
 
 /** The HTTP status of each problem kind. */
 export const PROBLEM_STATUS: Readonly<Record<ProblemKind, number>> = {
