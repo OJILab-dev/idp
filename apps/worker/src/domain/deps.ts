@@ -1,8 +1,8 @@
 // What the OIDC use cases take from the Worker. Time and randomness are ports, so the tests can fix both and every
 // expiry and token in a test run is predictable.
-import { randomToken } from "@idp/core/identifiers";
-import type { Database } from "@idp/core/db";
-import type { Issuer } from "@idp/core/issuer";
+import { randomToken } from "@idp/identifiers";
+import type { Database } from "@idp/db";
+import type { Issuer } from "@idp/issuer";
 import type { SigningKeySet } from "./signing-keys.js";
 
 /** The current time. */

@@ -4,8 +4,8 @@
 // together or not at all.
 import { canonicalize } from "@idp/json-canonicalization";
 import { sha256Base64url } from "@idp/jwk-thumbprint";
-import { isRandomTokenFormat } from "@idp/core/identifiers";
-import type { SqlCondition, SqlRow, SqlStatement } from "@idp/core/db";
+import { isRandomTokenFormat } from "@idp/identifiers";
+import type { SqlCondition, SqlRow, SqlStatement } from "@idp/db";
 import type { OperationName, OperationOutcome } from "./operation.js";
 import { AdminProblem } from "./problem.js";
 

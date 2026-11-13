@@ -13,7 +13,7 @@
 - **再認証の頻度は許容する**：リフレッシュトークンを出さないので、ネイティブアプリ・CLI はトークン（5 分）が切れるたびにブラウザでのパスキー認証が要る。Secure by Default の方針を優先し、これを許容する。
 - **サインインは OS のブラウザで**：ネイティブアプリは WebView などの埋め込みブラウザを使わない（RFC 8252 §8.12）。CLI は既定のブラウザ、スマホは ASWebAuthenticationSession や Custom Tabs を使う。
 - **redirect URI の規則**：RFC 8252 §7 の 3 方式をすべて受け付ける。ループバックは IP リテラルだけを登録でき、`localhost` は拒否する（§8.3 で NOT RECOMMENDED）。カスタムスキームは、自分のドメインを逆順にした形（例：`com.example.app:/callback`）に限る（§7.1）。
-- **登録の時点で形を 1 つに固定する**：判定は共有コアの `src/clients/`（RFC 8252 の 3 つの形は `@idp/oauth-native-apps`）に 1 つだけ置き、管理用の Worker が登録の時点で確かめる。IdP の Worker は、保存された値を同じ判定で確かめ直して壊れた行を拒否できる。テストベクタは `contract/testdata/vectors.json` に置く。
+- **登録の時点で形を 1 つに固定する**：判定は `@idp/clients`（`packages/clients/`。RFC 8252 の 3 つの形は `@idp/oauth-native-apps`）に 1 つだけ置き、管理用の Worker が登録の時点で確かめる。IdP の Worker は、保存された値を同じ判定で確かめ直して壊れた行を拒否できる。テストベクタは `contract/testdata/vectors.json` に置く。
   - 完全一致で比べる（RFC 9700 §2.1）ので、URL の構文解析器が書き直さない正規の形だけを受け付ける。ホストの大文字、既定のポート（`:443`）、パスのない `https://host` などは、書き直された形で登録するよう拒否する。保存した文字列と同じ値を、もう 1 つの書き方で送らせないため。
   - `localhost` は、末尾のドットを付けた形（`localhost.`）と、そのサブドメイン（`*.localhost`。RFC 6761 §6.3 でループバックに解決される）も拒否する。名前の書き方を変えるだけで §8.3 の禁止を迂回させないため。
   - フラグメントを持つ URI（RFC 6749 §3.1.2）、userinfo を持つ URI、ワイルドカードの `*` を含む URI、空白や ASCII 以外の文字をそのまま含む URI、2,000 文字を超える URI は拒否する。

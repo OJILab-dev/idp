@@ -4,10 +4,10 @@
 // detail_json is never deleted, so a name or free text written into it would outlive a rename and even a break-glass
 // deletion of the user (design principle 7). The builder therefore accepts only known members, each checked against
 // the format of an ID, an enum, a number, or a time; anything else throws before a statement exists.
-import { classifyRedirectUri, isPostLogoutRedirectUriRegistrable } from "../clients/index.js";
-import type { SqlCondition, SqlStatement, SqlValue } from "../db/index.js";
-import { isClientId, isCredentialId, isUuidV4 } from "../identifiers/index.js";
-import { isProblemKind, type ProblemKind } from "../problems/index.js";
+import { classifyRedirectUri, isPostLogoutRedirectUriRegistrable } from "@idp/clients";
+import type { SqlCondition, SqlStatement, SqlValue } from "@idp/db";
+import { isClientId, isCredentialId, isUuidV4 } from "@idp/identifiers";
+import { isProblemKind, type ProblemKind } from "@idp/problems";
 
 /** What an audit row is about: `user:<id>`, `client:<id>`, `group:<id>`, `schema`, or `none`. */
 export type AuditTarget = `user:${string}` | `client:${string}` | `group:${string}` | "schema" | "none";

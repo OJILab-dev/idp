@@ -2,8 +2,8 @@
 // read the user's own passkey additions and revocations here, in place of a notification to the user.
 import { auditTailOutput } from "./outputs.js";
 import { z } from "zod";
-import { isAuditTarget, type AuditTarget } from "@idp/core/audit";
-import type { SqlCondition, SqlRow } from "@idp/core/db";
+import { isAuditTarget, type AuditTarget } from "@idp/audit";
+import type { SqlCondition, SqlRow } from "@idp/db";
 import type { ReadOperation } from "./operation.js";
 import { readPage, type Page, type PageQuery } from "./paging.js";
 import { pageInputShape, type PageInput } from "./schemas.js";

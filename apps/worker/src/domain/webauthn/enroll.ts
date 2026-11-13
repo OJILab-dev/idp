@@ -2,8 +2,8 @@
 // and /webauthn/register/verify. The challenge is bound to the enrollment token, and the consumption order is fixed by
 // the schema: the challenge references the token with ON DELETE CASCADE, so the challenge is consumed first.
 import { sha256Base64url } from "@idp/jwk-thumbprint";
-import { MAX_PASSKEYS_PER_USER, passkeyBelowLimitCondition, userEnabledCondition } from "@idp/core/passkeys";
-import { isRandomTokenFormat } from "@idp/core/identifiers";
+import { MAX_PASSKEYS_PER_USER, passkeyBelowLimitCondition, userEnabledCondition } from "@idp/passkeys";
+import { isRandomTokenFormat } from "@idp/identifiers";
 import type { PasskeyDeps } from "../deps.js";
 import {
   CHALLENGE_LIFETIME_SECONDS,

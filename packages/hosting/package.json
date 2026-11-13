@@ -1,0 +1,8 @@
+{
+  "name": "@idp/hosting",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/hosting.ts"
+  }
+}

@@ -5,9 +5,9 @@
 import { sha256Base64url } from "@idp/jwk-thumbprint";
 import { isRegisteredRedirectUri } from "@idp/oauth-native-apps";
 import { isS256CodeChallenge } from "@idp/pkce";
-import { isClientId, isRandomTokenFormat } from "@idp/core/identifiers";
-import type { Issuer } from "@idp/core/issuer";
-import type { SqlRow } from "@idp/core/db";
+import { isClientId, isRandomTokenFormat } from "@idp/identifiers";
+import type { Issuer } from "@idp/issuer";
+import type { SqlRow } from "@idp/db";
 import { CorruptRowError, loadClient, type RegisteredClient } from "./clients.js";
 import type { OidcDeps } from "./deps.js";
 import { asUiLocale, selectUiLocale, type UiLocale } from "./locale.js";

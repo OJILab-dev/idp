@@ -7,7 +7,7 @@ import {
   type SqlStatement,
   type SqlStatementResult,
   type SqlValue,
-} from "@idp/core/db";
+} from "@idp/db";
 
 /**
  * Wraps a D1 binding as the core's {@link Database}.

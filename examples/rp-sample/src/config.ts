@@ -32,7 +32,7 @@ export type Config = {
   readonly sessionKey: CryptoKey;
 };
 
-// The IdP's client_id rule (packages/core/src/identifiers/identifiers.ts); checked here so a typo fails before a login.
+// The IdP's client_id rule (packages/identifiers/src/identifiers.ts); checked here so a typo fails before a login.
 const CLIENT_ID = /^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/;
 
 /**

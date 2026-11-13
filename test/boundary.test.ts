@@ -2,7 +2,7 @@ import { join } from "node:path";
 import { ESLint } from "eslint";
 import { describe, expect, it } from "vitest";
 
-const root = join(import.meta.dirname, "..", "..", "..");
+const root = join(import.meta.dirname, "..");
 
 async function lintAs(filePath: string, code: string): Promise<readonly string[]> {
   const eslint = new ESLint({ cwd: root });
@@ -10,24 +10,25 @@ async function lintAs(filePath: string, code: string): Promise<readonly string[]
   return (result?.messages ?? []).map((m) => m.ruleId ?? m.message);
 }
 
-// The IdP Worker never imports the admin Worker, and neither it nor the core it bundles imports zod; the core never
-// imports the apps (docs/design/packages.md, "配置の規則").
-describe("app and core boundaries", () => {
+// The IdP Worker never imports the admin Worker, and neither it nor the domain packages it bundles import zod; the
+// domain packages never import the apps and reach one another by name only (docs/design/packages.md, "配置の規則").
+describe("app and domain package boundaries", () => {
   it.each([
     ["apps/worker/src/probe.ts", 'import "../../admin-worker/src/domain/index.js";'],
     ["apps/worker/src/probe.ts", 'import "@idp/admin-worker";'],
     ["apps/worker/src/probe.ts", 'import "zod";'],
-    ["packages/core/src/audit/probe.ts", 'import "zod";'],
-    ["packages/core/src/db/probe.ts", 'import "../../../../apps/worker/src/domain/index.js";'],
-    ["packages/core/src/passkeys/probe.ts", 'import "@idp/admin-worker";'],
+    ["packages/audit/src/probe.ts", 'import "zod";'],
+    ["packages/db/src/probe.ts", 'import "../../../apps/worker/src/domain/index.js";'],
+    ["packages/passkeys/src/probe.ts", 'import "@idp/admin-worker";'],
+    ["packages/audit/src/probe.ts", 'import "../../db/src/index.js";'],
   ])("%s rejects %s", async (file, code) => {
     expect(await lintAs(file, code)).toContain("no-restricted-imports");
   });
 
   it.each([
     ["apps/worker/src/probe.ts", 'import "./domain/index.js";'],
-    ["apps/worker/src/probe.ts", 'import "@idp/core/db";'],
-    ["packages/core/src/audit/probe.ts", 'import "../db/index.js";'],
+    ["apps/worker/src/probe.ts", 'import "@idp/db";'],
+    ["packages/audit/src/probe.ts", 'import "@idp/db";'],
     ["apps/admin-worker/src/probe.ts", 'import "./domain/index.js";'],
     ["apps/admin-worker/src/probe.ts", 'import "zod";'],
   ])("%s allows %s", async (file, code) => {
@@ -57,11 +58,11 @@ describe("app domain boundaries", () => {
   });
 
   it.each([
-    ["apps/worker/src/domain/probe.ts", 'import "@idp/core/db";'],
+    ["apps/worker/src/domain/probe.ts", 'import "@idp/db";'],
     ["apps/worker/src/domain/probe.ts", 'import "@idp/jws";'],
     ["apps/worker/src/domain/probe.ts", 'import "./sessions.js";'],
     ["apps/worker/src/domain/webauthn/probe.ts", 'import "../sessions.js";'],
-    ["apps/admin-worker/src/domain/probe.ts", 'import "@idp/core/audit";'],
+    ["apps/admin-worker/src/domain/probe.ts", 'import "@idp/audit";'],
     ["apps/admin-worker/src/domain/probe.ts", 'import "zod";'],
   ])("%s allows %s", async (file, code) => {
     expect(await lintAs(file, code)).not.toContain("no-restricted-imports");
@@ -76,10 +77,10 @@ describe("standards packages import only web standards and their declared standa
     'import "@cloudflare/workers-types";',
     'import "zod";',
     'import "hono";',
-    'import "@idp/core/db";',
+    'import "@idp/db";',
     'import "@idp/cloudflare/d1";',
     'import "@idp/cloudflare/workers/tls";',
-    'import "../../core/src/db/index.js";',
+    'import "../../db/src/index.js";',
   ])("packages/base64url/src rejects %s", async (code) => {
     expect(await lintAs("packages/base64url/src/probe.ts", code)).toContain("no-restricted-imports");
   });
@@ -104,12 +105,12 @@ describe("standards packages import only web standards and their declared standa
 // edges (docs/design/packages.md, "@idp/cloudflare の規則").
 describe("@idp/cloudflare boundaries", () => {
   it.each([
-    ["packages/core/src/audit/probe.ts", 'import "@idp/cloudflare/d1";'],
-    ["packages/core/src/passkeys/probe.ts", 'import "@idp/cloudflare/workers/tls";'],
-    ["packages/core/src/passkeys/probe.ts", 'import "../../../cloudflare/src/d1/index.js";'],
+    ["packages/audit/src/probe.ts", 'import "@idp/cloudflare/d1";'],
+    ["packages/passkeys/src/probe.ts", 'import "@idp/cloudflare/workers/tls";'],
+    ["packages/passkeys/src/probe.ts", 'import "../../../cloudflare/src/d1/index.js";'],
     ["packages/cloudflare/src/d1/probe.ts", 'import "@idp/cloudflare/workers/tls";'],
     ["packages/cloudflare/src/d1/probe.ts", 'import "../workers/tls/index.js";'],
-    ["packages/cloudflare/src/workers/tls/probe.ts", 'import "@idp/core/db";'],
+    ["packages/cloudflare/src/workers/tls/probe.ts", 'import "@idp/db";'],
     ["packages/cloudflare/src/workers/tls/probe.ts", 'import "@idp/cloudflare/d1";'],
     ["packages/cloudflare/src/workers/tls/probe.ts", 'import "../../d1/index.js";'],
   ])("%s rejects %s", async (file, code) => {
@@ -117,7 +118,7 @@ describe("@idp/cloudflare boundaries", () => {
   });
 
   it.each([
-    ["packages/cloudflare/src/d1/probe.ts", 'import "@idp/core/db";'],
+    ["packages/cloudflare/src/d1/probe.ts", 'import "@idp/db";'],
     ["packages/cloudflare/src/d1/probe.ts", 'import "@idp/base64url";'],
     ["packages/cloudflare/src/d1/probe.ts", 'import "./d1.js";'],
     ["apps/worker/src/probe.ts", 'import "@idp/cloudflare/d1";'],

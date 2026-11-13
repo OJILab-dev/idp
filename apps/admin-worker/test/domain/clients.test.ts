@@ -13,7 +13,7 @@ import {
 } from "../../src/domain/clients.js";
 import { userCreate } from "../../src/domain/users.js";
 import { sha256Base64url } from "@idp/jwk-thumbprint";
-import { isRandomTokenFormat, randomToken } from "@idp/core/identifiers";
+import { isRandomTokenFormat, randomToken } from "@idp/identifiers";
 import { T0, auditRows, effectiveAccess, query, run, seedGrant, useHarness } from "./harness.js";
 
 const h = useHarness();

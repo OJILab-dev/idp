@@ -1,0 +1,14 @@
+{
+  "name": "@idp/audit",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@idp/clients": "workspace:*",
+    "@idp/db": "workspace:*",
+    "@idp/identifiers": "workspace:*",
+    "@idp/problems": "workspace:*"
+  }
+}

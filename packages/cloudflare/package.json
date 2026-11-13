@@ -7,6 +7,6 @@
     "./workers/tls": "./src/workers/tls/index.ts"
   },
   "dependencies": {
-    "@idp/core": "workspace:*"
+    "@idp/db": "workspace:*"
   }
 }

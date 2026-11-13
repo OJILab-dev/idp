@@ -10,9 +10,9 @@ import {
   isPostLogoutRedirectUriRegistrable,
   isRedirectUriAllowed,
   type ClientType,
-} from "@idp/core/clients";
-import { randomToken } from "@idp/core/identifiers";
-import type { SqlCondition, SqlRow } from "@idp/core/db";
+} from "@idp/clients";
+import { randomToken } from "@idp/identifiers";
+import type { SqlCondition, SqlRow } from "@idp/db";
 import { enablementOperation, type Enablement } from "./enablement.js";
 import type { AdminContext, ReadOperation, WriteOperation } from "./operation.js";
 import { readPage, type Page, type PageQuery } from "./paging.js";

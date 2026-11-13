@@ -44,30 +44,51 @@ importers:
 
   apps/admin-worker:
     dependencies:
+      '@idp/audit':
+        specifier: workspace:*
+        version: link:../../packages/audit
       '@idp/base64url':
         specifier: workspace:*
         version: link:../../packages/base64url
+      '@idp/clients':
+        specifier: workspace:*
+        version: link:../../packages/clients
       '@idp/cloudflare':
         specifier: workspace:*
         version: link:../../packages/cloudflare
-      '@idp/core':
+      '@idp/db':
         specifier: workspace:*
-        version: link:../../packages/core
+        version: link:../../packages/db
       '@idp/digest-fields':
         specifier: workspace:*
         version: link:../../packages/digest-fields
+      '@idp/hosting':
+        specifier: workspace:*
+        version: link:../../packages/hosting
       '@idp/http-message-signatures':
         specifier: workspace:*
         version: link:../../packages/http-message-signatures
+      '@idp/identifiers':
+        specifier: workspace:*
+        version: link:../../packages/identifiers
+      '@idp/issuer':
+        specifier: workspace:*
+        version: link:../../packages/issuer
       '@idp/json-canonicalization':
         specifier: workspace:*
         version: link:../../packages/json-canonicalization
       '@idp/jwk-thumbprint':
         specifier: workspace:*
         version: link:../../packages/jwk-thumbprint
+      '@idp/passkeys':
+        specifier: workspace:*
+        version: link:../../packages/passkeys
       '@idp/problem-details':
         specifier: workspace:*
         version: link:../../packages/problem-details
+      '@idp/problems':
+        specifier: workspace:*
+        version: link:../../packages/problems
       '@idp/structured-fields':
         specifier: workspace:*
         version: link:../../packages/structured-fields
@@ -90,18 +111,30 @@ importers:
       '@idp/accept-language':
         specifier: workspace:*
         version: link:../../packages/accept-language
+      '@idp/audit':
+        specifier: workspace:*
+        version: link:../../packages/audit
       '@idp/base64url':
         specifier: workspace:*
         version: link:../../packages/base64url
       '@idp/cloudflare':
         specifier: workspace:*
         version: link:../../packages/cloudflare
-      '@idp/core':
-        specifier: workspace:*
-        version: link:../../packages/core
       '@idp/cose-key':
         specifier: workspace:*
         version: link:../../packages/cose-key
+      '@idp/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@idp/hosting':
+        specifier: workspace:*
+        version: link:../../packages/hosting
+      '@idp/identifiers':
+        specifier: workspace:*
+        version: link:../../packages/identifiers
+      '@idp/issuer':
+        specifier: workspace:*
+        version: link:../../packages/issuer
       '@idp/jwk-thumbprint':
         specifier: workspace:*
         version: link:../../packages/jwk-thumbprint
@@ -114,6 +147,9 @@ importers:
       '@idp/oidc-discovery':
         specifier: workspace:*
         version: link:../../packages/oidc-discovery
+      '@idp/passkeys':
+        specifier: workspace:*
+        version: link:../../packages/passkeys
       '@idp/pkce':
         specifier: workspace:*
         version: link:../../packages/pkce
@@ -146,31 +182,36 @@ importers:
 
   packages/accept-language: {}
 
+  packages/audit:
+    dependencies:
+      '@idp/clients':
+        specifier: workspace:*
+        version: link:../clients
+      '@idp/db':
+        specifier: workspace:*
+        version: link:../db
+      '@idp/identifiers':
+        specifier: workspace:*
+        version: link:../identifiers
+      '@idp/problems':
+        specifier: workspace:*
+        version: link:../problems
+
   packages/base64url: {}
 
   packages/cbor: {}
 
-  packages/cloudflare:
+  packages/clients:
     dependencies:
-      '@idp/core':
-        specifier: workspace:*
-        version: link:../core
-
-  packages/core:
-    dependencies:
-      '@idp/base64url':
-        specifier: workspace:*
-        version: link:../base64url
       '@idp/oauth-native-apps':
         specifier: workspace:*
         version: link:../oauth-native-apps
-    devDependencies:
-      '@idp/jwk-thumbprint':
+
+  packages/cloudflare:
+    dependencies:
+      '@idp/db':
         specifier: workspace:*
-        version: link:../jwk-thumbprint
-      '@idp/pkce':
-        specifier: workspace:*
-        version: link:../pkce
+        version: link:../db
 
   packages/cose-key:
     dependencies:
@@ -181,13 +222,25 @@ importers:
         specifier: workspace:*
         version: link:../cbor
 
+  packages/db: {}
+
   packages/digest-fields: {}
+
+  packages/hosting: {}
 
   packages/http-message-signatures:
     dependencies:
       '@idp/structured-fields':
         specifier: workspace:*
         version: link:../structured-fields
+
+  packages/identifiers:
+    dependencies:
+      '@idp/base64url':
+        specifier: workspace:*
+        version: link:../base64url
+
+  packages/issuer: {}
 
   packages/json-canonicalization: {}
 
@@ -207,6 +260,12 @@ importers:
 
   packages/oidc-discovery: {}
 
+  packages/passkeys:
+    dependencies:
+      '@idp/db':
+        specifier: workspace:*
+        version: link:../db
+
   packages/pkce:
     dependencies:
       '@idp/base64url':
@@ -214,6 +273,8 @@ importers:
         version: link:../base64url
 
   packages/problem-details: {}
+
+  packages/problems: {}
 
   packages/structured-fields: {}
 

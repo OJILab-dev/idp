@@ -1,0 +1,8 @@
+{
+  "name": "@idp/issuer",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/issuer.ts"
+  }
+}

@@ -3,8 +3,8 @@ import { AdminProblem, ENROLL_LINK_TTL_SECONDS } from "../../src/domain/index.js
 import { enrollLinkIssue, passkeyRevoke } from "../../src/domain/passkeys.js";
 import { userCreate, userDisable } from "../../src/domain/users.js";
 import { sha256Base64url } from "@idp/jwk-thumbprint";
-import { MAX_PASSKEYS_PER_USER } from "@idp/core/passkeys";
-import { isRandomTokenFormat, randomToken } from "@idp/core/identifiers";
+import { MAX_PASSKEYS_PER_USER } from "@idp/passkeys";
+import { isRandomTokenFormat, randomToken } from "@idp/identifiers";
 import { T0, auditRows, query, run, seedPasskey, seedSession, useHarness } from "./harness.js";
 
 const h = useHarness();

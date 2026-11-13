@@ -1,7 +1,7 @@
 // GET /webauthn/credentials (docs/design/authentication.md, the account page): the session user's own passkeys,
 // limited to the fields the page shows. Public keys, sign counts, and other users never leave the database here.
 // The Sec-Fetch-Site check and Cache-Control: no-store belong to the HTTP layer.
-import { userEnabledCondition } from "@idp/core/passkeys";
+import { userEnabledCondition } from "@idp/passkeys";
 import { CorruptRowError } from "../clients.js";
 import type { PasskeyDeps } from "../deps.js";
 import { findActiveSession } from "../sessions.js";

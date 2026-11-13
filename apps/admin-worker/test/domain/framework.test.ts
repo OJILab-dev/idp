@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ADMIN_OPERATIONS, AdminProblem, executeOperation, type WriteOperation } from "../../src/domain/index.js";
 import { parseInput } from "../../src/domain/schemas.js";
 import { userRename } from "../../src/domain/users.js";
-import { DatabaseError, type Database } from "@idp/core/db";
+import { DatabaseError, type Database } from "@idp/db";
 import { auditRows, query, run, useHarness } from "./harness.js";
 
 const h = useHarness();

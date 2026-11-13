@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { auditTail } from "../../src/domain/audit-tail.js";
 import { userCreate, userDisable } from "../../src/domain/users.js";
-import { auditSuccessStatement } from "@idp/core/audit";
+import { auditSuccessStatement } from "@idp/audit";
 import { ROOT, T0, run, useHarness } from "./harness.js";
 
 const h = useHarness();

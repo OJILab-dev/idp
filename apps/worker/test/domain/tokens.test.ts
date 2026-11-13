@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { signJwt } from "@idp/jws";
-import { isRandomTokenFormat } from "@idp/core/identifiers";
-import { parseIssuer } from "@idp/core/issuer";
+import { isRandomTokenFormat } from "@idp/identifiers";
+import { parseIssuer } from "@idp/issuer";
 import {
   InvalidTokenError,
   SigningAlgorithmUnavailableError,
