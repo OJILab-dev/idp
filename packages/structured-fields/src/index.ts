@@ -1,0 +1,18 @@
+export {
+  StructuredFieldError,
+  parseDictionary,
+  parseItem,
+  parseList,
+  serializeDictionary,
+  serializeInnerList,
+  serializeItem,
+  serializeList,
+  type BareItem,
+  type Dictionary,
+  type InnerList,
+  type Item,
+  type List,
+  type Parameters,
+  type ParseOptions,
+  type Recovery,
+} from "./structured-fields.js";

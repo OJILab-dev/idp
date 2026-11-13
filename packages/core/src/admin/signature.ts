@@ -3,7 +3,8 @@
 // body size) and stores the nonce after them (item 10, the AdminNonceStore port). Every refusal is reported with a
 // reason for the Worker log only; the response is the same forbidden body whatever the reason (3.8).
 import { InvalidBase64urlError, base64urlDecode } from "@idp/base64url";
-import { StructuredFieldError, parseDictionary, serializeInnerList, type Dictionary, type InnerList, type Item } from "./structured-fields.js";
+import { StructuredFieldError, serializeInnerList, type Dictionary, type InnerList, type Item } from "@idp/structured-fields";
+import { parseStrictDictionary } from "./strict-dictionary.js";
 
 /** The application tag every admin signature carries (RFC 9421 §2.3, §7.2.7). */
 export const ADMIN_SIGNATURE_TAG = "idp-admin";
@@ -151,7 +152,7 @@ function onlyMember(value: string | null): Dictionary[number] {
   if (value === null) throw new Refusal("malformed");
   let dictionary: Dictionary;
   try {
-    dictionary = parseDictionary(value);
+    dictionary = parseStrictDictionary(value);
   } catch (error) {
     if (error instanceof StructuredFieldError) throw new Refusal("malformed");
     throw error;
