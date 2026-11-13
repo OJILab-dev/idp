@@ -1,0 +1,14 @@
+{
+  "name": "@idp/http-message-signatures",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@idp/structured-fields": "workspace:*"
+  }
+}
