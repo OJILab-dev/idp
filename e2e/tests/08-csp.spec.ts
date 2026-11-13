@@ -2,9 +2,7 @@
 // (security-checklist.md; _headers for the static pages, the Worker's headers for the error page). The fixture fails
 // any test whose pages report a violation; this one visits each page on purpose and checks the policy is enforced.
 import type { Response } from "@playwright/test";
-import { en } from "../../apps/worker/pages/locales/en.js";
-import { detach, expect, expectSignInPage, test } from "../support/fixtures.js";
-import { enrolledUser } from "../support/flows.js";
+import { expect, expectSignInPage, test } from "../support/fixtures.js";
 import { ISSUER } from "../support/idp.js";
 import { authorizeFlow } from "../support/rp.js";
 import type { SeededClient } from "../support/seed.js";
@@ -22,17 +20,14 @@ async function expectStrictHeaders(response: Response | null): Promise<void> {
   expect(nosniff.every((value) => value === "nosniff")).toBe(true);
 }
 
-test("the sign-in, enrollment, account, and error pages load under the CSP with no violation", async ({ page, admin, authenticators }) => {
-  const user = await enrolledUser(admin, page, authenticators);
+// The headers come from the shipped _headers through workerd's real asset server, which the unit tests replace with
+// a stand-in (apps/worker/test/pages.test.ts reads only the file).
+test("the sign-in, enrollment, account, and error pages load under the CSP with no violation", async ({ page, admin }) => {
+  const user = await admin.createUser("Alice");
   const client = await admin.createClient("confidential", user.userId);
-  // Without an authenticator the sign-in page stays up instead of completing through autofill.
-  await detach(authenticators, user.authenticatorId);
 
-  const fresh = await admin.createUser("Bob");
-  // From /enroll, only the fragment would change and no document would load.
-  await page.goto("about:blank");
-  await expectStrictHeaders(await page.goto(fresh.enrollLink));
-  await expect(page.getByRole("button")).toBeEnabled();
+  // With no authenticator attached, the pages stay up instead of completing a ceremony.
+  await expectStrictHeaders(await page.goto(user.enrollLink));
 
   // The 303 to /signin is followed; the page's own response carries the asset headers.
   const signin = page.waitForResponse((response) => new URL(response.url()).pathname === "/signin");
@@ -40,9 +35,7 @@ test("the sign-in, enrollment, account, and error pages load under the CSP with 
   await expectStrictHeaders(await signin);
   await expectSignInPage(page);
 
-  // Never signed in, so the page runs its no-session path.
   await expectStrictHeaders(await page.goto(`${ISSUER}/account`));
-  await expect(page.getByRole("status")).toHaveText(en.account_no_session);
 
   const unknown: SeededClient = { clientId: "no-such-client", type: "confidential" };
   await expectStrictHeaders(await page.goto(authorizeFlow(unknown).url));

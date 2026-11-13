@@ -1,5 +1,5 @@
-// Scenario 5: the account page lists the user's passkeys, adds one after re-authentication, revokes one, and never
-// revokes the last (authentication.md, "アカウントページ", "パスキーの追加", "パスキーの失効").
+// Scenario 5: the account page lists the user's passkeys, adds one after re-authentication, revokes one, and offers
+// no revocation of the last (authentication.md, "アカウントページ", "パスキーの追加", "パスキーの失効").
 import { en } from "../../apps/worker/pages/locales/en.js";
 import { expect, test } from "../support/fixtures.js";
 import { enrolledUser, finishCodeFlow } from "../support/flows.js";
@@ -56,15 +56,5 @@ test("the account page adds a second passkey, revokes it, and keeps the last one
   await expect(rows.getByRole("button", { name: en.account_revoke })).toBeDisabled();
   const remaining = await idp.db.prepare("SELECT id FROM credentials WHERE user_id = ?").bind(user.userId).all();
   expect(remaining.results).toEqual([{ id: firstId }]);
-
-  // The disabled button is not the only guard: the Worker refuses to start revoking the last passkey.
-  const refusal = await page.evaluate(async (credentialId) => {
-    const response = await fetch("/webauthn/revoke/begin", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ credential_id: credentialId }),
-    });
-    return { status: response.status, body: (await response.json()) as unknown };
-  }, firstId);
-  expect(refusal).toEqual({ status: 409, body: { error: "last_passkey" } });
+  // The Worker's own refusal to revoke the last passkey is covered by apps/worker/test/webauthn.test.ts.
 });

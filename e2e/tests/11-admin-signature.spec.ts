@@ -1,7 +1,8 @@
 // Scenario 11: the admin Worker's RFC 9421 gate on a real workerd (docs/design/hosting-modes.md 3.8), with the bundle
 // and the deployment configuration that ship. A request signed with the allowlisted test-time P-384 key passes;
-// unsigned, wrong-key, replayed, expired, and tampered requests get the same 403 and write nothing to D1; and the
-// admin Worker's own Rate Limiting binding refuses a client IP over its limit.
+// unsigned, wrong-key, and replayed requests get the same 403 and write nothing to D1; and the admin Worker's own
+// Rate Limiting binding refuses a client IP over its limit. The expiry and tampering variants are covered by
+// apps/admin-worker/test/gate.test.ts.
 import type { D1Database } from "@cloudflare/workers-types";
 import { generateTestAdminKey, signAdminRequest, type SignOptions, type TestAdminKey } from "../../apps/admin-worker/test/signer.js";
 import { expect, test } from "../support/fixtures.js";
@@ -50,44 +51,26 @@ async function expectRefusedWithoutWrites(idp: LocalIdp, request: Request): Prom
   expect(await counts(idp.db)).toEqual(before);
 }
 
-test("a request signed with the allowlisted P-384 key creates a user and records the admin's keyid", async ({ idp }) => {
-  const response = await send(idp, await signed(idp.adminKey, freshIp()));
+test("a request signed with the allowlisted P-384 key creates a user, records the admin's keyid, and cannot be replayed", async ({ idp }) => {
+  const request = await signed(idp.adminKey, freshIp());
+  const response = await send(idp, request);
   expect(response.status).toBe(201);
   const { user_id: userId } = (await response.json()) as { user_id: string };
   const row = await idp.db.prepare("SELECT admin_name, admin_cert_sha256, admin_credential FROM audit_log WHERE target = ?").bind(`user:${userId}`).first();
   expect(row).toEqual({ admin_name: "e2e-admin", admin_cert_sha256: idp.adminKey.keyid, admin_credential: "signing-key" });
-});
 
-test("an unsigned request is refused without a D1 write", async ({ idp }) => {
-  const request = await signed(idp.adminKey, freshIp());
-  for (const name of ["signature", "signature-input", "content-digest"]) request.init.headers.delete(name);
   await expectRefusedWithoutWrites(idp, request);
 });
 
-test("a request signed by a key that is not allowlisted is refused without a D1 write", async ({ idp }) => {
+test("an unsigned request, or one signed by a key that is not allowlisted, is refused without a D1 write", async ({ idp }) => {
+  const unsigned = await signed(idp.adminKey, freshIp());
+  for (const name of ["signature", "signature-input", "content-digest"]) unsigned.init.headers.delete(name);
+  await expectRefusedWithoutWrites(idp, unsigned);
+
   const stranger = await generateTestAdminKey();
   await expectRefusedWithoutWrites(idp, await signed(stranger, freshIp()));
   // Claiming the allowlisted keyid does not help: the allowlisted public key does not verify it.
   await expectRefusedWithoutWrites(idp, await signed(stranger, freshIp(), { keyid: idp.adminKey.keyid }));
-});
-
-test("a replayed request is refused without a second D1 write", async ({ idp }) => {
-  const request = await signed(idp.adminKey, freshIp());
-  expect((await send(idp, request)).status).toBe(201);
-  await expectRefusedWithoutWrites(idp, request);
-});
-
-test("an expired signature is refused without a D1 write", async ({ idp }) => {
-  await expectRefusedWithoutWrites(idp, await signed(idp.adminKey, freshIp(), { created: Math.floor(Date.now() / 1000) - 61 }));
-});
-
-test("a request tampered with after signing is refused without a D1 write", async ({ idp }) => {
-  const body = await signed(idp.adminKey, freshIp());
-  body.init.body = JSON.stringify({ name: "Mallory" });
-  await expectRefusedWithoutWrites(idp, body);
-  const path = await signed(idp.adminKey, freshIp());
-  path.url = `https://${ADMIN_HOST}/v1/groups`;
-  await expectRefusedWithoutWrites(idp, path);
 });
 
 test("the admin Worker's own rate limit refuses a client IP over its limit", async ({ idp }) => {
