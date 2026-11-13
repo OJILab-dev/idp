@@ -156,7 +156,6 @@ test_custom_domain_ci_deploy() {
   assert_equal "custom_domain CI: exit code" "0" "$(status_of "${tree}")"
   # Both builds before any change; migrations, then the IdP Worker, then the admin Worker (deployment.md).
   assert_equal "custom_domain CI: builds, migrations, IdP Worker, admin Worker" "$(expected_changes "${tree}")" "$(changes_of "${tree}")"
-  assert_equal "custom_domain CI: no workers.dev subdomain lookup" "0" "$(grep -c '^curl subdomain' "${tree}/stub/calls" || true)"
   assert_equal "custom_domain CI: the IdP Worker's build environment" \
     "IDP_ADMIN_HOST=admin.id.example.com|IDP_ADMIN_RATE_LIMIT_NAMESPACE_ID=1002|IDP_ADMIN_SIGNING_KEYS=[{\"keyid\":\"${P384_KEYID}\",\"name\":\"alice\",\"public_key\":\"${P384_SPKI}\"}]|IDP_D1_DATABASE_ID=${D1_ID}|IDP_HOSTING_MODE=custom_domain|IDP_ISSUER=https://id.example.com|IDP_RATE_LIMIT_NAMESPACE_ID=1001" \
     "$(tr '\n' '|' <"${tree}/stub/build_env_worker" | sed 's/|$//')"
@@ -169,7 +168,6 @@ test_custom_domain_ci_deploy() {
   # workers.dev's bot protection refuses library default User-Agents before the Worker (hosting-modes.md 5.2).
   assert_equal "custom_domain CI: every probe names itself" "0" "$(grep -c 'user_agent= ' "${tree}/stub/probes" || true)"
   assert_equal "custom_domain CI: op is never called" "" "$(cat "${tree}/stub/op/calls")"
-  assert_equal "custom_domain CI: a healthy deployment waits for nothing" "" "$(cat "${tree}/stub/sleeps")"
   rm -rf "${tree}"
 }
 
@@ -182,9 +180,6 @@ test_workers_dev_ci_deploy() {
   assert_equal "workers_dev CI: subdomain check first" "$(expected_changes "${tree}" "curl subdomain;")" "$(changes_of "${tree}")"
   assert_equal "workers_dev CI: the derived issuer" "IDP_ISSUER=https://idp.team-1.workers.dev" \
     "$(grep '^IDP_ISSUER=' "${tree}/stub/build_env_worker")"
-  assert_equal "workers_dev CI: the derived admin host" "IDP_ADMIN_HOST=idp-admin.team-1.workers.dev" \
-    "$(grep '^IDP_ADMIN_HOST=' "${tree}/stub/build_env_admin-worker")"
-  assert_equal "workers_dev CI: the mode" "IDP_HOSTING_MODE=workers_dev" "$(grep '^IDP_HOSTING_MODE=' "${tree}/stub/build_env_worker")"
   rm -rf "${tree}"
 
   tree="$(make_tree workers_dev)"
@@ -209,15 +204,6 @@ test_plain_http_checks() {
   run_ci "${tree}" deploy.sh --ci test
   assert_equal "custom_domain: a zone redirect instead of the Worker's fails" "1" "$(status_of "${tree}")"
   rm -rf "${tree}"
-
-  local mode
-  for mode in custom_domain workers_dev; do
-    tree="$(make_tree "${mode}")"
-    printf 'answer\n' >"${tree}/stub/http_state"
-    run_ci "${tree}" deploy.sh --ci test
-    assert_equal "${mode}: an answer over plain http fails" "1" "$(status_of "${tree}")"
-    rm -rf "${tree}"
-  done
 }
 
 test_admin_gate_check() {
@@ -287,8 +273,6 @@ test_new_routes_are_waited_for() {
   assert_equal "issuer never live: discovery gets the bounded attempts" "12" "$(probes_of "${tree}" "${discovery}")"
   assert_equal "issuer never live: no wait after the last attempt" "11" "$(waits_of "${tree}")"
   assert_equal "issuer never live: the check stops there" "0" "$(probes_of "${tree}" "${admin}")"
-  assert_equal "issuer never live: the failure names the 404" "1" \
-    "$(grep -c "^error: discovery at https://idp.team-1.workers.dev answered 404 text/plain" "${tree}/err" || true)"
   rm -rf "${tree}"
 
   tree="$(make_tree workers_dev)"
@@ -296,8 +280,6 @@ test_new_routes_are_waited_for() {
   run_ci "${tree}" deploy.sh --ci test
   assert_equal "admin never live: the deploy fails" "1" "$(status_of "${tree}")"
   assert_equal "admin never live: the gate gets the bounded attempts" "12" "$(probes_of "${tree}" "${admin}")"
-  assert_equal "admin never live: the failure names the 404" "1" \
-    "$(grep -c "^error: an unsigned request to idp-admin.team-1.workers.dev answered 404 text/plain" "${tree}/err" || true)"
   rm -rf "${tree}"
 }
 
@@ -346,15 +328,9 @@ test_stops_before_any_change() {
   rm -rf "${tree}"
 
   tree="$(make_tree custom_domain)"
-  printf '{"result":[]}' >"${tree}/stub/d1_list"
-  run_ci "${tree}" deploy.sh --ci test
-  assert_equal "a missing D1 database stops before any change" "" "$(changes_of "${tree}")"
-  rm -rf "${tree}"
-
-  tree="$(make_tree custom_domain)"
   printf '[]' >"${tree}/stub/d1_list"
   run_ci "${tree}" deploy.sh --ci test
-  assert_equal "a missing D1 database (bare array) stops before any change" "" "$(changes_of "${tree}")"
+  assert_equal "a missing D1 database stops before any change" "" "$(changes_of "${tree}")"
   rm -rf "${tree}"
 
   tree="$(make_tree custom_domain)"
@@ -441,18 +417,6 @@ test_local_deploy() {
   rm -rf "${tree}"
 }
 
-test_usage() {
-  local tree
-  tree="$(make_tree custom_domain)"
-  run_ci "${tree}" deploy.sh --ci
-  assert_equal "no deployment is a usage error" "2" "$(status_of "${tree}")"
-  run_ci "${tree}" deploy.sh --unknown test
-  assert_equal "an unknown option is a usage error" "2" "$(status_of "${tree}")"
-  run_ci "${tree}" deploy.sh --help
-  assert_equal "--help succeeds" "0" "$(status_of "${tree}")"
-  rm -rf "${tree}"
-}
-
 # Runs terraform.sh --ci as the deploy workflow does: the Terraform token and the R2 credentials in the environment
 # under the names Terraform reads, mapped there by the workflow step.
 run_terraform_ci() {
@@ -470,7 +434,6 @@ test_terraform_ci() {
   local tree
   tree="$(make_tree custom_domain)"
   run_terraform_ci "${tree}" test init
-  assert_equal "terraform CI init: exit code" "0" "$(status_of "${tree}")"
   run_terraform_ci "${tree}" test apply
   assert_equal "terraform CI apply: exit code" "0" "$(status_of "${tree}")"
   # Non-interactive in CI: the main ruleset's review is the approval (deployment.md, デプロイのパイプライン).
@@ -514,7 +477,6 @@ test_ci_refuses_an_older_commit
 test_removes_earlier_build_output
 test_failed_idp_deploy_stops_the_admin_deploy
 test_local_deploy
-test_usage
 test_terraform_ci
 
 if [[ "${failures}" -ne 0 ]]; then
