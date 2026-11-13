@@ -13,12 +13,16 @@ Nov 13, 2026 · @Shinra Yamakawa
 3. **`shared` を廃止する**：`shared` というディレクトリ名は使わない。`user/` と `admin/` の両方が使う IdP 固有の方針は、関心ごとのディレクトリとして `packages/core/src/` の直下、`user/` と `admin/` の隣に平らに置く（例：`packages/core/src/audit/`、`packages/core/src/identifiers/`）。`packages/core/package.json` の `exports` もそれに合わせる。
 4. **きれいに分けられないことは設計の問題として扱う**：標準のロジックが IdP の方針ときれいに分けられないことは、core に残す理由にせず、設計の問題として下の「結合の問題と解き方」に記録し、そこで解く。
 5. **パッケージのスコープは `@idp`**：新しいパッケージはすべて `@idp` のスコープを持つ（例：`@idp/base64url`、`@idp/jws`）。運用者が決定済み。
+6. **Cloudflare に固有のコードは `@idp/cloudflare` の 1 つにまとめる**：`@idp/workers-platform` は置かない。`packages/cloudflare/` に `@idp/cloudflare` を置き、関心ごとのサブパスの `exports` を持たせる。`./d1` は今の `@idp/d1-adapter` を `src/d1/` に移したもの、`./workers/tls` は `shared/tls.ts` を `src/workers/tls/` に移したもの。Cloudflare に固有の関心が増えたら、`workers/rate-limit` や `r2` のようにサブパスを足す。依存の規則は下の「`@idp/cloudflare` の規則」のとおりで、lint と境界のテストで強制する。
+7. **`@idp/structured-fields` は RFC 9651 どおりにする**：重複したキーの後勝ちを含めて RFC 9651 に正確に従い、HTTP WG の structured-field-tests を通す。今の IdP が重複したキーを拒否する動作は core の方針として残し、IdP の外から見える振る舞いは変えない（下の結合の問題 7）。
+8. **`canonicalJson` を RFC 8785 の標準パッケージにする**：`admin/idempotency.ts` の `canonicalJson` を、規格の名前を付けた `@idp/json-canonicalization`（RFC 8785、JSON Canonicalization Scheme）に切り出し、RFC 8785 に完全に従わせて、RFC のテストベクタを通す。今の実装が RFC 8785 とずれていれば、パッケージの中で直し、IdP に固有の制限は core に残して、冪等性の振る舞いを変えない（下の結合の問題 13）。
+9. **`examples/rp-sample` は標準パッケージを使わない**：RP のサンプルは IdP のリポジトリのコードを import しない今の lint の禁止を保ち、標準パッケージもその対象に含める。
 
 ## 標準パッケージの規則
 
 **配置**
 
-- `packages/<規格の名前>/package.json`：`name` は `@idp/<規格の名前>`、`private: true`、`type: module`、`exports` は `"."` だけで `./src/index.ts` を指す（既存の `packages/core` と `packages/d1-adapter` と同じく、ビルドせずに TypeScript のソースを公開する）。`dependencies` には依存する標準パッケージだけを `workspace:*` で書く。
+- `packages/<規格の名前>/package.json`：`name` は `@idp/<規格の名前>`、`private: true`、`type: module`、`exports` は `"."` だけで `./src/index.ts` を指す（既存の `packages/core` と同じく、ビルドせずに TypeScript のソースを公開する）。`dependencies` には依存する標準パッケージだけを `workspace:*` で書く。
 - `packages/<規格の名前>/src/index.ts`：公開する名前の再エクスポートだけを置く。
 - `packages/<規格の名前>/src/<規格の名前>.ts`：実装。大きいパッケージは関心ごとに複数のファイルに分けてよい。
 - `packages/<規格の名前>/test/`：そのパッケージのテストと、規格のテストベクタ。
@@ -26,7 +30,7 @@ Nov 13, 2026 · @Shinra Yamakawa
 
 **依存の禁止の強制**
 
-- `eslint.config.js` に、`packages/<標準パッケージ>/src/**` を対象にした `no-restricted-imports` を足す。許すのは、同じパッケージの中の相対の import と、依存として宣言した `@idp/<標準パッケージ>` だけ。`node:*`、`cloudflare:*`、`@cloudflare/*`、`zod`、`hono`、`@idp/core` とその下、`@idp/d1-adapter`、`@idp/workers-platform`、パッケージの外に出る相対の import（`../../` で始まるもの）を禁止する。
+- `eslint.config.js` に、`packages/<標準パッケージ>/src/**` を対象にした `no-restricted-imports` を足す。許すのは、同じパッケージの中の相対の import と、依存として宣言した `@idp/<標準パッケージ>` だけ。`node:*`、`cloudflare:*`、`@cloudflare/*`、`zod`、`hono`、`@idp/core` とその下、`@idp/cloudflare` とその下、パッケージの外に出る相対の import（`../../` で始まるもの）を禁止する。
 - `packages/core/test/boundary.test.ts` に、標準パッケージから上の禁止に当たる import をすると lint が失敗する場合と、別の標準パッケージの import が通る場合を足す。
 - 標準パッケージの間の依存は下の「依存グラフ」のとおりで、循環を作らない。グラフにない辺を足すときはこの文書を先に直す。
 
@@ -49,7 +53,7 @@ Nov 13, 2026 · @Shinra Yamakawa
 | `@idp/cose-key` | RFC 9052 §7、RFC 9053、RFC 8230 | COSE の公開鍵の取り込みと署名の検証（-8、-7、-257） | `user/webauthn/cose.ts` | cbor、base64url | RFC 9052 付録 C.7 |
 | `@idp/jws` | RFC 7515、RFC 7518、RFC 8037、RFC 9864、RFC 7517 | JWS のコンパクト形式の署名と検証、アルゴリズム（`Ed25519`、`RS256`）、公開鍵の JWK と JWK Set の型 | `user/jws.ts`、`user/signing-keys.ts` の型 | base64url | RFC 8037 付録 A.4、RFC 7515 付録 A.2 |
 | `@idp/webauthn` | WebAuthn Level 3 §7.1、§7.2 | 登録と認証の応答の解析と検証 | `user/webauthn/verify.ts` | base64url、cbor、cose-key | WebAuthn Level 3 の仕様にあるテストベクタ（下の前提 6） |
-| `@idp/structured-fields` | RFC 9651 | Dictionary の厳格な解析と Inner List の直列化 | `admin/structured-fields.ts` | なし | RFC 9651 の本文の例（下の結合の問題 7） |
+| `@idp/structured-fields` | RFC 9651 | List、Dictionary、Item（Date と Display String を含むすべての Bare Item）の解析と直列化。RFC 9651 が回復を指示する箇所（重複したキーの後勝ちなど）を呼び出し側に知らせる口を持つ | `admin/structured-fields.ts` | なし | HTTP WG の structured-field-tests と RFC 9651 の本文の例（下の結合の問題 7） |
 | `@idp/digest-fields` | RFC 9530 | `Content-Digest` の解析（`sha-256`）と本文のダイジェストの定数時間の比較 | `admin/signature.ts` の一部 | structured-fields | RFC 9530 付録 B |
 | `@idp/http-message-signatures` | RFC 9421（検証） | `Signature-Input` と `Signature` の取り出し、署名の基底（§2.5）の組み立て、`ecdsa-p384-sha384` の検証 | `admin/signature.ts` の一部 | structured-fields | RFC 9421 付録 B.2 の署名の基底 |
 | `@idp/problem-details` | RFC 9457 | problem details のオブジェクトの型と `application/problem+json` | `admin/problem.ts` の型 | なし | なし（規格にない） |
@@ -57,12 +61,33 @@ Nov 13, 2026 · @Shinra Yamakawa
 | `@idp/oidc-discovery` | OpenID Connect Discovery 1.0、RP-Initiated Logout 1.0 §2.1 | OpenID Provider Metadata（§3）の型と、well-known の場所（§4） | `user/discovery.ts` の型 | なし | なし（規格にない） |
 | `@idp/oauth-native-apps` | RFC 8252 §7、§7.3、§8.3、RFC 9700 §2.1 | redirect URI の 3 つの登録の形の分類、ループバックの IP リテラル、ループバックのポートを無視する一致と、それ以外の完全一致 | `shared/redirect-uri-registration.ts` の一部、`user/redirect-uri.ts` | なし | なし（規格にない） |
 | `@idp/accept-language` | RFC 9110 §12.5.4、§12.4.2 | `Accept-Language` の解析（q 値の順） | `user/locale.ts` の一部 | なし | RFC 9110 §12.5.4 の例 |
+| `@idp/json-canonicalization` | RFC 8785 | JSON の値の正規の直列化（JCS） | `admin/idempotency.ts` の `canonicalJson` | なし | RFC 8785 の本文と付録の例（下の結合の問題 13） |
 
 標準パッケージではないが、この分割で新しく置くパッケージが 1 つある。
 
-| パッケージ | 中身 | 元のファイル | 依存 |
-| --- | --- | --- | --- |
-| `@idp/workers-platform` | Cloudflare の Workers の上でだけ意味を持つ、2 つの Worker に共通の処理。今は `request.cf.tlsVersion` による TLS の版の確認だけ | `shared/tls.ts` | なし（型は `@cloudflare/workers-types`） |
+| パッケージ | サブパス | 中身 | 元のファイル | 依存 |
+| --- | --- | --- | --- | --- |
+| `@idp/cloudflare` | `./d1`、`./d1/admin` | core の D1 のポートの、Cloudflare D1 による実装 | `packages/d1-adapter/src/` | `@idp/core`（ポートの型）、標準パッケージ |
+| `@idp/cloudflare` | `./workers/tls` | `request.cf.tlsVersion` による TLS の版の確認 | `shared/tls.ts` | なし（型は `@cloudflare/workers-types`） |
+
+## `@idp/cloudflare` の規則
+
+Cloudflare の上でだけ意味を持つコード（D1、Workers の `request.cf`、将来の Rate Limiting や R2）は、`packages/cloudflare/` の 1 つのパッケージに、関心ごとのサブパスとして置く。
+
+**配置**
+
+- `packages/cloudflare/package.json`：`name` は `@idp/cloudflare`。`exports` は関心ごとのサブパスだけを持ち、`"."` を持たない。今のサブパスは `./d1`（`./src/d1/index.ts`）、`./d1/admin`（`./src/d1/admin.ts`、管理用の Worker だけが使う D1 の実装）、`./workers/tls`（`./src/workers/tls/index.ts`）。
+- `packages/cloudflare/src/<サブパス>/`：サブパスごとのソース。`packages/cloudflare/test/<サブパス>/`：サブパスごとのテスト（今の D1 の適合テストは `test/d1/` に移る）。
+- 新しい関心は、`src/workers/rate-limit/` や `src/r2/` のようにサブパスを足し、この文書の下の辺の一覧を先に直す。
+
+**依存の規則**
+
+- core と標準パッケージは、`@idp/cloudflare` とその下を import しない。
+- `./d1` と `./d1/admin` は core のポートを実装する。import してよいのは `@idp/core` の入口と標準パッケージだけ。
+- `./workers/tls` は、core も `./d1` も import しない。
+- サブパスの間の import は、宣言した辺だけを許す。今は宣言した辺はない（`./d1/admin` から `./d1` へのパッケージの中の import を除く）。
+- `apps/*` が合成の層で、core と `@idp/cloudflare` のサブパスをつなぐ。
+- 強制：`eslint.config.js` の `no-restricted-imports` で上の禁止を書き、`packages/core/test/boundary.test.ts` に、禁止に当たる import で lint が失敗する場合と、許す import が通る場合を足す。利用者向けの IdP の Worker から `./d1/admin` への import は、今の `@idp/d1-adapter/admin` と同じく禁止する。
 
 ## 依存グラフ
 
@@ -85,12 +110,15 @@ flowchart LR
     disc["@idp/oidc-discovery"]
     native["@idp/oauth-native-apps"]
     lang["@idp/accept-language"]
+    jcs["@idp/json-canonicalization"]
   end
 
   subgraph idp["IdP 固有"]
     core["@idp/core"]
-    platform["@idp/workers-platform"]
-    d1["@idp/d1-adapter"]
+    subgraph cloudflare["@idp/cloudflare"]
+      d1["./d1、./d1/admin"]
+      tls["./workers/tls"]
+    end
     worker["apps/worker"]
     admin["apps/admin-worker"]
   end
@@ -108,15 +136,16 @@ flowchart LR
 
   core --> standards
   d1 --> core
+  d1 --> standards
   worker --> core
   worker --> d1
-  worker --> platform
+  worker --> tls
   admin --> core
   admin --> d1
-  admin --> platform
+  admin --> tls
 ```
 
-`@idp/core` は標準パッケージのすべてに依存してよい。`apps/` が標準パッケージを直接 import するのは、テストで値を作るとき（base64url など）だけにし、本番のコードは core を通す。
+`@idp/core` は標準パッケージのすべてに依存してよい。core と標準パッケージから `@idp/cloudflare` への矢印はなく、`./workers/tls` から core と `./d1` への矢印もない（上の「`@idp/cloudflare` の規則」）。`examples/rp-sample` はこのグラフの外にあり、どのパッケージにも依存しない。`apps/` が標準パッケージを直接 import するのは、テストで値を作るとき（base64url など）だけにし、本番のコードは core を通す。
 
 ## core の新しい構成
 
@@ -178,7 +207,7 @@ flowchart LR
 | `shared/passkey-rules.ts` | `core/src/passkeys/passkey-rules.ts` | `SqlCondition` を `db` から使う |
 | `shared/problems.ts` | `core/src/problems/problem-kinds.ts` | |
 | `shared/redirect-uri-registration.ts` | 分割：`packages/oauth-native-apps/src/redirect-uri.ts` と `core/src/clients/redirect-uri-registration.ts` | 結合の問題 9 |
-| `shared/tls.ts` | `packages/workers-platform/src/tls.ts` | 結合の問題 3 |
+| `shared/tls.ts` | `packages/cloudflare/src/workers/tls/tls.ts` | 結合の問題 3 |
 | `user/authorize.ts` | 残る | `code_challenge` の形の確認に `@idp/pkce` を使う |
 | `user/clients.ts` | 残る | |
 | `user/deps.ts` | 残る | |
@@ -209,7 +238,7 @@ flowchart LR
 | `admin/execute.ts` | 残る | |
 | `admin/grants.ts` | 残る | |
 | `admin/groups.ts` | 残る | |
-| `admin/idempotency.ts` | 残る | `canonicalJson` は RFC 8785 を名乗らないので残す（運用者に確認すること 3） |
+| `admin/idempotency.ts` | 残る | `canonicalJson` を `@idp/json-canonicalization` へ。IdP に固有の制限があれば残す（結合の問題 13） |
 | `admin/index.ts` | 残る | |
 | `admin/nonces.ts` | 残る | |
 | `admin/operation.ts` | 残る | |
@@ -220,7 +249,16 @@ flowchart LR
 | `admin/registry.ts` | 残る | |
 | `admin/schemas.ts` | 残る | |
 | `admin/signature.ts` | 分割：`packages/http-message-signatures/`、`packages/digest-fields/`、残りは `admin/signature.ts` | 結合の問題 8 |
-| `admin/structured-fields.ts` | `packages/structured-fields/src/structured-fields.ts` | 結合の問題 7 |
+| `admin/structured-fields.ts` | `packages/structured-fields/src/structured-fields.ts` | RFC 9651 どおりに直す。重複の拒否などの厳しさは `admin/signature.ts` の方針へ（結合の問題 7） |
+
+`packages/d1-adapter` のファイルの行き先。
+
+| 現在のファイル | 行き先 |
+| --- | --- |
+| `d1-adapter/src/index.ts`、`src/d1.ts` | `packages/cloudflare/src/d1/index.ts`、`src/d1/d1.ts` |
+| `d1-adapter/src/admin.ts` | `packages/cloudflare/src/d1/admin.ts` |
+| `d1-adapter/test/conformance.test.ts`、`test/admin-nonces.test.ts` | `packages/cloudflare/test/d1/` |
+| `d1-adapter/package.json` | 削除。`packages/cloudflare/package.json` に置き換える |
 | `admin/users.ts` | 残る | |
 
 ## 結合の問題と解き方
@@ -235,7 +273,7 @@ flowchart LR
 
 **3. `shared/tls.ts` が Cloudflare の `request.cf` を読む**
 
-`request.cf.tlsVersion` は Cloudflare の Workers の上にしかない値で、標準パッケージにも core にも置けない。2 つの Worker の両方が使うので、どちらかの Worker に置くと、もう片方がそれを import するか複製することになる。新しい IdP 固有のパッケージ `@idp/workers-platform`（`packages/workers-platform/`）に移し、`apps/worker/src/app.ts` と `apps/admin-worker/src/gate.ts` がそこから import する。core は TLS の版を知らなくなる。受け付ける版の一覧（TLS 1.2 と 1.3、RFC 8996）と fail-closed の性質は変えない。
+`request.cf.tlsVersion` は Cloudflare の Workers の上にしかない値で、標準パッケージにも core にも置けない。2 つの Worker の両方が使うので、どちらかの Worker に置くと、もう片方がそれを import するか複製することになる。`@idp/cloudflare` のサブパス `./workers/tls`（`packages/cloudflare/src/workers/tls/`）に移し、`apps/worker/src/app.ts` と `apps/admin-worker/src/gate.ts` がそこから import する。D1 のアダプタも同じパッケージの `./d1` に移るが、`./workers/tls` は `./d1` も core も import しないので、TLS の確認が D1 や IdP の型を持ち込むことはない。core は TLS の版を知らなくなる。受け付ける版の一覧（TLS 1.2 と 1.3、RFC 8996）と fail-closed の性質は変えない。
 
 **4. core が Zod に依存している**
 
@@ -262,7 +300,12 @@ Zod を使うのは `admin/` の入力と出力のスキーマだけで、標準
 
 **7. `admin/structured-fields.ts` は RFC 9651 より厳しい**
 
-この解析器は、重複したキーを RFC 9651 のように後勝ちで受け入れず、エラーにする。Date と Display String も扱わない。どちらも管理者の署名の形（`docs/design/hosting-modes.md` の 3.2）のための選択で、汎用の RFC 9651 の実装ではない。移す PR では振る舞いを変えず、パッケージの説明に「RFC 9651 の Dictionary の厳格な部分集合で、重複したキーを拒否する」と書く。RFC 9651 どおりの後勝ちの動作を選べるようにするかと、HTTP WG の structured-field-tests（RFC の外のテスト集）を取り込むかは、運用者に確認する（下の 2）。
+この解析器は、重複したキー（Dictionary の成員と Parameters の両方）を RFC 9651 のように後勝ちで受け入れず、エラーにする。Date と Display String を扱わず、空の Dictionary を拒否し、Byte Sequence のパディングの欠けと 0 でないパディングのビットを拒否する（RFC 9651 §4.2.7 は、どちらも失敗させないことを SHOULD とする）。どれも管理者の署名の形（`docs/design/hosting-modes.md` の 3.2）のための選択で、汎用の RFC 9651 の実装ではない。決定 7 のとおり、パッケージと方針を次のように分ける。
+
+- `@idp/structured-fields` は RFC 9651 に正確に従う。List、Dictionary、Item の解析（§4.2）と直列化（§4.1）、Date と Display String を含むすべての Bare Item、重複したキーの後勝ちを実装し、HTTP WG の structured-field-tests をパッケージの `test/` に写して通す。
+- RFC 9651 が失敗させずに回復するように指示する箇所（重複した Dictionary のキー、重複した Parameters のキー、パディングの欠けた Byte Sequence、0 でないパディングのビット）では、パッケージは既定では RFC どおりに回復し、呼び出し側が渡した観察の関数があれば、回復の種類と場所を知らせる。観察の関数は失敗を決めない仕組みで、何を拒否するかは呼び出し側が決める。
+- 管理者の署名の厳しさは core の方針として `admin/signature.ts` の側に残す。観察の関数で回復の知らせを受けたら拒否し、解析の結果に Date か Display String があれば拒否し、空の Dictionary を拒否する。拒否はどれも今と同じ `malformed` になり、受け付けるヘッダーの集合と拒否の理由は今と同じになる。
+- 直列化（`@signature-params` の行、RFC 9421 §2.3）は、今の解析器が受け付ける値に対しては今と同じ文字列を出す。小数の丸め（§4.1.5 の偶数への丸め）が今の実装と違いうるのは、小数部が 4 桁以上の値だけで、解析器はそれを受け付けないので、署名の基底は変わらない。
 
 **8. `admin/signature.ts` は RFC 9421 の検証と管理者の署名の形を混ぜている**
 
@@ -297,6 +340,13 @@ Zod を使うのは `admin/` の入力と出力のスキーマだけで、標準
 - `packages/core/test/keys.ts`（Worker Secret の形の JWK の生成）は IdP の契約の形なので core に残す。
 - `packages/core/test/admin-signature-fixture.ts` と `support/admin-signature-probe.ts` は管理者の署名の形のためのもので、core に残す。
 
+**13. `canonicalJson` は RFC 8785 とずれうる**
+
+`admin/idempotency.ts` の `canonicalJson` は、要求の本文のハッシュ（`requestHash`）を作るための正規の直列化で、RFC 8785 と同じく、オブジェクトのキーを並べ替えて空白を入れずに直列化する。ただし RFC 8785 を名乗っておらず、RFC のテストベクタで確かめていない。決定 8 のとおり、次のように分ける。
+
+- `@idp/json-canonicalization` は RFC 8785 に完全に従う。キーの順は UTF-16 のコード単位の順（§3.2.3）、文字列と数の直列化は ECMAScript の規則（§3.2.2.2、§3.2.2.3）で、I-JSON（RFC 7493）の外の入力（有限でない数、対にならないサロゲート）は直列化せずにエラーにする。RFC 8785 の本文と付録の例をテストベクタにする。
+- 移す PR で今の実装と RFC 8785 を比べ、ずれがあればパッケージの中で直す。管理 API の要求の本文は Zod のスキーマで確かめた JSON の値なので、ずれが表に出る入力（有限でない数、対にならないサロゲート、`undefined` の値）が `requestHash` に届くかを確かめる。届く入力について今の出力と違うなら、今の扱いを core の方針として `admin/idempotency.ts` に残し、同じ要求が同じハッシュになる冪等性の振る舞いを変えない。
+
 ## テストとテストベクタ
 
 - ふるまいのテストはコードと一緒に動かす。テストの中身は変えず、import の先だけを変える。
@@ -310,21 +360,24 @@ Zod を使うのは `admin/` の入力と出力のスキーマだけで、標準
 
 | ファイル | 変わる import |
 | --- | --- |
-| `apps/worker/src/app.ts` | `isAcceptedTlsVersion` を `@idp/workers-platform` から、`Issuer` を `@idp/core/issuer` から |
+| `apps/worker/src/app.ts` | `isAcceptedTlsVersion` を `@idp/cloudflare/workers/tls` から、`Issuer` を `@idp/core/issuer` から |
 | `apps/worker/src/http.ts` | `Issuer` を `@idp/core/issuer` から |
 | `apps/worker/src/config.ts` | ホスティングを `@idp/core/hosting`、issuer を `@idp/core/issuer`、`Database` を `@idp/core/db` から |
 | `apps/worker/cloudflare.config.ts` | `@idp/core/shared/hosting` と `@idp/core/shared/issuer` を `@idp/core/hosting` と `@idp/core/issuer` に |
 | `apps/worker/pages/common.ts` | 変わらない（`user/locale.ts` は残る）。`locale.ts` が `@idp/accept-language` を import するが、サーバーのコードを持ち込まない性質は保つ |
 | `apps/worker/test/webauthn.test.ts`、`apps/worker/test/fixture.ts` | base64url を `@idp/base64url`、`sha256Base64url` を `@idp/jwk-thumbprint`、パスキーの上限を `core/src/passkeys/`、ソフトウェアの認証器を `packages/webauthn/test/support/` から |
-| `apps/admin-worker/src/gate.ts` | `isAcceptedTlsVersion` を `@idp/workers-platform` から |
+| `apps/admin-worker/src/gate.ts` | `isAcceptedTlsVersion` を `@idp/cloudflare/workers/tls` から |
+| `apps/worker`、`apps/admin-worker` の D1 のアダプタを使うファイル | `@idp/d1-adapter` を `@idp/cloudflare/d1` に、`@idp/d1-adapter/admin` を `@idp/cloudflare/d1/admin` に |
 | `apps/admin-worker/src/config.ts`、`src/rs256.ts`、`test/rs256-idp.test.ts` | ホスティングと issuer を `@idp/core/hosting` と `@idp/core/issuer` から |
 | `apps/admin-worker/src/openapi.ts`、`test/openapi.test.ts` | `PROBLEM_KINDS` と `ProblemKind` を `@idp/core/problems` から |
 | `apps/admin-worker/cloudflare.config.ts` | `apps/worker/cloudflare.config.ts` と同じ |
-| `apps/worker/package.json`、`apps/admin-worker/package.json` | `@idp/workers-platform` を依存に足す。`apps/worker` はテストのために `@idp/base64url` と `@idp/jwk-thumbprint` も足す |
+| `apps/worker/package.json`、`apps/admin-worker/package.json` | `@idp/d1-adapter` を `@idp/cloudflare` に置き換える。`apps/worker` はテストのために `@idp/base64url` と `@idp/jwk-thumbprint` も足す |
 
 **ほかの場所**
 
-- `packages/d1-adapter`：`src/d1.ts`、`src/admin.ts`、`test/conformance.test.ts` の `@idp/core/shared` を `@idp/core/db` に。テストの注記のパス（`packages/core/src/shared/db.ts`）も直す。
+- `packages/cloudflare/src/d1`（今の `packages/d1-adapter`）：`d1.ts`、`admin.ts`、`test/d1/conformance.test.ts` の `@idp/core/shared` を `@idp/core/db` に。テストの注記のパス（`packages/core/src/shared/db.ts`）も直す。
+- `eslint.config.js` と `packages/core/test/boundary.test.ts`：`@idp/d1-adapter/admin` と `**/d1-adapter/src/admin*` の禁止を `@idp/cloudflare/d1/admin` と `**/cloudflare/src/d1/admin*` に置き換え、上の「`@idp/cloudflare` の規則」を足す。
+- `examples/rp-sample`：今の lint の禁止（`@idp/*` と `packages/` の下）が標準パッケージも止めることを、`boundary.test.ts` の確認に含める（決定 9）。
 - `e2e/support/seed.ts`、`e2e/support/hosting.ts`：`packages/core/src/shared/index.js` への相対の import を、関心のディレクトリ（`identifiers`、`issuer`、`hosting`）に。
 - `examples/rp-sample`：IdP のコードを import しない（lint で禁止）ので import は変わらない。`src/config.ts` の注記のパス（`packages/core/src/shared/identifiers.ts`）を直す。
 - `cmd/idpctl`：Go のモジュールで TypeScript を import しない。`internal/cli/operations.go` の注記が指す `POST_LOGOUT_REDIRECT_URI_RULES` の場所を `core/src/clients/` に直す。
@@ -334,7 +387,12 @@ Zod を使うのは `admin/` の入力と出力のスキーマだけで、標準
 
 ## PR の順番
 
-葉のパッケージから順に動かす。各 PR はコードを動かすだけで振る舞いを変えず、`pnpm run check` を通してからマージする。各 PR は、動かした名前を使うすべての import を同じ PR で書き換え、core から新しいパッケージへの再エクスポートを残さない。
+葉のパッケージから順に、下の表の順番で動かす。各 PR は次をすべて満たしてからマージする。
+
+- コードを動かすだけで振る舞いを変えない。例外は、決定 7 と 8 が標準パッケージの中で規格どおりにすることを求める 7 と 15 だけで、そこでも IdP の外から見える振る舞いは core の方針で今のまま保つ。
+- 動かした名前を使うすべての参照（`apps/`、`e2e/`、`examples/`、`cmd/idpctl`、`contract/`、`scripts/`、文書）を同じ PR で書き換え、再エクスポートの中継を残さない。
+- パッケージの規格のテストベクタを、コードを動かす前にテストとして書く。
+- `pnpm run check` をローカルで通し、CI（check、e2e、idpctl、infra）が通ってからマージする。
 
 | 順 | PR | 動かすもの | 一緒に動くテストと足すテストベクタ |
 | --- | --- | --- | --- |
@@ -344,7 +402,7 @@ Zod を使うのは `admin/` の入力と出力のスキーマだけで、標準
 | 4 | `@idp/cose-key` | `user/webauthn/cose.ts`。`PUB_KEY_CRED_PARAMS` の方針を `ceremony.ts` へ | `webauthn-verify.test.ts` の COSE の部分。RFC 9052 付録 C.7 |
 | 5 | `@idp/jws` | `user/jws.ts`、`signing-keys.ts` の型。`InvalidTokenError` を `tokens.ts` へ | `jws.test.ts` のふるまいの部分。RFC 8037 付録 A.4、RFC 7515 付録 A.2。契約の `jws_ed25519` は core に残る |
 | 6 | `@idp/webauthn` | `user/webauthn/verify.ts`、`test/webauthn-authenticator.ts` | `webauthn-verify.test.ts` の残り。WebAuthn Level 3 のテストベクタ（前提 6）。パスキーのユースケースのテストは core に残る |
-| 7 | `@idp/structured-fields` | `admin/structured-fields.ts` | `admin/structured-fields.test.ts`。RFC 9651 の本文の例 |
+| 7 | `@idp/structured-fields` | `admin/structured-fields.ts` を RFC 9651 どおりに直して移す。重複の拒否などの厳しさを `admin/signature.ts` の方針へ（結合の問題 7） | `admin/structured-fields.test.ts` のふるまいの部分。HTTP WG の structured-field-tests と RFC 9651 の本文の例。管理者の署名が今と同じヘッダーを拒否することは `admin/signature.test.ts` が確かめる |
 | 8 | `@idp/digest-fields` | `admin/signature.ts` の `Content-Digest` の部分 | `admin/signature.test.ts` の `Content-Digest` の部分。RFC 9530 付録 B |
 | 9 | `@idp/http-message-signatures` | `admin/signature.ts` の RFC 9421 の部分 | `admin/signature.test.ts` の署名の基底の部分。RFC 9421 付録 B.2 の署名の基底。契約の `admin_signature` と `admin-signature-vectors.test.ts` は core に残る |
 | 10 | `@idp/pkce` | `user/token.ts` の `code_verifier` の形と S256、`user/authorize.ts` の `code_challenge` の形 | RFC 7636 付録 B。契約の `pkce_s256` と `token.test.ts` は core に残る |
@@ -352,10 +410,11 @@ Zod を使うのは `admin/` の入力と出力のスキーマだけで、標準
 | 12 | `@idp/oidc-discovery` | `user/discovery.ts` の型 | なし。契約の `discovery` と `discovery.test.ts` は core に残る |
 | 13 | `@idp/oauth-native-apps` | `user/redirect-uri.ts`、`shared/redirect-uri-registration.ts` の規格の部分 | `redirect-uri.test.ts` のふるまいの部分。契約の `redirect_uri` と `redirect_uri_match` は core に残る |
 | 14 | `@idp/accept-language` | `user/locale.ts` の `Accept-Language` の解析 | RFC 9110 §12.5.4 の例。契約の `ui_locale` と `locale.test.ts` は core に残る |
-| 15 | `@idp/workers-platform` | `shared/tls.ts` | `tls.test.ts` |
-| 16 | `shared` の廃止 | 残りの `shared/` を関心のディレクトリへ、`SqlCondition` を `db/` へ、`package.json` の `exports`、`eslint.config.js` の対象、`framework.test.ts` の Zod の確認、`apps/`、`e2e/`、`packages/d1-adapter` の import、文書の `shared` への言及 | `audit.test.ts`、`identifiers.test.ts`、`issuer.test.ts`、`hosting.test.ts`、`contract.test.ts` は core に残り、import の先だけが変わる |
+| 15 | `@idp/json-canonicalization` | `admin/idempotency.ts` の `canonicalJson` を RFC 8785 どおりにして移す。IdP に固有の制限があれば `admin/idempotency.ts` に残す（結合の問題 13） | `idempotency.test.ts` の `canonicalJson` の部分。RFC 8785 の本文と付録の例 |
+| 16 | `@idp/cloudflare` | `packages/d1-adapter` を `packages/cloudflare/src/d1/` へ、`shared/tls.ts` を `packages/cloudflare/src/workers/tls/` へ。`@idp/d1-adapter` を消す。`@idp/cloudflare` の lint の規則と `boundary.test.ts` の確認 | D1 の適合テストと `admin-nonces.test.ts` を `packages/cloudflare/test/d1/` へ、`tls.test.ts` を `packages/cloudflare/test/workers/tls/` へ |
+| 17 | `shared` の廃止 | 残りの `shared/` を関心のディレクトリへ、`SqlCondition` を `db/` へ、`package.json` の `exports`、`eslint.config.js` の対象、`framework.test.ts` の Zod の確認、`apps/`、`e2e/`、`packages/cloudflare/src/d1` の import、文書の `shared` への言及 | `audit.test.ts`、`identifiers.test.ts`、`issuer.test.ts`、`hosting.test.ts`、`contract.test.ts` は core に残り、import の先だけが変わる |
 
-順番の依存：2 は 1 の後、4 は 1 と 3 の後、5 は 1 の後、6 は 1、3、4 の後、8 と 9 は 7 の後、10 は 1 の後。ほかは互いに独立で、1 の枠組みの後なら並べて進めてよい。16 は 1 から 15 のすべての後に行う。
+順番の依存：2 は 1 の後、4 は 1 と 3 の後、5 は 1 の後、6 は 1、3、4 の後、8 と 9 は 7 の後、10 は 1 の後。ほかは互いに独立で、1 の枠組みの後なら並べて進めてよいが、表の順番どおりに 1 つずつマージする。16 は 1 から 15 の後、17 は 1 から 16 のすべての後に行う。
 
 ## 前提
 
@@ -364,14 +423,11 @@ Zod を使うのは `admin/` の入力と出力のスキーマだけで、標準
 1. 文書の言語は、隣の設計文書に合わせて日本語にした。
 2. 標準パッケージのソースは、決定の例（`packages/base64url/` が `index.ts` と `base64url.ts` を持つ）を、既存のパッケージとルートの `tsconfig.json` と Vitest の設定（`packages/*/src`、`packages/*/test`）に合わせて `src/` の下に置く形と読んだ。
 3. 決定の候補にない規格のうち、`@idp/digest-fields`（RFC 9530）、`@idp/oauth-native-apps`（RFC 8252）、`@idp/accept-language`（RFC 9110）を足した。どれも今の core の中に規格のロジックとして見つかったもの。JWK と JWK Set の型（RFC 7517）は独立のパッケージにせず、使う側の `@idp/jws` に含めた。
-4. 振る舞いを変えないため、IdP の要求に合わせた厳しさ（JWS のヘッダーの 3 つの成員、Structured Fields の重複の拒否、WebAuthn の検証の範囲、JWK の thumbprint が OKP の Ed25519 と RSA だけを受け付けること）は、移す PR ではパッケージの振る舞いとしてそのまま持っていき、パッケージの説明に範囲を書く。汎用の動作に広げるのは別の PR で、運用者の判断を待つ。
+4. 振る舞いを変えないため、IdP の要求に合わせた厳しさ（JWS のヘッダーの 3 つの成員、WebAuthn の検証の範囲、JWK の thumbprint が OKP の Ed25519 と RSA だけを受け付けること）は、移す PR ではパッケージの振る舞いとしてそのまま持っていき、パッケージの説明に範囲を書く。汎用の動作に広げるのは別の PR で、運用者の判断を待つ。Structured Fields と JSON の正規化は、決定 7 と 8 のとおり、パッケージを規格どおりにして厳しさを core に置く。
 5. `user/redirect-uri.ts` の全体を規格の実装と判断し、core から消して `@idp/oauth-native-apps` に移す。`user/index.ts` からの `isRegisteredRedirectUri` と `matchesRegisteredRedirectUri` の再エクスポートは、`apps/` が使っていないので外す。
 6. WebAuthn Level 3 の仕様にテストベクタの付録があることを前提にしたが、版によって中身が違うので、6 の PR で今の版の本文を確かめ、提示する 3 つのアルゴリズムと attestation `none` に当てはまるものだけを取り込む。当てはまるものがなければ、ふるまいのテストだけにする。
 7. RFC 9421 には ECDSA P-384 の署名のテストベクタがないので、`@idp/http-message-signatures` の規格のテストベクタは署名の基底の組み立て（付録 B.2）に限る。署名の検証は、今の `admin_signature` の契約のテストベクタが core で確かめる。
+8. `@idp/d1-adapter` の `./admin` の入口は、`@idp/cloudflare` の `./d1/admin` として残す。管理用の D1 の実装を利用者向けの IdP の Worker から lint で止めるには、入口が分かれている必要があるため。
+9. HTTP WG の structured-field-tests は、取り込んだ版のコミットを出典としてテストのファイルに書き、パッケージの `test/` に JSON として写す。コピーで使えることの条件（テストは `contract/` を読まない）に合わせ、ほかの場所から読まない。
 
-## 運用者に確認すること
-
-1. **`@idp/workers-platform` の置き方**：TLS の版の確認の 1 つの関数のために新しいパッケージを置く。D1 のアダプタ（`@idp/d1-adapter`）も Cloudflare の側のパッケージなので、両者を 1 つの Cloudflare の側のパッケージにまとめる案もある。この計画では、D1 のアダプタの適合テストの境界を変えないため、別のパッケージにした。
-2. **Structured Fields の汎用化**：`@idp/structured-fields` を、RFC 9651 どおりの重複したキーの後勝ちを選べる形に広げ、HTTP WG の structured-field-tests を取り込むか。広げても、管理者の署名の形は今の厳格な動作を使い続ける。
-3. **`canonicalJson` の扱い**：`admin/idempotency.ts` の `canonicalJson` は、RFC 8785（JSON Canonicalization Scheme）にほぼ同じ形だが、RFC 8785 のテストベクタで確かめておらず、名乗ってもいない。core に残す計画にしたが、RFC 8785 のパッケージとして切り出してテストベクタで確かめるか。
-4. **RP のサンプルからの利用**：`examples/rp-sample` は IdP のコードを import しない決まり（lint で禁止）で、PKCE と base64url を自分で実装している。標準パッケージはコピーで使えるので、サンプルがそれを使ってよいことにするか。この計画では今の禁止を変えない。
+運用者に確認することは残っていない（`@idp/cloudflare` の置き方、Structured Fields の汎用化、`canonicalJson` の扱い、RP のサンプルからの利用は、決定 6 から 9 で決まった）。
