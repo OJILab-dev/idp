@@ -30,7 +30,7 @@ variables {
   rate_limit_namespace_id           = "1001"
   admin_rate_limit_namespace_id     = "1002"
   rs256_enabled                     = false
-  state_bucket_name                = "idp-tfstate"
+  state_bucket_name                 = "idp-tfstate"
   onepassword_vault                 = "idp-test"
   onepassword_cloudflare_item       = "cloudflare"
   onepassword_signing_key_item      = "signing-key"
