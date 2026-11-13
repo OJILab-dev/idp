@@ -24,14 +24,16 @@ pnpm の workspace に次のパッケージを置く。`idpctl` は Go なので
 | パッケージ | 中身 | D1 への接続 |
 | --- | --- | --- |
 | `packages/<規格の名前>`（標準パッケージ） | 標準規格の実装を規格ごとに置いた、コピーで使えるパッケージ。今は `@idp/base64url`（RFC 4648 §5）、`@idp/jwk-thumbprint`（RFC 7638）、`@idp/cbor`（RFC 8949 の WebAuthn が使う部分集合）、`@idp/cose-key`（RFC 9052 §7、RFC 9053、RFC 8230）、`@idp/jws`（RFC 7515 のコンパクト形式）、`@idp/webauthn`（WebAuthn Level 3 §7.1、§7.2）、`@idp/structured-fields`（RFC 9651）、`@idp/digest-fields`（RFC 9530）、`@idp/http-message-signatures`（RFC 9421 の検証）、`@idp/pkce`（RFC 7636 の S256）、`@idp/problem-details`（RFC 9457）、`@idp/oidc-discovery`（OpenID Connect Discovery 1.0）、`@idp/oauth-native-apps`（RFC 8252 の redirect URI）、`@idp/accept-language`（RFC 9110 §12.5.4）、`@idp/json-canonicalization`（RFC 8785）。依存は Web 標準の API と、宣言したほかの標準パッケージだけ（[標準の実装のパッケージへの分割](packages.md)参照） | 触れない |
-| `packages/core` | ドメインの規則（パスキーの上限、最後の 1 本は失効できない規則、無効化されたユーザーの確認など）、入力のスキーマと検証、SQL 文、利用者向けのユースケースと `idpctl` の全 30 操作のユースケース、操作ごとの分類のメタデータ、D1 を操作するポート（インターフェース） | 触れない。ポート越しに、実行する文のバッチを渡すだけ |
-| `packages/cloudflare` | Cloudflare の上でだけ意味を持つコードを関心ごとのサブパスに置いたパッケージ（`@idp/cloudflare`）。`./d1` と `./d1/admin` はコアの D1 のポートを D1 バインディングで実装する薄いアダプタとその適合テストで、2 つの Worker が同じものを使う。`./workers/tls` は `request.cf.tlsVersion` による TLS の版の確認。コアと標準パッケージはこのパッケージに依存しない | D1 バインディング（Worker から渡される） |
-| `apps/worker` | IdP の Worker。`@idp/cloudflare/d1` に D1 バインディングを渡す配線と、公開する HTTP（OIDC、パスキー API、静的アセット） | D1 バインディング |
-| `apps/admin-worker` | 管理用の Worker。`@idp/cloudflare/d1` に D1 バインディングを渡す配線、署名の検証と許可リストによる管理者の確定、管理 API の HTTP | D1 バインディング（IdP の Worker と同じ D1） |
+| `packages/core` | 2 つの Worker が共有するドメインの規則（パスキーの上限、最後の 1 本は失効できない規則、無効化されたユーザーの確認、監査ログの行の形、ID と redirect URI の形など）と、D1 を操作するポート（インターフェース） | 触れない。ポート越しに、実行する文のバッチを渡すだけ |
+| `packages/cloudflare` | Cloudflare の上でだけ意味を持つインフラを関心ごとのサブパスに置いたパッケージ（`@idp/cloudflare`）。`./d1` はコアの D1 のポートを D1 バインディングで実装する薄いアダプタとその適合テストで、2 つの Worker が同じものを使う。`./workers/tls` は `request.cf.tlsVersion` による TLS の版の確認。ドメインのロジックは持たない。コアと標準パッケージとアプリの `src/domain/` はこのパッケージに依存しない | D1 バインディング（Worker から渡される） |
+| `apps/worker` | IdP の Worker。`src/domain/` に利用者向けのユースケース（OIDC、パスキーの登録とサインイン、アカウントページでの本人による操作）、その外に `@idp/cloudflare/d1` に D1 バインディングを渡す配線と、公開する HTTP（OIDC、パスキー API、静的アセット） | D1 バインディング |
+| `apps/admin-worker` | 管理用の Worker。`src/domain/` に `idpctl` の全 30 操作のユースケース、入力のスキーマ、操作ごとの分類のメタデータ、管理者の署名の検証と `nonce` の保存の規則、その外に `@idp/cloudflare/d1` に D1 バインディングを渡す配線、許可リストによる管理者の確定、管理 API の HTTP | D1 バインディング（IdP の Worker と同じ D1） |
+
+設計文書の「共有コア」は、フレームワークとプラットフォームに依存しないドメインの層を指す。2 つの Worker が共有する規則は `packages/core` に、1 つの Worker だけが使うユースケースと規則はそのアプリの `src/domain/` に置く（[標準の実装のパッケージへの分割](packages.md)の配置の規則）。`src/domain/` は core のポートを引数で受け取り、Hono、`cloudflare:*`、`@idp/cloudflare`、アプリの HTTP の層を import しない。
 
 - **規則の実装は 1 つ**：IdP の Worker もパスキー（本人による追加と失効、登録リンクによる登録）と監査ログの行を書くので、パスキーの上限、最後の 1 本の規則、無効化の確認、監査ログの行の形、入力の検証は、2 つの Worker が共有する規則である。これらは共有コアにだけ実装し、アプリ側にも `idpctl` にも書き直さない。
 - **スキーマは 1 つ**：各操作の入力のスキーマは共有コアで定義し、同じスキーマが入力の検証と管理 API の仕様（OpenAPI など）を決める。管理 API の仕様はこのスキーマから生成し、`idpctl` の Go の型はその仕様から生成する。手でコピーした型は置かない（[実装に依存しない契約](cross-language-contract.md)参照）。
-- **入力のスキーマのライブラリは Zod v4**：スキーマは Zod v4 で書き、OpenAPI の仕様は Zod v4 が持つ JSON Schema への変換（`toJSONSchema`）から組み立てる。JSON Schema を出せることと、検証の結果をフィールドの単位で返せること（`validation-failed` の JSON Pointer の一覧に使う）が選んだ理由である。版は `minimumReleaseAge` を満たす完全な版で固定する。Zod を import するのは管理系のモジュールだけにし、関心ごとのモジュール（`src/db/`、`src/audit/` など）と利用者向けのモジュールからは import しない。IdP の Worker のバンドルに Zod を含めず、無料枠のサイズと起動の時間を圧迫しないためで、テストがこの境界を確かめる。値の形（UUIDv4、client ID、redirect URI など）の判定は共有のモジュールの関数に置き、Zod のスキーマはそれを呼ぶだけにするので、IdP の Worker と管理用の Worker で同じ値が同じ判定を受ける。
+- **入力のスキーマのライブラリは Zod v4**：スキーマは Zod v4 で書き、OpenAPI の仕様は Zod v4 が持つ JSON Schema への変換（`toJSONSchema`）から組み立てる。JSON Schema を出せることと、検証の結果をフィールドの単位で返せること（`validation-failed` の JSON Pointer の一覧に使う）が選んだ理由である。版は `minimumReleaseAge` を満たす完全な版で固定する。Zod を import するのは管理用の Worker（`apps/admin-worker`）だけにし、`packages/core` と IdP の Worker（`apps/worker`）からは import しない。IdP の Worker のバンドルに Zod を含めず、無料枠のサイズと起動の時間を圧迫しないためで、テストがこの境界を確かめる。値の形（UUIDv4、client ID、redirect URI など）の判定は共有のモジュールの関数に置き、Zod のスキーマはそれを呼ぶだけにするので、IdP の Worker と管理用の Worker で同じ値が同じ判定を受ける。
 - **操作の分類はコアに置く**：各操作の分類（管理の関心事、読み取りか書き込みか、本人性を確定させるか）は、ユースケースの隣にメタデータとして定義する。今は CLI だけが使うが、将来別の入り口（[将来拡張](future-extensions.md)の MCP など）を足すときは、出す範囲をこのメタデータから決める。
 - **アダプタは薄く、1 つにする**：D1 アダプタは、コアが組み立てた文のバッチを D1 バインディングの 1 回のバッチ（D1 では 1 つのトランザクション）で実行して結果を返すだけで、ドメインのロジックを持たない。アダプタが行うのは型の変換（BLOB をバイト列として渡し、バイト列として返す）と、バインディングのエラーをポートのエラーに包むことだけ。当初は Worker ごとにアダプタを置く構成にしていたが、2 つの Worker は同じ D1 を同じバインディングの API で使うので、アダプタは同じ実装になる。同じコードと適合テストを 2 か所に複製すると、片方だけ直して性質が食い違うおそれがあるため、`@idp/cloudflare/d1`（`packages/cloudflare/src/d1/`）の 1 つにまとめ、両方の Worker がそれを使う。適合テスト（バッチの原子性と途中で失敗したときのロールバック、トリガーの `RAISE(ABORT, …)` によるバッチ全体のロールバック、`DELETE … RETURNING` の結果、変更行数、BLOB の往復、結果の順序と件数）は、マイグレーションを適用したローカルの D1 に対して CI で流し、アダプタの実装を変えても同じ性質が保たれることを確かめる。
 - **`idpctl` は規則を評価しない**：入力の検証も、パスキーの上限などの判定も、管理用の Worker が行う。`idpctl` は引数を API の要求に組み立て、応答と管理用の Worker が返すエラーを表示するだけにする。手元で先に検証すると、規則の実装が 2 つになるため。
@@ -59,7 +61,7 @@ e2e テストは `e2e/` に置き、Playwright（`@playwright/test` を `minimum
 - **TLS とホスト名**：Worker は issuer が `https://<host>` でない要求を拒否する。この確認は弱めず、issuer を下のホスティングのモードの形のホスト名（`https://idp.test` か `https://idp.e2e-fork.workers.dev`）とし、実行のたびに openssl で生成する使い捨ての自己署名証明書（issuer のホスト名、RP 役の `rp.test`、ほかのホスト名の代役）で HTTPS を提供する。Chromium には、これらのホスト名の 443 番ポートをローカルのポートへ向ける設定と、この証明書の公開鍵だけを信頼する設定を起動時に渡す。証明書のエラーを無視する設定は使わない。WebAuthn は証明書のエラーがあるページで動かず、本番と同じく安全なコンテキストで確かめるため。証明書と鍵は `e2e/dist` から出さず、コミットしない。
 - **ホスティングのモード**：`pnpm run e2e` は、すべてのシナリオを 2 回流す。1 回目はカスタムドメインのモードの形（issuer が `idp.test`、管理用のホスト名が `admin.idp.test`）、2 回目は `workers.dev` のモードの形（issuer が `idp.e2e-fork.workers.dev`、管理用のホスト名が `idp-admin.e2e-fork.workers.dev`）で、どちらも 2 つの Worker の `cloudflare.config.ts` にそのモードを渡して組み立てる（[ホスティングのモード](hosting-modes.md)の実装の順番の 9）。モードは環境変数 `E2E_HOSTING_MODE` で選び、片方だけを流すスクリプトも置く。どちらの形でも、issuer と同じ登録可能なドメインのほかのホスト名（`workers.dev` の形では同じアカウントのほかの Worker、カスタムドメインの形ではゾーンのほかのホスト名に当たる）もローカルのサーバーへ向け、ブラウザがそこへ IdP の Cookie を送らないことと、Worker がそのホスト名を拒否することを確かめる。
 - **パスキー**：CDP の仮想オーセンティケータ（CTAP2、内蔵の transport、resident key と UV あり）を使い、ブラウザの実際の WebAuthn API を通す。仮想オーセンティケータは条件付きメディエーションの要求をクリックなしで完了させるので、ボタンの経路を確かめるテストでは、ページの読み込みの間だけオーセンティケータを外し、同じ資格情報を持つものを付け直してからボタンを押す。2 本目の追加では、再認証の後に別の端末に当たる新しいオーセンティケータに切り替える（作成の要求が既存の資格情報を除外するため）。
-- **状態の用意**：ユーザー、登録リンク、confidential client と public client、付与は、共有コアの管理系のユースケースを、Worker と同じローカルの D1 に対して直接実行して作る。管理用の Worker と署名の検証は通さない。パスキーは登録リンクからブラウザで登録する。
+- **状態の用意**：ユーザー、登録リンク、confidential client と public client、付与は、管理用の Worker のドメインの層（`apps/admin-worker/src/domain/`）のユースケースを、Worker と同じローカルの D1 に対して直接実行して作る。管理用の Worker と署名の検証は通さない。パスキーは登録リンクからブラウザで登録する。
 - **RP の代役**：`rp.test` の小さな HTTPS サーバーがリダイレクトを受け、テストが RP として `iss` と `state` を確かめ、`/token` でコードを交換し、`/userinfo` を呼ぶ。Playwright の要求の差し替えは使わない。Chromium はリダイレクト先の要求を差し替えの対象にしないため。
 - **平文の HTTP と管理用の Worker のゲート**：ローカルのサーバーは TLS だけを話すので、ブラウザーからは平文の要求を送れない。平文の HTTP の扱い（ページの 308 のリダイレクト、`/token` と管理用のホスト名の拒否）は、Miniflare の入口に直接要求を渡して確かめる。静的アセットの設定はそのまま効くので、Worker がページより先に動くことも確かめられる。管理用の Worker は、実行のたびにメモリの中だけで作る使い捨ての P-384 の鍵 1 つを許可リストに持つ設定で同じ workerd に置き、署名のゲートの受け入れと拒否を確かめる（`e2e/tests/11-admin-signature.spec.ts`）。
 - **CSP**：すべてのテストで、ブラウザのコンソールに CSP の違反が出ないことを確かめる。検出そのものが働くことも、インラインのスクリプトを注入して確かめる。
@@ -69,9 +71,9 @@ e2e テストは `e2e/` に置き、Playwright（`@playwright/test` を `minimum
 
 設計原則 1（攻撃面を小さくする）を、ホスト名とコードの依存の両方で守る。
 
-- 共有コアは、利用者向けのユースケース（OIDC、パスキーの登録とサインイン、アカウントページでの本人による操作）と、管理系のユースケース（`idpctl` の操作）を別のモジュールに分ける。両方が使う規則（パスキーの上限、監査ログの行の形、入力の検証など）は、どちらにも属さない関心ごとのモジュール（`packages/core/src/` の直下の `db/`、`identifiers/`、`issuer/`、`hosting/`、`problems/`、`clients/`、`passkeys/`、`audit/`）に置く。関心ごとのモジュールは、利用者向けと管理系のどちらのモジュールも import しない。
-- `apps/worker` が import してよいのは、利用者向けと関心ごとのモジュールだけにする。利用者向けのモジュールも管理系のモジュールを import しない。CI の依存の lint でこれを強制し、違反があればビルドを失敗させる。
-- CI は、IdP の Worker のビルド成果物に管理系のモジュールのコードが含まれていないことも確かめる。lint の設定漏れや間接的な import があっても、成果物の側で止めるため。
+- 利用者向けのユースケース（OIDC、パスキーの登録とサインイン、アカウントページでの本人による操作）は `apps/worker/src/domain/` に、管理系のユースケース（`idpctl` の操作）は `apps/admin-worker/src/domain/` に置き、アプリごとに分ける。両方が使う規則（パスキーの上限、監査ログの行の形、入力の値の形など）は、`packages/core/src/` の直下の関心ごとのモジュール（`db/`、`identifiers/`、`issuer/`、`hosting/`、`problems/`、`clients/`、`passkeys/`、`audit/`）に置く。core はアプリを import しない。
+- 管理系のユースケースは IdP の Worker のパッケージの外にあり、`apps/worker` から `apps/admin-worker` への import は lint で禁止する。違反があれば CI が失敗する。
+- IdP の Worker のバンドルに Zod が入らないことは、`apps/worker` と core の Zod の import を禁止する lint と、ソースに Zod の import がないことを確かめるテストで守る。
 - IdP の Worker は、管理操作を一切公開しない。管理操作は別のホスト名の管理用の Worker にだけ置き、管理用の Worker のゲートが RFC 9421 の署名を署名鍵の許可リストで検証して守る（[管理 CLI と管理用の Worker](idpctl.md)参照）。
 
 **今 Rust を採らない理由**

@@ -37,7 +37,7 @@ Terraform とシェルスクリプトの検査は CI（[.github/workflows/ci.yml
 - 署名鍵と管理者の秘密鍵は、`scripts/` のレビュー済みの生成スクリプトでだけ生成する。手で生成したり、鍵の値を読み出したり受け渡したりしない。
 - 秘密（鍵、API トークン、IdP が発行するクライアントシークレットや登録トークン）を AI のコンテキストに入れない。
 - `cf auth login` は運用者が実行する。エージェントがブートストラップの認証情報を準備するときは、運用者が認証したセッションの下で、値をコンテキストに入れずにパイプで流す（[エージェントによる認証情報の準備](deployment/agent-setup.md)）。
-- 管理操作は管理用の Worker だけに置く。IdP の Worker は共有コアの管理系のモジュールを import しない（ESLint の規則で検査する）。
+- 管理操作は管理用の Worker だけに置く。IdP の Worker は管理用の Worker のドメインの層（`apps/admin-worker/src/domain/`）を import しない（ESLint の規則で検査する）。
 
 ## リポジトリの運用
 

@@ -21,7 +21,7 @@
 - 署名鍵と管理者の秘密鍵（RFC 9421 の署名に使う管理者の鍵）は、必ずリポジトリのレビュー済みの生成スクリプトで生成する。手で生成してはいけない。スクリプトを通せば誰が実行しても結果は同じなので、エージェントもそのスクリプトを実行してよい。スクリプトは鍵を 1Password と Worker Secret に直接渡し、秘密でない値（`kid`、`keyid`、公開鍵）だけを出力する（[デプロイと設定](docs/design/deployment.md)参照）。
 - エージェントは、生成スクリプトを通さずに鍵を生成したり、鍵の値を読み出したり、受け渡したりしてはいけない。生成スクリプトを、秘密を出力するように変えてはいけない。
 - 秘密（署名鍵、管理者の秘密鍵、API トークン、IdP が発行するクライアントシークレットと登録トークンなど）を AI のコンテキストに入れてはいけない。IdP が発行する秘密は、管理用の Worker が応答で 1 回だけ返し、`idpctl` が権限 `0600` のファイルに書き出してパスだけを表示する設計であり、これを崩してはいけない。
-- 管理操作は管理用の Worker の管理 API だけに置き、IdP の Worker には置かない。IdP の Worker から共有コアの管理系のモジュールを import してはいけない。
+- 管理操作は管理用の Worker の管理 API だけに置き、IdP の Worker には置かない。管理系のユースケースは管理用の Worker のドメインの層（`apps/admin-worker/src/domain/`）に置き、IdP の Worker（`apps/worker`）から import してはいけない。
 - 今は MCP を提供しない。追加する場合は、先に [将来拡張](docs/design/future-extensions.md) の MCP の節を見直す。
 
 詳細は [管理 CLI と管理用の Worker（idpctl）](docs/design/idpctl.md)、[トークン設計](docs/design/tokens.md)、[デプロイと設定](docs/design/deployment.md) を参照してください。
@@ -95,7 +95,7 @@ TypeScript の workspace（`packages/core`、標準パッケージの `packages/
 
 ```sh
 pnpm run typecheck   # tsc。標準パッケージは自分の tsconfig.json（Web 標準の型だけ）でも検査する
-pnpm run lint        # ESLint。IdP の Worker から管理系のモジュールへの import を禁止する規則を含む
+pnpm run lint        # ESLint。IdP の Worker から管理用の Worker のドメインへの import を禁止する規則を含む
 pnpm run test        # Vitest。D1 のスキーマのテストはローカルの D1（miniflare、workerd の SQLite）で動く
 pnpm run check       # 上の 3 つを順に実行する。コミットの前に必ず通す
 ```
