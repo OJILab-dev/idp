@@ -10,7 +10,7 @@
 | 管理 CLI | Go（`idpctl`） | HTTPS のクライアントだけを持ち、ドメインの規則を評価しない。単一バイナリで配れ、RFC 9421 の署名（ECDSA P-384 と SHA-256 の `Content-Digest`）を標準ライブラリ（`crypto/ecdsa`、`crypto/sha256`）だけで作れる |
 | パッケージ管理 | pnpm の workspace | 共有コアと 2 つの Worker を 1 つのリポジトリで管理し、依存の向きを機械的に確かめられる |
 | データベース | D1 | `DELETE … RETURNING` で使い捨て値を原子的に消費でき、無料枠で足りる |
-| トークン署名 | Ed25519（JOSE の `alg` は RFC 9864 の `Ed25519`、WebCrypto）。RS256 は RSA の鍵を設定したときだけ有効にする任意の機能 | Ed25519 は鍵が小さく、RSA より署名が軽い。OIDC Discovery 1.0 §3 と OIDC Core 1.0 §15.1 は RS256 を必須とするので、RSA を必要とする RP をつなぐときと適合性テストでは RS256 を有効にする。無効の間の逸脱は[標準準拠](standards-compliance.md)に例外として記録する |
+| トークン署名 | Ed25519（JOSE の `alg` は RFC 9864 の `Ed25519`、WebCrypto）。RS256 はデプロイの設定ファイルの `rs256_enabled` で有効にし、RSA の鍵を足す任意の機能 | Ed25519 は鍵が小さく、RSA より署名が軽い。OIDC Discovery 1.0 §3 と OIDC Core 1.0 §15.1 は RS256 を必須とするので、RSA を必要とする RP をつなぐときと適合性テストでは RS256 を有効にする。無効の間の逸脱は[標準準拠](standards-compliance.md)に例外として記録する |
 | e2e テスト | Playwright（ブラックボックス） | HTTP とブラウザ操作で IdP を外から叩くので実装言語に依存せず、Rust に移行しても同じテストを流せる。仮想オーセンティケータでパスキーの操作を自動化できる |
 | 画面 | TypeScript + Vite（UI のフレームワークなし） | ページは 3 つだけで、CSP を `default-src 'self'` に保てる。Vite は `cf` が Cloudflare Vite plugin のために使うので、道具が増えない。要求と応答の型を共有コアと共有する（[認証フロー](authentication.md)の画面と言語を参照） |
 | 基盤の構成管理 | Terraform（Cloudflare provider）と、`cf` を使うシェルスクリプト | 宣言できる基盤は Terraform、手続きの操作（マイグレーション、デプロイ、Secret の登録、鍵の生成）はスクリプトに分ける（[デプロイと設定](deployment.md)参照） |

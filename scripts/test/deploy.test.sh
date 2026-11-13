@@ -69,6 +69,7 @@ make_tree() {
     d1_database_name: "idp-test",
     rate_limit_namespace_id: "1001",
     admin_rate_limit_namespace_id: "1002",
+    rs256_enabled: false,
     state_bucket_name: "idp-test-tfstate",
     onepassword_vault: "idp-test",
     onepassword_cloudflare_item: "cloudflare",
@@ -95,6 +96,7 @@ make_tree() {
   printf '%s\n' "${issuer_host}" >"${stub}/issuer_host"
   printf '%s\n' "${admin_host}" >"${stub}/admin_host"
   printf 'ok\n' >"${stub}/idp_state"
+  printf '["Ed25519"]\n' >"${stub}/discovery_algs"
   printf 'worker\n' >"${stub}/http_state"
   printf 'forbidden\n' >"${stub}/admin_state"
   printf '%s\n' "${tree}"
@@ -157,7 +159,7 @@ test_custom_domain_ci_deploy() {
   # Both builds before any change; migrations, then the IdP Worker, then the admin Worker (deployment.md).
   assert_equal "custom_domain CI: builds, migrations, IdP Worker, admin Worker" "$(expected_changes "${tree}")" "$(changes_of "${tree}")"
   assert_equal "custom_domain CI: the IdP Worker's build environment" \
-    "IDP_ADMIN_HOST=admin.id.example.com|IDP_ADMIN_RATE_LIMIT_NAMESPACE_ID=1002|IDP_ADMIN_SIGNING_KEYS=[{\"keyid\":\"${P384_KEYID}\",\"name\":\"alice\",\"public_key\":\"${P384_SPKI}\"}]|IDP_D1_DATABASE_ID=${D1_ID}|IDP_HOSTING_MODE=custom_domain|IDP_ISSUER=https://id.example.com|IDP_RATE_LIMIT_NAMESPACE_ID=1001" \
+    "IDP_ADMIN_HOST=admin.id.example.com|IDP_ADMIN_RATE_LIMIT_NAMESPACE_ID=1002|IDP_ADMIN_SIGNING_KEYS=[{\"keyid\":\"${P384_KEYID}\",\"name\":\"alice\",\"public_key\":\"${P384_SPKI}\"}]|IDP_D1_DATABASE_ID=${D1_ID}|IDP_HOSTING_MODE=custom_domain|IDP_ISSUER=https://id.example.com|IDP_RATE_LIMIT_NAMESPACE_ID=1001|IDP_RS256_ENABLED=false" \
     "$(tr '\n' '|' <"${tree}/stub/build_env_worker" | sed 's/|$//')"
   assert_equal "custom_domain CI: both builds get the same environment" "$(cat "${tree}/stub/build_env_worker")" \
     "$(cat "${tree}/stub/build_env_admin-worker")"
@@ -203,6 +205,33 @@ test_plain_http_checks() {
   printf 'edge301\n' >"${tree}/stub/http_state"
   run_ci "${tree}" deploy.sh --ci test
   assert_equal "custom_domain: a zone redirect instead of the Worker's fails" "1" "$(status_of "${tree}")"
+  rm -rf "${tree}"
+}
+
+# The admin Worker accepts RS256 clients on rs256_enabled alone, so discovery must agree with it in both directions.
+test_rs256_check() {
+  local tree
+  tree="$(make_tree custom_domain)"
+  printf '["Ed25519","RS256"]\n' >"${tree}/stub/discovery_algs"
+  run_ci "${tree}" deploy.sh --ci test
+  assert_equal "rs256_enabled false with RS256 in discovery fails" "1" "$(status_of "${tree}")"
+  jq '.rs256_enabled = true' "${tree}/deployments/test.tfvars.json" >"${tree}/config"
+  mv "${tree}/config" "${tree}/deployments/test.tfvars.json"
+  run_ci "${tree}" deploy.sh --ci test
+  assert_equal "rs256_enabled true with RS256 in discovery passes" "0" "$(status_of "${tree}")"
+  assert_equal "rs256_enabled true reaches the builds" "IDP_RS256_ENABLED=true" "$(grep '^IDP_RS256_ENABLED=' "${tree}/stub/build_env_admin-worker")"
+  printf '["Ed25519"]\n' >"${tree}/stub/discovery_algs"
+  run_ci "${tree}" deploy.sh --ci test
+  assert_equal "rs256_enabled true without RS256 in discovery fails" "1" "$(status_of "${tree}")"
+  rm -rf "${tree}"
+
+  # Not a JSON boolean: stops before anything is built.
+  tree="$(make_tree custom_domain)"
+  jq '.rs256_enabled = "true"' "${tree}/deployments/test.tfvars.json" >"${tree}/config"
+  mv "${tree}/config" "${tree}/deployments/test.tfvars.json"
+  run_ci "${tree}" deploy.sh --ci test
+  assert_equal "a string rs256_enabled stops" "1" "$(status_of "${tree}")"
+  assert_equal "a string rs256_enabled changes nothing" "" "$(changes_of "${tree}")"
   rm -rf "${tree}"
 }
 
@@ -468,6 +497,7 @@ test_terraform_ci() {
 test_custom_domain_ci_deploy
 test_workers_dev_ci_deploy
 test_plain_http_checks
+test_rs256_check
 test_admin_gate_check
 test_workers_dev_setting_check
 test_new_routes_are_waited_for

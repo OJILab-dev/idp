@@ -17,8 +17,8 @@
 - 管理 API の仕様（OpenAPI など）は共有コアの入力のスキーマから生成し、`idpctl` の Go の型はその仕様から生成する。仕様は Go と TypeScript の間の契約として扱う（[実装に依存しない契約](cross-language-contract.md)参照）。
 - issuer は IdP の Worker と同じ値を管理用の Worker が設定として持ち、登録リンクの組み立てに使う。`idpctl` が持つ設定は、管理 API のホスト名だけにする。
 - 管理用の Worker は、設定された管理用のホスト名へのリクエストだけを受け付ける。カスタムドメインのモードでは `workers.dev` とプレビューの URL を無効にし、`workers.dev` のモードでは `workers.dev` のルートだけで公開してプレビューの URL を無効にする（[ホスティングのモード](hosting-modes.md)の 1.2）。どちらでも、ほかのホスト名で届いた要求は下の Worker 側の確認で拒否される。ホスト名の確認は、URL が `https` で、ホストが管理用のホスト名と完全に一致する（ポートを含まない）ことで行い、違えば何もせずに `forbidden` を返す。平文の HTTP の要求もこの確認で拒否し、リダイレクトはしない（`idpctl` はリダイレクトに従わず、平文で届いた要求の中身はすでに露出しているため）。
-- 管理用の Worker の設定の名前は次のとおり。D1 のバインディングは `DB`、IdP の Worker への Service Binding は `IDP`、issuer は `ISSUER`、管理用のホスト名は `ADMIN_HOST`、ホスティングのモードは `HOSTING_MODE`、署名鍵の許可リストは `ADMIN_SIGNING_KEYS`（下の許可リストの節を参照）、Rate Limiting のバインディングは `RATE_LIMITER`、Worker のバージョンのメタデータのバインディングは `CF_VERSION_METADATA` とする。監査ログの `writer_version` は `admin-worker@<バージョンの ID>` にする。
-- 設定は最初のリクエストの前に検証し、どれかが欠けているか形が違えば、すべてのリクエストを `internal` で拒否する（fail-closed）。管理用のホスト名は issuer と同じ規則（正規の形、ポートなし、IP アドレスでない）に従い、issuer のホスト名と同じ値も拒否する。管理 API を公開のエンドポイントと同じホストに置かないため。`HOSTING_MODE` と、issuer と管理用のホスト名の形が合わない設定も拒否する（[ホスティングのモード](hosting-modes.md)の 1.4）。`IDP` だけは欠けても拒否せず、RS256 を無効として扱う（下記）。
+- 管理用の Worker の設定の名前は次のとおり。D1 のバインディングは `DB`、RS256 を有効にするかは `RS256_ENABLED`、issuer は `ISSUER`、管理用のホスト名は `ADMIN_HOST`、ホスティングのモードは `HOSTING_MODE`、署名鍵の許可リストは `ADMIN_SIGNING_KEYS`（下の許可リストの節を参照）、Rate Limiting のバインディングは `RATE_LIMITER`、Worker のバージョンのメタデータのバインディングは `CF_VERSION_METADATA` とする。監査ログの `writer_version` は `admin-worker@<バージョンの ID>` にする。
+- 設定は最初のリクエストの前に検証し、どれかが欠けているか形が違えば、すべてのリクエストを `internal` で拒否する（fail-closed）。管理用のホスト名は issuer と同じ規則（正規の形、ポートなし、IP アドレスでない）に従い、issuer のホスト名と同じ値も拒否する。管理 API を公開のエンドポイントと同じホストに置かないため。`HOSTING_MODE` と、issuer と管理用のホスト名の形が合わない設定も拒否する（[ホスティングのモード](hosting-modes.md)の 1.4）。`RS256_ENABLED` だけは欠けても形が違っても拒否せず、RS256 を無効として扱う（下記）。
 
 **管理用の Worker に API を置く理由**
 
@@ -116,8 +116,7 @@ ID トークンの署名アルゴリズム（[トークン設計](tokens.md)参�
 - `client_create` は、ID トークンの署名アルゴリズム（`Ed25519` か `RS256`）を `clients.id_token_signed_response_alg` に必ず明示して書く。指定がなければ `Ed25519` にする。OIDC Dynamic Client Registration 1.0 §2 は省略時の既定を RS256 としているので、値を書かずに既定に任せることはしない。
 - `RS256` は、ライブラリが Ed25519 の ID トークンを検証できない RP にだけ選ぶ。
 - `client_set_id_token_alg` は、登録済みの client のアルゴリズムを変える。変更前と変更後の値を `detail_json` に残し、ほかの書き込みと同じく監査ログに 1 行を書く。
-- RS256 が無効なデプロイでは、管理用の Worker は `client_create` と `client_set_id_token_alg` での `RS256` の指定を拒否する。有効かどうかは IdP の Worker の discovery から判断し、判断できなければ拒否する（fail-closed）。管理用の Worker は、この 2 つの操作のときだけ `IDP` の Service Binding で IdP の Worker の discovery の文書を読み、`issuer` が設定の issuer と一致し、`id_token_signing_alg_values_supported` が `RS256` を含む配列であるときだけ有効とみなす。バインディングがない、失敗した、形が違う場合はすべて無効とみなす。
-- `IDP` の Service Binding は、IdP の Worker の公開の `fetch` ではなく、名前付きのエントリポイント `IdpInternal`（`WorkerEntrypoint`）に向け、その RPC の `discovery()` を呼ぶ。`discovery()` は `/.well-known/openid-configuration` と同じコードで文書を作る。Service Binding の呼び出しはエッジを通らないので、`request.cf.tlsVersion` も `CF-Connecting-IP` も持たず、公開の経路の TLS のバージョンの確認とレート制限で拒否されるため。公開の経路の確認を、ヘッダーやパスのような、クライアントが送れるもので外すことはしない。`IdpInternal` は IdP の Worker の `cloudflare.config.ts` の `exports` で宣言し、インターネットからは届かない。管理用の Worker の設定では、`IDP` を IdP の Worker の `IdpInternal`（`exportName`）へのバインディングとして宣言する。
+- RS256 が無効なデプロイでは、管理用の Worker は `client_create` と `client_set_id_token_alg` での `RS256` の指定を拒否する。有効かどうかは、デプロイの設定ファイルの `rs256_enabled` から来る設定 `RS256_ENABLED` だけで判断し、値がちょうど `true` のときだけ有効とみなす。ない場合と形が違う場合は無効とみなして拒否する（fail-closed）。IdP の Worker は同じ値を正として扱い、`true` なのに RSA の鍵がなければすべてのリクエストを拒否する。2 つの Worker が食い違っていないことは、デプロイの後の確認が公開の discovery で確かめる（[デプロイと設定](deployment.md)のデプロイのパイプライン）。管理用の Worker は IdP の Worker へのバインディングを持たない。
 - `clients_list` は client ごとのアルゴリズムを返し、アルゴリズムで絞り込める。RS256 を無効にする前に、`RS256` を登録した client が残っていないことをこれで確かめる。
 
 `access_check(user, client)` は、許可か拒否かに加えて、どの grant にマッチしたか（直接付与か、どのグループ経由か。または何が足りないか。無効なユーザー、client、グループを含む）を返す。許可か拒否かは `effective_access` ビューそのものから読み、説明は同じスナップショットの行から組み立てる。説明がビューの判定と食い違えば、`access_check` は `internal` を返す。説明の組み立てがビューの定義からずれたことを、黙って誤った説明を返さずに検出するため。

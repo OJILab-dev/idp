@@ -40,7 +40,7 @@ async function buildWorker(root: string, outDir: string): Promise<void> {
       ssr: join(root, "src", "index.ts"),
       target: "es2024",
       minify: false,
-      // cloudflare:workers (the IdpInternal entrypoint's base class) is provided by workerd at run time.
+      // The runtime's own cloudflare: modules are provided by workerd at run time.
       rollupOptions: { external: [/^cloudflare:/], output: { entryFileNames: "index.js", format: "es" } },
     },
   });

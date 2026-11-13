@@ -57,15 +57,17 @@
 
 **RS256（任意の機能）**
 
-RS256 は、デプロイ時に有効にする任意の機能にする。RSA の署名鍵を Worker Secret に設定したときだけ有効になり、既定のデプロイは RSA の鍵を持たない。
+RS256 は、デプロイ時に有効にする任意の機能にする。有効かどうかは、デプロイの設定ファイルの `rs256_enabled`（`true` か `false`）だけが決め（唯一の正）、2 つの Worker は同じ値を環境変数 `RS256_ENABLED` で受け取る。既定のデプロイは `false` で、RSA の鍵を持たない。
 
-- discovery の `id_token_signing_alg_values_supported`、JWKS、client の登録で受け付けるアルゴリズムは、すべて設定された鍵から導く（設定が唯一の正）。既定は `["Ed25519"]`、RS256 を有効にすると `["Ed25519", "RS256"]` になる。署名できないアルゴリズムを載せることはない。
+- IdP の Worker は、`rs256_enabled` が `true` なら RSA の鍵の current を必須にし、なければ設定の誤りとしてすべてのリクエストを拒否する。`false` なら RSA の Secret が残っていても読まない。
+- discovery の `id_token_signing_alg_values_supported`、JWKS、client の登録で受け付けるアルゴリズムは、この設定と、それに従って読んだ鍵から導く。既定は `["Ed25519"]`、RS256 を有効にすると `["Ed25519", "RS256"]` になる。署名できないアルゴリズムを載せることはない。
 - RS256 を無効にしている間は、OIDC Discovery 1.0 §3（`id_token_signing_alg_values_supported` に RS256 を含めなければならない（MUST））と、OIDC Core 1.0 §15.1（OP は ID トークンの RS256 での署名をサポートしなければならない（MUST）。例外は、ID トークンを Token Endpoint からだけ返し、client に `none` だけを登録させる OP）から外れる。IdP は `none` を使わないので、§15.1 の例外にも当たらない。また、アクセストークンは常に `Ed25519` で署名するので、RFC 9068 §2.1（準拠する認可サーバーは RS256 をサポートする署名アルゴリズムに含めなければならない（MUST））からも外れる。アクセストークンを検証するのは IdP 自身の `/userinfo` だけで、外部のリソースサーバーとの相互運用の問題はない。これらは標準からの逸脱として[標準準拠](standards-compliance.md)に例外として記録する。OIDC Core §3.1.3.7 の 7（`alg` は既定の RS256 か、登録時に送った `id_token_signed_response_alg` であるべき（SHOULD））は、client ごとにアルゴリズムを必ず明示して登録することで満たす。理由は、RSA を必要とする RP がいない間は、秘密鍵の素材と攻撃面（RSA の署名の実装、鍵の保管とローテーション）を最小にするため。
 - 適合性テスト（Basic OP と Config OP）は、RS256 を有効にしたデプロイで流し、全項目の合格を求める。
-- **有効にする**：RSA の鍵をリポジトリの生成スクリプトで生成し、Worker Secret に登録してデプロイする（下の「署名鍵の生成とバックアップ」と同じ規則）。管理用の Worker は、RS256 が無効な間は、client への `RS256` の登録を拒否する。
-- **無効にする**：`RS256` を登録した client が 1 つもないときだけ許す。管理 API は `RS256` を登録している client を一覧できる（`clients_list`）。最後の client を `Ed25519` に変えてから、ID トークンの有効期限（5 分）が過ぎた後に RSA の Secret を外す。それまでに発行した RS256 の ID トークンを RP が検証できるようにするため。
+- **有効にする**：RSA の鍵をリポジトリの生成スクリプトで生成し、Worker Secret に登録する（下の「署名鍵の生成とバックアップ」と同じ規則。`false` の間は読まれない）。その後で `rs256_enabled` を `true` にしてデプロイする。管理用の Worker は、RS256 が無効な間は、client への `RS256` の登録を拒否する。
+- **無効にする**：`RS256` を登録した client が 1 つもないときだけ許す。管理 API は `RS256` を登録している client を一覧できる（`clients_list`）。最後の client を `Ed25519` に変えてから、ID トークンの有効期限（5 分）が過ぎた後に `rs256_enabled` を `false` にしてデプロイし、RSA の Secret を外す。それまでに発行した RS256 の ID トークンを RP が検証できるようにするため。
 - `RS256` を登録した client があるのに RSA の鍵がない場合、その client へのトークンの発行は失敗させる（fail-closed）。`/authorize` は client と `redirect_uri` を検証した後、サインインの前に `server_error` を返す（RFC 6749 §4.1.2.1）。`/token` も、認可コードを消費する前に同じ確認を行い、トークンを発行せずにエラーを返す。別のアルゴリズムで署名して代わりに返すことはしない。
-- 管理用の Worker は署名鍵を持たない。RS256 が有効かどうかは、IdP の Worker の discovery の `id_token_signing_alg_values_supported` を、内部のエントリポイント `IdpInternal` への Service Binding で読んで判断し、読めない場合や値の形が不正な場合は有効でないものとして扱う（fail-closed）。
+- 管理用の Worker は署名鍵を持たず、IdP の Worker へのバインディングも持たない。RS256 が有効かどうかは `RS256_ENABLED` だけで判断し、値がないか `true` でなければ有効でないものとして扱う（fail-closed）。
+- IdP の Worker の実際の状態が設定と食い違っていないことは、デプロイの後の確認が確かめる。公開の discovery の `id_token_signing_alg_values_supported` が、`rs256_enabled` が `true` のときだけ `RS256` を含まなければ、デプロイを失敗にする（[デプロイと設定](deployment.md)のデプロイのパイプライン）。
 
 **署名鍵**
 

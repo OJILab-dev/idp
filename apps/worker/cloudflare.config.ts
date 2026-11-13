@@ -2,7 +2,7 @@
 // values are not written here: the hosting mode, the issuer, and the D1 ID come from the deploy script's environment,
 // which takes them from the deployment settings file (the mode, and the issuer it derives from issuer_host or
 // workers_dev_subdomain) and from a lookup by the database name (the D1 ID).
-import { bindings, defineConfig, exports, type WorkerConfig as CloudflareWorkerConfig } from "cf/config";
+import { bindings, defineConfig, type WorkerConfig as CloudflareWorkerConfig } from "cf/config";
 // @idp/hosting and @idp/issuer point straight at their modules, not at an index: cf evaluates this file with
 // Node's own loader, which does not map an index's `.js` specifiers to `.ts`. Both modules import nothing themselves.
 import { IDP_WORKER_NAME, checkHostingHosts, parseHostingMode } from "@idp/hosting";
@@ -17,6 +17,8 @@ export type DeployEnv = {
   readonly IDP_D1_DATABASE_ID?: string | undefined;
   /** rate_limit_namespace_id of the deployment settings file: unique within the account (deployment.md). */
   readonly IDP_RATE_LIMIT_NAMESPACE_ID?: string | undefined;
+  /** rs256_enabled of the deployment settings file, `true` or `false` (docs/design/tokens.md, "署名鍵"). */
+  readonly IDP_RS256_ENABLED?: string | undefined;
 };
 
 const D1_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -47,6 +49,7 @@ export const RATE_LIMIT = { period: 10, limit: 10 } as const;
  * @throws {InvalidIssuerError} IDP_ISSUER is unset or not exactly `https://<host>`.
  * @throws {Error} IDP_D1_DATABASE_ID is unset or not a D1 database UUID.
  * @throws {Error} IDP_RATE_LIMIT_NAMESPACE_ID is unset or not a positive integer.
+ * @throws {Error} IDP_RS256_ENABLED is neither `true` nor `false`.
  */
 export function workerConfig(env: DeployEnv): CloudflareWorkerConfig {
   const mode = parseHostingMode(env.IDP_HOSTING_MODE);
@@ -58,15 +61,15 @@ export function workerConfig(env: DeployEnv): CloudflareWorkerConfig {
   // No default: a guessed namespace could be one the service's Workers already count in, in the shared account.
   const namespace = env.IDP_RATE_LIMIT_NAMESPACE_ID;
   if (namespace === undefined || !NAMESPACE_ID.test(namespace)) throw new Error("IDP_RATE_LIMIT_NAMESPACE_ID is not a positive integer");
+  // No default: whether RS256 is offered is the operator's explicit choice, written in the deployment file.
+  const rs256 = env.IDP_RS256_ENABLED;
+  if (rs256 !== "true" && rs256 !== "false") throw new Error("IDP_RS256_ENABLED must be true or false");
   return {
     // In the workers_dev mode the name is the issuer host's first label, so it is the shared-core constant.
     name: IDP_WORKER_NAME,
     compatibilityDate: "2026-10-01",
     entrypoint: "./src/index.ts",
     ...(mode === "custom_domain" ? { domains: [{ hostname: issuer.rpId, production: true, previews: false }] } : {}),
-    // The admin Worker's IDP Service Binding targets this named entrypoint (src/internal.ts), never the public
-    // fetch handler, whose TLS and rate-limit checks refuse a binding call.
-    exports: { IdpInternal: exports.worker() },
     // One way in per mode, the issuer host: the custom domain, or the workers.dev route. The issuer, RP ID, and origin
     // are all that host, and preview URLs would be other hosts the Worker refuses anyway (hosting-modes.md 1.2).
     workersDev: mode === "workers_dev",
@@ -91,6 +94,8 @@ export function workerConfig(env: DeployEnv): CloudflareWorkerConfig {
       ISSUER: bindings.text(issuer.url),
       // Checked again by the Worker at start against the issuer (hosting-modes.md 1.4).
       HOSTING_MODE: bindings.text(mode),
+      // The source of truth for RS256: `true` makes the Worker require the RSA key Secret, `false` ignores it.
+      RS256_ENABLED: bindings.text(rs256),
       // The Worker refuses every request without it: the audit rows of the user's own passkey operations need it.
       CF_VERSION_METADATA: bindings.versionMetadata(),
       // The Worker refuses every request without it (docs/design/free-tier.md).

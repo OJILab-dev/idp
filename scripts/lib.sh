@@ -277,6 +277,18 @@ config_string() {
   printf '%s\n' "${value}"
 }
 
+# Prints a required boolean input as "true" or "false". A missing value, or one that is not a JSON boolean (the
+# string "true" included), stops the script: no input has a default.
+config_boolean() {
+  local path="${1}"
+  local key="${2}"
+  local value
+  # tostring, because jq -e treats a false output as a failure.
+  value="$(jq -er --arg key "${key}" '.[$key] | select(type == "boolean") | tostring' "${path}")" ||
+    fail "deployment file lacks a boolean \"${key}\": ${path}"
+  printf '%s\n' "${value}"
+}
+
 require_op_session() {
   op whoami >/dev/null 2>&1 || fail "op is not signed in; the operator signs in to 1Password first"
 }

@@ -27,7 +27,6 @@ flowchart LR
   subgraph cf["Cloudflare アカウント"]
     subgraph idpw["IdP の Worker"]
       public["公開のエントリーポイント<br/>OIDC · パスキー API · 静的ページ"]
-      internal["名前付きのエントリーポイント<br/>IdpInternal"]
     end
     adminw["管理用の Worker<br/>別のホスト名"]
     rpw["RP のサンプルの Worker"]
@@ -41,7 +40,6 @@ flowchart LR
   rpw -->|"discovery · jwks · token · userinfo"| public
   browser --> rpw
   idpctl -->|"HTTPS（RFC 9421 の署名）"| adminw
-  adminw -->|"Service Binding（RPC）<br/>discovery"| internal
   public --> d1
   adminw --> d1
   public --> secret
@@ -49,7 +47,7 @@ flowchart LR
   adminw --> rl
 ```
 
-- 管理用の Worker は、IdP の Worker の公開のエントリーポイントではなく、名前付きのエントリーポイント `IdpInternal` に Service Binding でつなぎ、RS256 が有効かどうかを discovery から読む。そのため、デプロイは IdP の Worker を先にする（[デプロイと設定](deployment.md)のデプロイのパイプライン）。
+- 2 つの Worker の間にバインディングはない。RS256 が有効かどうかは、デプロイの設定ファイルの `rs256_enabled` を 2 つの Worker が同じ変数 `RS256_ENABLED` で受け取って決め、デプロイの後の確認が、discovery がそのとおりに `RS256` を載せているかを確かめる（[デプロイと設定](deployment.md)のデプロイのパイプライン）。
 - 2 つの Worker は同じ D1 をバインドする。レート制限の名前空間は Worker ごとに別にする（[技術選定](technology.md)）。
 - 公開するホスト名は、モードによってカスタムドメインか `workers.dev` になる（[ホスティングのモード](hosting-modes.md)）。
 
@@ -65,7 +63,7 @@ flowchart LR
   mig["D1 のマイグレーション"]
   idp["IdP の Worker の deploy"]
   admin["管理用の Worker の deploy"]
-  check["外からの確認"]
+  check["外からの確認<br/>discovery の RS256 と rs256_enabled の一致を含む"]
 
   merge --> validate --> creds --> tf --> build --> mig --> idp --> admin --> check
 ```

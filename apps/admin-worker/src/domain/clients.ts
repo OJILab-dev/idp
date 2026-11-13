@@ -52,7 +52,7 @@ function redirectTypeProblem(uris: readonly string[], clientType: ClientType): A
   return new AdminProblem("validation-failed", "A confidential client may register only https redirect URIs", { pointers });
 }
 
-// Fail-closed (idpctl.md): the caller passes rs256Enabled = false when it cannot tell from the IdP Worker's discovery.
+// Fail-closed (idpctl.md): the caller passes rs256Enabled = false unless the deployment setting is exactly true.
 function requireAlgorithmEnabled(ctx: AdminContext, alg: IdTokenAlg): void {
   if (alg === "RS256" && !ctx.rs256Enabled) {
     throw new AdminProblem("algorithm-disabled", "RS256 ID tokens are not enabled in this deployment");

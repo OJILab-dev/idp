@@ -3,8 +3,9 @@ name: Deploy
 # Applies Terraform and deploys the IdP Worker and the admin Worker of each deployment named in the repository
 # variable IDP_DEPLOYMENT, from the one commit merged to main (docs/design/deployment.md, デプロイのパイプライン):
 # scripts/terraform.sh --ci apply, then scripts/deploy.sh --ci (the D1 migrations, the IdP Worker, the admin Worker,
-# and the checks from outside). Every Worker input comes from the deployment file, read by the scripts, so this
-# workflow names no deployment value itself.
+# and the checks from outside, including that discovery advertises RS256 exactly when the deployment file's
+# rs256_enabled is true). Every Worker input comes from the deployment file, read by the scripts, so this workflow
+# names no deployment value itself.
 #
 # Nothing runs until the operator sets IDP_DEPLOYMENT: with it unset (a fork, or before the one-time setup of
 # docs/deployment/runbook.md) the config job is skipped, and so is every job that would get credentials. Credentials

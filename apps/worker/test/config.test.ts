@@ -14,7 +14,10 @@ describe("fail-closed configuration", () => {
     ["the workers_dev mode with a custom-domain issuer", (env) => ({ ...env, HOSTING_MODE: "workers_dev" })],
     ["no Ed25519 key", ({ SIGNING_KEY_ED25519_CURRENT: _, ...env }) => env],
     ["a malformed key", (env) => ({ ...env, SIGNING_KEY_ED25519_CURRENT: "{" })],
-    ["an RSA previous key without a current one", (env) => ({ ...env, SIGNING_KEY_RSA_PREVIOUS: env.SIGNING_KEY_ED25519_CURRENT ?? "" })],
+    ["an RSA previous key without a current one", (env) => ({ ...env, RS256_ENABLED: "true", SIGNING_KEY_RSA_PREVIOUS: env.SIGNING_KEY_ED25519_CURRENT ?? "" })],
+    // RS256 enabled must have a key to sign with, or RS256 clients would be registered that can never get a token.
+    ["RS256 enabled without an RSA key", (env) => ({ ...env, RS256_ENABLED: "true" })],
+    ["an RS256 setting that is not true or false", (env) => ({ ...env, RS256_ENABLED: "yes" })],
     ["the same key in two slots", (env) => ({ ...env, SIGNING_KEY_ED25519_PREVIOUS: env.SIGNING_KEY_ED25519_CURRENT ?? "" })],
     ["no D1 binding", (env) => ({ ...env, DB: undefined as unknown as D1Database })],
     // The limiter is the only in-Worker guard on the pre-authentication D1 writes; it is never skipped.
@@ -38,12 +41,16 @@ describe("fail-closed configuration", () => {
     expect((await call(f, "POST", "/token", { env })).status).toBe(500);
   });
 
-  it("serves once the configuration is valid, with RS256 when an RSA key is configured", async () => {
+  // The deployment setting decides, not the presence of the Secret: an RSA key left behind is not advertised.
+  it.each([
+    ["true", ["Ed25519", "RS256"]],
+    ["false", ["Ed25519"]],
+  ])("serves with RS256_ENABLED %s and an RSA key, advertising %j", async (setting, algs) => {
     const f = fixture();
-    const env: Env = { ...f.env, SIGNING_KEY_RSA_CURRENT: JSON.stringify(await generateRsaJwk()) };
+    const env: Env = { ...f.env, RS256_ENABLED: setting, SIGNING_KEY_RSA_CURRENT: JSON.stringify(await generateRsaJwk()) };
     const res = await call(f, "GET", "/.well-known/openid-configuration", { env });
     expect(res.status).toBe(200);
-    expect(((await res.json()) as Record<string, unknown>)["id_token_signing_alg_values_supported"]).toEqual(["Ed25519", "RS256"]);
+    expect(((await res.json()) as Record<string, unknown>)["id_token_signing_alg_values_supported"]).toEqual(algs);
   });
 
   it("serves a workers.dev issuer in the workers_dev mode with the same code", async () => {

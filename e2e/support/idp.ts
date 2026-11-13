@@ -30,11 +30,6 @@ export type LocalIdp = {
   /** The IdP's D1, the one the Worker reads; the tests seed and inspect it directly. */
   readonly db: D1Database;
   /**
-   * Calls the IdP Worker's IdpInternal.discovery() over a real Service Binding, as the admin Worker's IDP binding
-   * does: from another Worker in the same workerd, with no request.cf and no client IP.
-   */
-  readonly internalDiscovery: () => Promise<unknown>;
-  /**
    * Sends one request to the IdP Worker through workerd's entry, as the edge hands it over: the static assets
    * settings apply, and the URL's scheme reaches the Worker as given. The browser cannot send plain http here,
    * since the local server speaks only TLS.
@@ -62,15 +57,6 @@ const E2E_D1_ID = "idp-e2e";
 /** The admin Worker's rate limit in the suite: low enough for a test to cross it from one client IP. */
 export const ADMIN_TEST_RATE_LIMIT = 5;
 
-/** A Worker whose only job is to call the IdP Worker's internal entrypoint over its IDP binding. */
-const BINDING_PROBE = [
-  "export default {",
-  "  async fetch(_request, env) {",
-  "    return Response.json(await env.IDP.discovery());",
-  "  },",
-  "};",
-].join("\n");
-
 /**
  * Starts the IdP Worker over HTTPS on a free loopback port, with a fresh signing key and an empty, migrated D1.
  *
@@ -86,6 +72,8 @@ export async function startIdp(certificate: TestCertificate): Promise<LocalIdp> 
     IDP_ISSUER: ISSUER,
     IDP_D1_DATABASE_ID: "00000000-0000-4000-8000-000000000000",
     IDP_RATE_LIMIT_NAMESPACE_ID: "1",
+    // The local IdP has only the Ed25519 key.
+    IDP_RS256_ENABLED: "false",
   });
   const signingKey = JSON.stringify(await generateEd25519Jwk());
   const adminKey = await generateTestAdminKey();
@@ -96,6 +84,7 @@ export async function startIdp(certificate: TestCertificate): Promise<LocalIdp> 
     IDP_D1_DATABASE_ID: "00000000-0000-4000-8000-000000000000",
     IDP_ADMIN_RATE_LIMIT_NAMESPACE_ID: "2",
     IDP_ADMIN_SIGNING_KEYS: signingKeysJson([["e2e-admin", adminKey]]),
+    IDP_RS256_ENABLED: "false",
   });
   const mf = new Miniflare({
     host: "127.0.0.1",
@@ -129,15 +118,6 @@ export async function startIdp(certificate: TestCertificate): Promise<LocalIdp> 
       },
       {
         config: {
-          name: "binding-probe",
-          compatibilityDate: deployed.compatibilityDate,
-          manifest: { mainModule: "probe.js", modules: { "probe.js": { type: "esm", contents: BINDING_PROBE } } },
-          // The same binding shape the admin Worker declares (docs/design/idpctl.md).
-          env: { IDP: { type: "worker", worker: deployed.name, exportName: "IdpInternal" } },
-        },
-      },
-      {
-        config: {
           name: admin.name,
           compatibilityDate: admin.compatibilityDate,
           manifest: {
@@ -156,12 +136,6 @@ export async function startIdp(certificate: TestCertificate): Promise<LocalIdp> 
     ],
   });
   const url = await mf.ready;
-  async function internalDiscovery(): Promise<unknown> {
-    const probe = await mf.getWorker("binding-probe");
-    const response = await probe.fetch("http://probe.invalid/");
-    if (response.status !== 200) throw new Error(`the binding probe answered ${response.status}`);
-    return response.json();
-  }
   async function dispatch(target: string, init: { readonly method?: string; readonly body?: string; readonly headers?: Record<string, string> } = {}): Promise<Response> {
     // A plain http request carries no TLS version at the edge; manual, so that a redirect is seen, not followed.
     const response = await mf.dispatchFetch(target, { ...init, redirect: "manual", cf: { tlsVersion: target.startsWith("https:") ? "TLSv1.3" : "" } });
@@ -181,5 +155,5 @@ export async function startIdp(certificate: TestCertificate): Promise<LocalIdp> 
   const db = (await mf.getD1Database("DB")) as unknown as D1Database;
   const statements = migrationNames().flatMap((name) => splitStatements(readMigration(name)));
   await db.batch(statements.map((s) => db.prepare(s)));
-  return { port: Number(url.port), certificate, db, internalDiscovery, dispatch, dispatchAdmin, adminKey, dispose: () => mf.dispose() };
+  return { port: Number(url.port), certificate, db, dispatch, dispatchAdmin, adminKey, dispose: () => mf.dispose() };
 }
