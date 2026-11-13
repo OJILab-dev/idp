@@ -38,6 +38,7 @@ export const OPERATION_NAMES = [
   "client_create",
   "client_rename",
   "client_set_redirects",
+  "client_set_post_logout_redirects",
   "client_rotate_secret",
   "client_set_id_token_alg",
   "client_disable",

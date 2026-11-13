@@ -7,6 +7,7 @@ import {
   clientRename,
   clientRotateSecret,
   clientSetIdTokenAlg,
+  clientSetPostLogoutRedirects,
   clientSetRedirects,
   clientsList,
 } from "./clients.js";
@@ -17,7 +18,7 @@ import { groupCreate, groupDisable, groupEnable, groupMemberAdd, groupMemberRemo
 import type { AdminOperation, OperationName } from "./operation.js";
 import { sessionRevoke, userCreate, userDisable, userEnable, userGet, userRename, usersList } from "./users.js";
 
-/** Every admin operation: the 29 of docs/design/idpctl.md, each exactly once. */
+/** Every admin operation: the 30 of docs/design/idpctl.md, each exactly once. */
 export const ADMIN_OPERATIONS: readonly AdminOperation[] = [
   usersList,
   userGet,
@@ -42,6 +43,7 @@ export const ADMIN_OPERATIONS: readonly AdminOperation[] = [
   clientCreate,
   clientRename,
   clientSetRedirects,
+  clientSetPostLogoutRedirects,
   clientRotateSecret,
   clientSetIdTokenAlg,
   clientDisable,

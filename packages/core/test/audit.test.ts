@@ -259,6 +259,14 @@ describe("a name never reaches detail_json", () => {
     expect(() => auditSuccessStatement({ ...row, detail: { redirect_uris: "https://app.example.com/cb" } })).toThrow(InvalidAuditRowError);
   });
 
+  it("accepts https post-logout redirect URIs only", () => {
+    const row = { occurredAt: NOW, actor: ADMIN, writerVersion: "v", operation: "client_set_post_logout_redirects", target: "client:grafana" } as const;
+    expect(() => auditSuccessStatement({ ...row, detail: { post_logout_redirect_uris: [] } })).not.toThrow();
+    expect(() => auditSuccessStatement({ ...row, detail: { post_logout_redirect_uris: ["https://app.example.com/bye"] } })).not.toThrow();
+    expect(() => auditSuccessStatement({ ...row, detail: { post_logout_redirect_uris: ["http://127.0.0.1/bye"] } })).toThrow(InvalidAuditRowError);
+    expect(() => auditSuccessStatement({ ...row, detail: { post_logout_redirect_uris: ["Alice's laptop"] } })).toThrow(InvalidAuditRowError);
+  });
+
   it("rejects an operation name that is not snake_case", () => {
     expect(() =>
       auditSuccessStatement({

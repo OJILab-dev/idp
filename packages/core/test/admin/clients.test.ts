@@ -7,6 +7,7 @@ import {
   clientRename,
   clientRotateSecret,
   clientSetIdTokenAlg,
+  clientSetPostLogoutRedirects,
   clientSetRedirects,
   clientsList,
 } from "../../src/admin/clients.js";
@@ -153,6 +154,91 @@ describe("client_set_redirects", () => {
   });
 });
 
+describe("post_logout_redirect_uris on client_create", () => {
+  it("stores an empty list and records nothing when omitted", async () => {
+    await run(h(), clientCreate, WEB);
+    expect(await query(h(), "SELECT post_logout_redirect_uris_json AS uris FROM clients")).toEqual([{ uris: "[]" }]);
+    expect((await auditRows(h()))[0]?.["detail"]).not.toHaveProperty("post_logout_redirect_uris");
+  });
+
+  it("stores and records the given list", async () => {
+    const uris = ["https://grafana.example.com/bye"];
+    await run(h(), clientCreate, { ...WEB, post_logout_redirect_uris: uris });
+    expect(await query(h(), "SELECT post_logout_redirect_uris_json AS uris FROM clients")).toEqual([{ uris: JSON.stringify(uris) }]);
+    expect((await auditRows(h()))[0]).toMatchObject({ detail: { post_logout_redirect_uris: uris } });
+  });
+
+  it("refuses a loopback URI even for a public client", async () => {
+    await expect(run(h(), clientCreate, { ...CLI, post_logout_redirect_uris: ["http://127.0.0.1/bye"] })).rejects.toMatchObject({
+      kind: "validation-failed",
+      pointers: ["/post_logout_redirect_uris/0"],
+    });
+  });
+});
+
+describe("client_set_post_logout_redirects", () => {
+  it("replaces the list and records the new URIs", async () => {
+    await run(h(), clientCreate, CLI);
+    const uris = ["https://cli.example.com/bye", "https://cli.example.com/bye?x=1"];
+    await expect(run(h(), clientSetPostLogoutRedirects, { client_id: "my-cli", post_logout_redirect_uris: uris }, null)).resolves.toMatchObject({
+      status: 200,
+      body: { client_id: "my-cli", post_logout_redirect_uris: uris },
+    });
+    expect(await query(h(), "SELECT post_logout_redirect_uris_json AS uris FROM clients")).toEqual([{ uris: JSON.stringify(uris) }]);
+    expect((await auditRows(h())).at(-1)).toMatchObject({
+      operation: "client_set_post_logout_redirects",
+      target: "client:my-cli",
+      detail: { post_logout_redirect_uris: uris },
+    });
+  });
+
+  it("accepts an empty list, which stops post-logout redirects", async () => {
+    await run(h(), clientCreate, { ...WEB, post_logout_redirect_uris: ["https://grafana.example.com/bye"] });
+    await run(h(), clientSetPostLogoutRedirects, { client_id: "grafana", post_logout_redirect_uris: [] }, null);
+    expect(await query(h(), "SELECT post_logout_redirect_uris_json AS uris FROM clients")).toEqual([{ uris: "[]" }]);
+    expect((await auditRows(h())).at(-1)).toMatchObject({ detail: { post_logout_redirect_uris: [] } });
+  });
+
+  it("succeeds without writing for the same list", async () => {
+    await run(h(), clientCreate, WEB);
+    await run(h(), clientSetPostLogoutRedirects, { client_id: "grafana", post_logout_redirect_uris: [] }, null);
+    expect(await auditRows(h())).toHaveLength(1);
+  });
+
+  it.each([
+    ["a loopback URI", ["http://127.0.0.1/bye"], ["/post_logout_redirect_uris/0"]],
+    ["a custom scheme", ["https://a.example.com/bye", "com.example.app:/bye"], ["/post_logout_redirect_uris/1"]],
+    ["plain http", ["http://a.example.com/bye"], ["/post_logout_redirect_uris/0"]],
+    ["a fragment", ["https://a.example.com/bye#x"], ["/post_logout_redirect_uris/0"]],
+    ["userinfo", ["https://u@a.example.com/bye"], ["/post_logout_redirect_uris/0"]],
+    ["a non-canonical URI", ["https://A.example.com/bye"], ["/post_logout_redirect_uris/0"]],
+    ["localhost", ["https://localhost/bye"], ["/post_logout_redirect_uris/0"]],
+    ["a repeated URI", ["https://a.example.com/bye", "https://a.example.com/bye"], ["/post_logout_redirect_uris"]],
+    ["eleven URIs", Array.from({ length: 11 }, (_, i) => `https://a.example.com/${i}`), ["/post_logout_redirect_uris"]],
+  ])("rejects %s with validation-failed and keeps the list", async (_case, uris, pointers) => {
+    await run(h(), clientCreate, CLI);
+    await expect(run(h(), clientSetPostLogoutRedirects, { client_id: "my-cli", post_logout_redirect_uris: uris }, null)).rejects.toMatchObject({
+      kind: "validation-failed",
+      pointers,
+    });
+    expect(await query(h(), "SELECT post_logout_redirect_uris_json AS uris FROM clients")).toEqual([{ uris: "[]" }]);
+  });
+
+  it("is not-found for a missing client", async () => {
+    await expectProblem(
+      run(h(), clientSetPostLogoutRedirects, { client_id: "nope", post_logout_redirect_uris: ["https://a.example.com/bye"] }, null),
+      "not-found",
+    );
+    expect((await auditRows(h()))[0]).toMatchObject({ result: "failure", target: "client:nope" });
+  });
+
+  it("is listed by clients_list", async () => {
+    await run(h(), clientCreate, { ...WEB, post_logout_redirect_uris: ["https://grafana.example.com/bye"] });
+    const listed = await run(h(), clientsList, {}, null);
+    expect(listed.body.items[0]).toMatchObject({ post_logout_redirect_uris: ["https://grafana.example.com/bye"] });
+  });
+});
+
 describe("client_rotate_secret", () => {
   it("replaces the secret hash and returns the new secret once", async () => {
     const first = (await run(h(), clientCreate, WEB)).body.client_secret;
@@ -234,6 +320,7 @@ describe("clients_list", () => {
         client_type: "confidential",
         enablement: "enabled",
         redirect_uris: [...WEB.redirect_uris],
+        post_logout_redirect_uris: [],
         id_token_alg: "RS256",
         created_at: T0,
       },
@@ -243,6 +330,7 @@ describe("clients_list", () => {
         client_type: "public",
         enablement: "disabled",
         redirect_uris: [...CLI.redirect_uris],
+        post_logout_redirect_uris: [],
         id_token_alg: "Ed25519",
         created_at: T0 + 1,
       },

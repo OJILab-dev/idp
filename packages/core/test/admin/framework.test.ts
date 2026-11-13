@@ -44,6 +44,7 @@ const EXPECTED: Readonly<Record<string, readonly [string, string | null, string,
   client_create: ["write", "rp", "POST", "/v1/clients"],
   client_rename: ["write", "rp", "PUT", "/v1/clients/{id}/name"],
   client_set_redirects: ["write", "rp", "PUT", "/v1/clients/{id}/redirect-uris"],
+  client_set_post_logout_redirects: ["write", "rp", "PUT", "/v1/clients/{id}/post-logout-redirect-uris"],
   client_rotate_secret: ["write", "rp", "POST", "/v1/clients/{id}/secrets"],
   client_set_id_token_alg: ["write", "rp", "PUT", "/v1/clients/{id}/id-token-alg"],
   client_disable: ["write", "rp", "POST", "/v1/clients/{id}/enablement-events"],
@@ -53,17 +54,17 @@ const EXPECTED: Readonly<Record<string, readonly [string, string | null, string,
 };
 
 describe("the operation catalogue", () => {
-  it("names the 29 operations of idpctl.md: 7 reads, 13 user, 7 rp, 2 access", () => {
+  it("names the 30 operations of idpctl.md: 7 reads, 13 user, 8 rp, 2 access", () => {
     expect([...OPERATION_NAMES].sort()).toEqual(Object.keys(EXPECTED).sort());
     const counts = Object.values(EXPECTED).reduce<Record<string, number>>((acc, [cls, concern]) => {
       const key = concern ?? cls;
       acc[key] = (acc[key] ?? 0) + 1;
       return acc;
     }, {});
-    expect(counts).toEqual({ read: 7, user: 13, rp: 7, access: 2 });
+    expect(counts).toEqual({ read: 7, user: 13, rp: 8, access: 2 });
   });
 
-  it("registers each of the 29 operations exactly once", () => {
+  it("registers each of the 30 operations exactly once", () => {
     const names = ADMIN_OPERATIONS.map((o) => o.name);
     expect(new Set(names).size).toBe(names.length);
     expect([...names].sort()).toEqual([...OPERATION_NAMES].sort());

@@ -99,6 +99,9 @@ export const clientRenameOutput = z.object({ client_id: z.string(), name: z.stri
 /** client_set_redirects. */
 export const clientSetRedirectsOutput = z.object({ client_id: z.string(), redirect_uris: stringList }).readonly();
 
+/** client_set_post_logout_redirects. */
+export const clientSetPostLogoutRedirectsOutput = z.object({ client_id: z.string(), post_logout_redirect_uris: stringList }).readonly();
+
 /** client_rotate_secret; the secret is returned once. */
 export const clientRotateSecretOutput = z.object({ client_id: z.string(), client_secret: z.string() }).readonly();
 
@@ -112,6 +115,7 @@ const clientSummary = z
     client_type: clientType,
     enablement,
     redirect_uris: stringList,
+    post_logout_redirect_uris: stringList,
     id_token_alg: idTokenAlg,
     created_at: unixSeconds,
   })

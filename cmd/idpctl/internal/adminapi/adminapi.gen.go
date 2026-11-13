@@ -826,11 +826,12 @@ type ClientsList200JSONResponseBodyItemsIdTokenAlg string
 
 // ClientCreateJSONBody defines parameters for ClientCreate.
 type ClientCreateJSONBody struct {
-	ClientId     string                          `json:"client_id"`
-	ClientType   ClientCreateJSONBodyClientType  `json:"client_type"`
-	IdTokenAlg   *ClientCreateJSONBodyIdTokenAlg `json:"id_token_alg,omitempty"`
-	Name         string                          `json:"name"`
-	RedirectUris []string                        `json:"redirect_uris"`
+	ClientId               string                          `json:"client_id"`
+	ClientType             ClientCreateJSONBodyClientType  `json:"client_type"`
+	IdTokenAlg             *ClientCreateJSONBodyIdTokenAlg `json:"id_token_alg,omitempty"`
+	Name                   string                          `json:"name"`
+	PostLogoutRedirectUris *[]string                       `json:"post_logout_redirect_uris,omitempty"`
+	RedirectUris           []string                        `json:"redirect_uris"`
 }
 
 // ClientCreateParams defines parameters for ClientCreate.
@@ -901,6 +902,11 @@ type ClientSetIdTokenAlg200JSONResponseBodyIdTokenAlg string
 // ClientRenameJSONBody defines parameters for ClientRename.
 type ClientRenameJSONBody struct {
 	Name string `json:"name"`
+}
+
+// ClientSetPostLogoutRedirectsJSONBody defines parameters for ClientSetPostLogoutRedirects.
+type ClientSetPostLogoutRedirectsJSONBody struct {
+	PostLogoutRedirectUris []string `json:"post_logout_redirect_uris"`
 }
 
 // ClientSetRedirectsJSONBody defines parameters for ClientSetRedirects.
@@ -1064,6 +1070,9 @@ type ClientSetIdTokenAlgJSONRequestBody ClientSetIdTokenAlgJSONBody
 
 // ClientRenameJSONRequestBody defines body for ClientRename for application/json ContentType.
 type ClientRenameJSONRequestBody ClientRenameJSONBody
+
+// ClientSetPostLogoutRedirectsJSONRequestBody defines body for ClientSetPostLogoutRedirects for application/json ContentType.
+type ClientSetPostLogoutRedirectsJSONRequestBody ClientSetPostLogoutRedirectsJSONBody
 
 // ClientSetRedirectsJSONRequestBody defines body for ClientSetRedirects for application/json ContentType.
 type ClientSetRedirectsJSONRequestBody ClientSetRedirectsJSONBody
@@ -1719,6 +1728,14 @@ type ClientInterface interface {
 	// Takes a body of the `application/json` content type.
 	ClientRename(ctx context.Context, id string, body ClientRenameJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ClientSetPostLogoutRedirectsWithBody performs a PUT /v1/clients/{id}/post-logout-redirect-uris (the `ClientSetPostLogoutRedirects` operationId) request,
+	// with any type of body and a specified content type.
+	ClientSetPostLogoutRedirectsWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ClientSetPostLogoutRedirects performs a PUT /v1/clients/{id}/post-logout-redirect-uris (the `ClientSetPostLogoutRedirects` operationId) request.
+	// Takes a body of the `application/json` content type.
+	ClientSetPostLogoutRedirects(ctx context.Context, id string, body ClientSetPostLogoutRedirectsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ClientSetRedirectsWithBody performs a PUT /v1/clients/{id}/redirect-uris (the `ClientSetRedirects` operationId) request,
 	// with any type of body and a specified content type.
 	ClientSetRedirectsWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1973,6 +1990,34 @@ func (c *Client) ClientRenameWithBody(ctx context.Context, id string, contentTyp
 // Takes a body of the `application/json` content type.
 func (c *Client) ClientRename(ctx context.Context, id string, body ClientRenameJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewClientRenameRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ClientSetPostLogoutRedirectsWithBody performs a PUT /v1/clients/{id}/post-logout-redirect-uris (the `ClientSetPostLogoutRedirects` operationId) request,
+// with any type of body and a specified content type.
+func (c *Client) ClientSetPostLogoutRedirectsWithBody(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewClientSetPostLogoutRedirectsRequestWithBody(c.Server, id, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+// ClientSetPostLogoutRedirects performs a PUT /v1/clients/{id}/post-logout-redirect-uris (the `ClientSetPostLogoutRedirects` operationId) request.
+// Takes a body of the `application/json` content type.
+func (c *Client) ClientSetPostLogoutRedirects(ctx context.Context, id string, body ClientSetPostLogoutRedirectsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewClientSetPostLogoutRedirectsRequest(c.Server, id, body)
 	if err != nil {
 		return nil, err
 	}
@@ -2829,6 +2874,53 @@ func NewClientRenameRequestWithBody(server string, id string, contentType string
 	}
 
 	operationPath := fmt.Sprintf("/v1/clients/%s/name", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPut, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewClientSetPostLogoutRedirectsRequest calls the generic ClientSetPostLogoutRedirects builder with application/json body
+func NewClientSetPostLogoutRedirectsRequest(server string, id string, body ClientSetPostLogoutRedirectsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewClientSetPostLogoutRedirectsRequestWithBody(server, id, "application/json", bodyReader)
+}
+
+// NewClientSetPostLogoutRedirectsRequestWithBody constructs an http.Request for the ClientSetPostLogoutRedirects method, with any body, and a specified content type
+func NewClientSetPostLogoutRedirectsRequestWithBody(server string, id string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "id", id, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: ""})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/clients/%s/post-logout-redirect-uris", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -3831,6 +3923,16 @@ type ClientWithResponsesInterface interface {
 	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
 	ClientRenameWithResponse(ctx context.Context, id string, body ClientRenameJSONRequestBody, reqEditors ...RequestEditorFn) (*ClientRenameResponse, error)
 
+	// ClientSetPostLogoutRedirectsWithBodyWithResponse performs a PUT /v1/clients/{id}/post-logout-redirect-uris (the `ClientSetPostLogoutRedirects` operationId) request,
+	// with any type of body and a specified content type.
+	//
+	// Returns a wrapper object for the known response body format(s).
+	ClientSetPostLogoutRedirectsWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ClientSetPostLogoutRedirectsResponse, error)
+
+	// ClientSetPostLogoutRedirectsWithResponse performs a PUT /v1/clients/{id}/post-logout-redirect-uris (the `ClientSetPostLogoutRedirects` operationId) request.
+	// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+	ClientSetPostLogoutRedirectsWithResponse(ctx context.Context, id string, body ClientSetPostLogoutRedirectsJSONRequestBody, reqEditors ...RequestEditorFn) (*ClientSetPostLogoutRedirectsResponse, error)
+
 	// ClientSetRedirectsWithBodyWithResponse performs a PUT /v1/clients/{id}/redirect-uris (the `ClientSetRedirects` operationId) request,
 	// with any type of body and a specified content type.
 	//
@@ -4156,13 +4258,14 @@ type ClientsListResponse struct {
 	// JSON200 the response for an HTTP 200 `application/json` response
 	JSON200 *struct {
 		Items *[]struct {
-			ClientId     string                                        `json:"client_id"`
-			ClientType   ClientsList200JSONResponseBodyItemsClientType `json:"client_type"`
-			CreatedAt    int                                           `json:"created_at"`
-			Enablement   ClientsList200JSONResponseBodyItemsEnablement `json:"enablement"`
-			IdTokenAlg   ClientsList200JSONResponseBodyItemsIdTokenAlg `json:"id_token_alg"`
-			Name         string                                        `json:"name"`
-			RedirectUris *[]string                                     `json:"redirect_uris,omitempty"`
+			ClientId               string                                        `json:"client_id"`
+			ClientType             ClientsList200JSONResponseBodyItemsClientType `json:"client_type"`
+			CreatedAt              int                                           `json:"created_at"`
+			Enablement             ClientsList200JSONResponseBodyItemsEnablement `json:"enablement"`
+			IdTokenAlg             ClientsList200JSONResponseBodyItemsIdTokenAlg `json:"id_token_alg"`
+			Name                   string                                        `json:"name"`
+			PostLogoutRedirectUris *[]string                                     `json:"post_logout_redirect_uris,omitempty"`
+			RedirectUris           *[]string                                     `json:"redirect_uris,omitempty"`
 		} `json:"items,omitempty"`
 		NextCursor *string `json:"next_cursor"`
 		PrevCursor *string `json:"prev_cursor"`
@@ -4182,13 +4285,14 @@ type ClientsListResponse struct {
 // GetJSON200 returns the response for an HTTP 200 `application/json` response
 func (r ClientsListResponse) GetJSON200() *struct {
 	Items *[]struct {
-		ClientId     string                                        `json:"client_id"`
-		ClientType   ClientsList200JSONResponseBodyItemsClientType `json:"client_type"`
-		CreatedAt    int                                           `json:"created_at"`
-		Enablement   ClientsList200JSONResponseBodyItemsEnablement `json:"enablement"`
-		IdTokenAlg   ClientsList200JSONResponseBodyItemsIdTokenAlg `json:"id_token_alg"`
-		Name         string                                        `json:"name"`
-		RedirectUris *[]string                                     `json:"redirect_uris,omitempty"`
+		ClientId               string                                        `json:"client_id"`
+		ClientType             ClientsList200JSONResponseBodyItemsClientType `json:"client_type"`
+		CreatedAt              int                                           `json:"created_at"`
+		Enablement             ClientsList200JSONResponseBodyItemsEnablement `json:"enablement"`
+		IdTokenAlg             ClientsList200JSONResponseBodyItemsIdTokenAlg `json:"id_token_alg"`
+		Name                   string                                        `json:"name"`
+		PostLogoutRedirectUris *[]string                                     `json:"post_logout_redirect_uris,omitempty"`
+		RedirectUris           *[]string                                     `json:"redirect_uris,omitempty"`
 	} `json:"items,omitempty"`
 	NextCursor *string `json:"next_cursor"`
 	PrevCursor *string `json:"prev_cursor"`
@@ -4804,6 +4908,95 @@ func (r ClientRenameResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r ClientRenameResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ClientSetPostLogoutRedirectsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	// JSON200 the response for an HTTP 200 `application/json` response
+	JSON200 *struct {
+		ClientId               string    `json:"client_id"`
+		PostLogoutRedirectUris *[]string `json:"post_logout_redirect_uris,omitempty"`
+	}
+	// ApplicationproblemJSON400 the response for an HTTP 400 `application/problem+json` response
+	ApplicationproblemJSON400 *Problem400
+	// ApplicationproblemJSON403 the response for an HTTP 403 `application/problem+json` response
+	ApplicationproblemJSON403 *Problem403
+	// ApplicationproblemJSON404 the response for an HTTP 404 `application/problem+json` response
+	ApplicationproblemJSON404 *Problem404
+	// ApplicationproblemJSON409 the response for an HTTP 409 `application/problem+json` response
+	ApplicationproblemJSON409 *Problem409
+	// ApplicationproblemJSON500 the response for an HTTP 500 `application/problem+json` response
+	ApplicationproblemJSON500 *Problem500
+	// ApplicationproblemJSONDefault the response for an HTTP default `application/problem+json` response
+	ApplicationproblemJSONDefault *Problem
+}
+
+// GetJSON200 returns the response for an HTTP 200 `application/json` response
+func (r ClientSetPostLogoutRedirectsResponse) GetJSON200() *struct {
+	ClientId               string    `json:"client_id"`
+	PostLogoutRedirectUris *[]string `json:"post_logout_redirect_uris,omitempty"`
+} {
+	return r.JSON200
+}
+
+// GetApplicationproblemJSON400 returns the response for an HTTP 400 `application/problem+json` response
+func (r ClientSetPostLogoutRedirectsResponse) GetApplicationproblemJSON400() *Problem400 {
+	return r.ApplicationproblemJSON400
+}
+
+// GetApplicationproblemJSON403 returns the response for an HTTP 403 `application/problem+json` response
+func (r ClientSetPostLogoutRedirectsResponse) GetApplicationproblemJSON403() *Problem403 {
+	return r.ApplicationproblemJSON403
+}
+
+// GetApplicationproblemJSON404 returns the response for an HTTP 404 `application/problem+json` response
+func (r ClientSetPostLogoutRedirectsResponse) GetApplicationproblemJSON404() *Problem404 {
+	return r.ApplicationproblemJSON404
+}
+
+// GetApplicationproblemJSON409 returns the response for an HTTP 409 `application/problem+json` response
+func (r ClientSetPostLogoutRedirectsResponse) GetApplicationproblemJSON409() *Problem409 {
+	return r.ApplicationproblemJSON409
+}
+
+// GetApplicationproblemJSON500 returns the response for an HTTP 500 `application/problem+json` response
+func (r ClientSetPostLogoutRedirectsResponse) GetApplicationproblemJSON500() *Problem500 {
+	return r.ApplicationproblemJSON500
+}
+
+// GetApplicationproblemJSONDefault returns the response for an HTTP default `application/problem+json` response
+func (r ClientSetPostLogoutRedirectsResponse) GetApplicationproblemJSONDefault() *Problem {
+	return r.ApplicationproblemJSONDefault
+}
+
+// GetBody returns the raw response body bytes
+func (r ClientSetPostLogoutRedirectsResponse) GetBody() []byte {
+	return r.Body
+}
+
+// Status returns HTTPResponse.Status
+func (r ClientSetPostLogoutRedirectsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ClientSetPostLogoutRedirectsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ClientSetPostLogoutRedirectsResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -6550,6 +6743,28 @@ func (c *ClientWithResponses) ClientRenameWithResponse(ctx context.Context, id s
 	return ParseClientRenameResponse(rsp)
 }
 
+// ClientSetPostLogoutRedirectsWithBodyWithResponse performs a PUT /v1/clients/{id}/post-logout-redirect-uris (the `ClientSetPostLogoutRedirects` operationId) request,
+// with any type of body and a specified content type.
+//
+// Returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) ClientSetPostLogoutRedirectsWithBodyWithResponse(ctx context.Context, id string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ClientSetPostLogoutRedirectsResponse, error) {
+	rsp, err := c.ClientSetPostLogoutRedirectsWithBody(ctx, id, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseClientSetPostLogoutRedirectsResponse(rsp)
+}
+
+// ClientSetPostLogoutRedirectsWithResponse performs a PUT /v1/clients/{id}/post-logout-redirect-uris (the `ClientSetPostLogoutRedirects` operationId) request.
+// Takes a body of the `application/json` content type, and returns a wrapper object for the known response body format(s).
+func (c *ClientWithResponses) ClientSetPostLogoutRedirectsWithResponse(ctx context.Context, id string, body ClientSetPostLogoutRedirectsJSONRequestBody, reqEditors ...RequestEditorFn) (*ClientSetPostLogoutRedirectsResponse, error) {
+	rsp, err := c.ClientSetPostLogoutRedirects(ctx, id, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseClientSetPostLogoutRedirectsResponse(rsp)
+}
+
 // ClientSetRedirectsWithBodyWithResponse performs a PUT /v1/clients/{id}/redirect-uris (the `ClientSetRedirects` operationId) request,
 // with any type of body and a specified content type.
 //
@@ -6976,13 +7191,14 @@ func ParseClientsListResponse(rsp *http.Response) (*ClientsListResponse, error) 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest struct {
 			Items *[]struct {
-				ClientId     string                                        `json:"client_id"`
-				ClientType   ClientsList200JSONResponseBodyItemsClientType `json:"client_type"`
-				CreatedAt    int                                           `json:"created_at"`
-				Enablement   ClientsList200JSONResponseBodyItemsEnablement `json:"enablement"`
-				IdTokenAlg   ClientsList200JSONResponseBodyItemsIdTokenAlg `json:"id_token_alg"`
-				Name         string                                        `json:"name"`
-				RedirectUris *[]string                                     `json:"redirect_uris,omitempty"`
+				ClientId               string                                        `json:"client_id"`
+				ClientType             ClientsList200JSONResponseBodyItemsClientType `json:"client_type"`
+				CreatedAt              int                                           `json:"created_at"`
+				Enablement             ClientsList200JSONResponseBodyItemsEnablement `json:"enablement"`
+				IdTokenAlg             ClientsList200JSONResponseBodyItemsIdTokenAlg `json:"id_token_alg"`
+				Name                   string                                        `json:"name"`
+				PostLogoutRedirectUris *[]string                                     `json:"post_logout_redirect_uris,omitempty"`
+				RedirectUris           *[]string                                     `json:"redirect_uris,omitempty"`
 			} `json:"items,omitempty"`
 			NextCursor *string `json:"next_cursor"`
 			PrevCursor *string `json:"prev_cursor"`
@@ -7425,6 +7641,77 @@ func ParseClientRenameResponse(rsp *http.Response) (*ClientRenameResponse, error
 		var dest struct {
 			ClientId string `json:"client_id"`
 			Name     string `json:"name"`
+		}
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest Problem400
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Problem403
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON403 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest Problem404
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Problem409
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest Problem500
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Problem
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.ApplicationproblemJSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseClientSetPostLogoutRedirectsResponse parses an HTTP response from a ClientSetPostLogoutRedirectsWithResponse call
+func ParseClientSetPostLogoutRedirectsResponse(rsp *http.Response) (*ClientSetPostLogoutRedirectsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ClientSetPostLogoutRedirectsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest struct {
+			ClientId               string    `json:"client_id"`
+			PostLogoutRedirectUris *[]string `json:"post_logout_redirect_uris,omitempty"`
 		}
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
