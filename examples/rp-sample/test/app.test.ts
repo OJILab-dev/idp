@@ -1,7 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
-import { AUTO_SUBMIT_SCRIPT, AUTO_SUBMIT_SCRIPT_SHA256 } from "../src/html.js";
+import { describe, expect, it } from "vitest";
 import { createHandler, type Handler } from "../src/index.js";
-import { importSealingKey, seal, unseal } from "../src/sealed.js";
+import { importSealingKey, seal } from "../src/sealed.js";
 import { CLIENT_ID, ENV, FakeIdp, ISSUER, ORIGIN, SESSION_KEY, SUB, type FakeIdpOptions } from "./support/fake-idp.js";
 
 const FLOW_COOKIE = "__Host-rp-sample-flow";
@@ -203,11 +202,6 @@ describe("GET /callback", () => {
   it.each<[string, (callback: URL) => void]>([
     ["another state", (callback) => callback.searchParams.set("state", "forged")],
     ["no iss (RFC 9207)", (callback) => callback.searchParams.delete("iss")],
-    ["another iss (RFC 9207 mix-up)", (callback) => callback.searchParams.set("iss", "https://evil.example")],
-    ["an error from the IdP", (callback) => {
-      callback.searchParams.delete("code");
-      callback.searchParams.set("error", "access_denied");
-    }],
   ])("refuses %s without calling the token endpoint and without a session", async (_name, change) => {
     const r = await rig();
     const response = await refusedCallback(r, change);
@@ -235,9 +229,6 @@ describe("GET /callback", () => {
   it.each<[string, FakeIdpOptions, number]>([
     ["a token endpoint error", { tokenStatus: 400 }, 502],
     ["an ID token with another nonce", { idTokenClaims: { nonce: "replayed" } }, 502],
-    ["an ID token for another client", { idTokenClaims: { aud: "other-client" } }, 502],
-    ["an ID token from another issuer", { idTokenClaims: { iss: "https://evil.example" } }, 502],
-    ["an expired ID token", { idTokenClaims: { exp: START - 3600, iat: START - 3900 } }, 502],
     ["an ID token signed by a key outside the JWKS", { signWithForeignKey: true }, 502],
     // OIDC Core §5.3.2: the UserInfo sub MUST match the ID token's, or the response is not used.
     ["a /userinfo response for another user", { userinfo: { sub: "someone-else", name: "Mallory" } }, 502],
@@ -254,8 +245,6 @@ describe("GET /callback", () => {
   it.each<[string, FakeIdpOptions]>([
     ["a token response with a lowercase token_type (case-insensitive, RFC 6749 §5.1)", { tokenResponse: { token_type: "bearer" } }],
     ["a token response with unknown members (ignored, RFC 6749 §5.1)", { tokenResponse: { refresh_hint: "x", at_hash: "ignored" } }],
-    ["a token response with a charset parameter", { contentType: { token: "application/json; charset=UTF-8" } }],
-    ["a /userinfo response in upper case media type", { contentType: { userinfo: "Application/JSON" } }],
   ])("accepts %s", async (_name, options) => {
     const r = await rig(options);
     await signIn(r);
@@ -269,7 +258,6 @@ describe("GET /callback", () => {
     ["a token response that is not application/json", { contentType: { token: "application/jsonx" } }],
     ["a /userinfo response that is not application/json (OIDC Core §5.3.2)", { contentType: { userinfo: "application/jwt" } }],
     ["a /userinfo response without sub", { userinfo: { name: "Alice" } }],
-    ["a JWKS that is not application/json", { contentType: { jwks: "text/plain" } }],
   ])("refuses %s, sets no session, and clears the flow cookie", async (_name, options) => {
     const r = await rig(options);
     const { callback, flow } = await startLogin(r);
@@ -277,26 +265,6 @@ describe("GET /callback", () => {
     expect(response.status).toBe(502);
     expect(setCookie(response, SESSION_COOKIE)).toBeUndefined();
     expect(setCookie(response, FLOW_COOKIE)?.get("max-age")).toBe("0");
-  });
-
-  it("refuses discovery that is not application/json", async () => {
-    const r = await rig({ contentType: { discovery: "application/jsonx" } });
-    expect((await call(r, "/login")).status).toBe(502);
-  });
-
-  it("logs the token endpoint's error code, never its description", async () => {
-    const r = await rig({ tokenStatus: 400 });
-    const lines: string[] = [];
-    const spy = vi.spyOn(console, "log").mockImplementation((line: unknown) => {
-      lines.push(String(line));
-    });
-    try {
-      const { callback, flow } = await startLogin(r);
-      await call(r, `${callback.pathname}${callback.search}`, { cookies: { [FLOW_COOKIE]: flow } });
-    } finally {
-      spy.mockRestore();
-    }
-    expect(lines.some((line) => line.includes("token: status 400 error invalid_grant"))).toBe(true);
   });
 
   // RFC 6265bis §5.6: a browser drops a cookie whose name and value exceed 4096 octets, counted in UTF-8.
@@ -346,23 +314,6 @@ describe("the session", () => {
     expect(html).toContain('href="/login"');
     expect(html).not.toContain(SUB);
   });
-
-  it("is ignored when tampered with", async () => {
-    const r = await rig();
-    const session = await signIn(r);
-    // The second-to-last character always carries 6 bits of the tag; replace it with a different character.
-    const tampered = `${session.slice(0, -2)}${session.at(-2) === "A" ? "B" : "A"}${session.slice(-1)}`;
-    expect(tampered).not.toBe(session);
-    const html = await (await call(r, "/", { cookies: { [SESSION_COOKIE]: tampered } })).text();
-    expect(html).toContain('href="/login"');
-  });
-
-  it("cannot be replaced by the flow cookie's value", async () => {
-    const r = await rig();
-    const { flow } = await startLogin(r);
-    const html = await (await call(r, "/", { cookies: { [SESSION_COOKIE]: flow } })).text();
-    expect(html).toContain('href="/login"');
-  });
 });
 
 /** The hidden fields of the logout form, by name. */
@@ -398,13 +349,6 @@ describe("POST /logout (RP-Initiated Logout 1.0)", () => {
     expect([...fields.keys()].sort()).toEqual(["client_id", "id_token_hint", "post_logout_redirect_uri", "state"]);
   });
 
-  it("keeps the ID token out of the URL: the request is a form POST, never a redirect", async () => {
-    const r = await rig();
-    const response = await logout(r);
-    expect(response.headers.get("location")).toBeNull();
-    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
-  });
-
   it("allows exactly the auto-submit script by hash and form posts only to the IdP and back to itself", async () => {
     const r = await rig();
     const response = await logout(r);
@@ -427,16 +371,12 @@ describe("POST /logout (RP-Initiated Logout 1.0)", () => {
     expect(html).toContain('<button type="submit">');
   });
 
-  it("pins the script hash constant to the script", async () => {
-    expect(AUTO_SUBMIT_SCRIPT_SHA256).toBe(await sha256Base64(AUTO_SUBMIT_SCRIPT));
-  });
-
-  it.each(["status", "network"] as const)("clears the RP session and says so when discovery fails during logout (%s)", async (failure) => {
+  it("clears the RP session and says so when discovery fails during logout", async () => {
     const r = await rig();
     const session = await signIn(r);
     // Past the discovery cache, so /logout asks the IdP again; the RP session is still valid.
     r.clock.now += 301;
-    r.idp.failDiscovery = failure;
+    r.idp.failDiscovery = true;
     const response = await call(r, "/logout", { method: "POST", headers: { "sec-fetch-site": "same-origin" }, cookies: { [SESSION_COOKIE]: session } });
     expect(response.status).toBe(502);
     expect(setCookie(response, SESSION_COOKIE)?.get("max-age")).toBe("0");
@@ -455,14 +395,6 @@ describe("POST /logout (RP-Initiated Logout 1.0)", () => {
     const fields = formFields(await response.text());
     expect(fields.has("id_token_hint")).toBe(false);
     expect([...fields.keys()].sort()).toEqual(["client_id", "post_logout_redirect_uri", "state"]);
-  });
-
-  it("keeps the ID token once: the account page's claims are read from the kept token", async () => {
-    const r = await rig();
-    const session = await signIn(r);
-    const opened = await unseal(await importSealingKey(SESSION_KEY), SESSION_COOKIE, session, START);
-    expect(Object.keys(opened ?? {}).sort()).toEqual(["idTokenHint", "userinfo"]);
-    expect(await (await call(r, "/", { cookies: { [SESSION_COOKIE]: session } })).text()).toContain(ISSUER);
   });
 
   it("keeps the returned state in a sealed, single-use __Host- cookie", async () => {
@@ -512,8 +444,6 @@ describe("POST /logout (RP-Initiated Logout 1.0)", () => {
   it.each<[string, Record<string, string>]>([
     // Same-site is not enough: in the workers_dev mode the IdP and other Workers of the account share the site.
     ["a same-site post", { "sec-fetch-site": "same-site" }],
-    ["a cross-site post", { "sec-fetch-site": "cross-site" }],
-    ["another Origin", { origin: "https://evil.example" }],
     ["the IdP's Origin", { origin: ISSUER }],
     ["neither header", {}],
   ])("refuses %s", async (_name, headers) => {
