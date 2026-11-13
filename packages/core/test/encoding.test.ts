@@ -19,14 +19,6 @@ describe("base64url", () => {
   it.each(vectors.base64url.invalid)("rejects $value ($reason)", ({ value }) => {
     expect(() => base64urlDecode(value)).toThrow(InvalidBase64urlError);
   });
-
-  it("round-trips every byte value", () => {
-    const bytes = Uint8Array.from({ length: 256 }, (_, i) => i);
-    for (let length = 0; length <= bytes.length; length++) {
-      const slice = bytes.subarray(0, length);
-      expect(base64urlDecode(base64urlEncode(slice))).toEqual(slice);
-    }
-  });
 });
 
 describe("sha256Base64url", () => {

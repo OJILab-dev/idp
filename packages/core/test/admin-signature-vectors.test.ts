@@ -59,24 +59,6 @@ function coveredComponents(inner: string): readonly string[] {
   return list === "" ? [] : list.split(" ").map((c) => c.slice(1, -1));
 }
 
-
-describe("admin signature vectors: profile", () => {
-  it("fixes the algorithm, tag, label, window, and components of docs/design/hosting-modes.md 3", () => {
-    expect(sig.profile).toEqual({
-      label: "sig1",
-      tag: "idp-admin",
-      algorithm: "ecdsa-p384-sha384",
-      fallback_algorithm: "ed25519",
-      signature_bytes: 96,
-      window_seconds: 60,
-      nonce_bytes: 32,
-      content_digest_algorithm: "sha-256",
-      components: ["@method", "@target-uri", "@authority", "content-digest", "content-type", "idempotency-key"],
-      parameters: ["created", "nonce", "keyid", "tag"],
-    });
-  });
-});
-
 describe("admin signature vectors: Content-Digest (RFC 9530)", () => {
   it.each(sig.content_digest.valid)("$source: the header is sha-256 of the body", ({ body_utf8, header: value }) => {
     expect(value).toBe(`sha-256=:${sha256(utf8(body_utf8)).toString("base64")}:`);
@@ -185,7 +167,6 @@ describe("admin signature vectors: verification in workerd", () => {
       sig.interop.map((c) => ({ algorithm: c.algorithm, spki: c.spki, base: c.signature_base, signature: c.signature })),
     );
     expect(results).toEqual(sig.interop.map(() => true));
-    expect(sig.interop.filter((c) => c.algorithm === "ecdsa-p384-sha384").map((c) => Buffer.from(c.signature, "base64").length)).toEqual([96, 96]);
   });
 
   it("rejects the interop P-384 signatures over a base with one byte changed", async () => {

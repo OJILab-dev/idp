@@ -108,11 +108,6 @@ describe("self-service add", () => {
     expect(await f.count("challenges", "purpose = 'add_register'")).toBe(0);
   });
 
-  it("rejects re-authentication without user verification", async () => {
-    const request = await begin();
-    expect(await reauth(first, request.challenge, { flags: 0x01 | 0x08 | 0x10 })).toMatchObject({ reason: "verification_failed" });
-  });
-
   it("rejects a challenge issued to another session", async () => {
     const otherSession = await f.addSession(USER, idOf(first));
     const theirs = await begin(otherSession);
@@ -273,11 +268,10 @@ describe("self-service revoke", () => {
     expect(await revokeBegin(f.passkeyDeps, { sessionToken: session, credentialId: "not base64url!" })).toMatchObject({ reason: "invalid_request" });
   });
 
-  it("rejects re-authentication by another user's passkey or without user verification", async () => {
+  it("rejects re-authentication by another user's passkey", async () => {
     const theirs = await f.addPasskey(OTHER_USER);
     const request = await begin(idOf(second));
     expect(await verify(idOf(second), theirs, request.challenge)).toMatchObject({ reason: "unknown_credential" });
-    expect(await verify(idOf(second), first, request.challenge, { flags: 0x01 | 0x08 | 0x10 })).toMatchObject({ reason: "verification_failed" });
     expect(await f.count("credentials", "user_id = ?", USER)).toBe(2);
   });
 

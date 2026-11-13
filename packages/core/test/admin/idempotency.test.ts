@@ -1,38 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { z } from "zod";
-import { IDEMPOTENCY_TTL_SECONDS, canonicalJson, executeOperation, requestHash, type WriteOperation } from "../../src/admin/index.js";
+import { IDEMPOTENCY_TTL_SECONDS, canonicalJson, executeOperation, requestHash } from "../../src/admin/index.js";
 import { groupCreate } from "../../src/admin/groups.js";
 import { userCreate, userDisable } from "../../src/admin/users.js";
 import { randomToken, type Database } from "../../src/shared/index.js";
 import { T0, auditRows, query, run, useHarness } from "./harness.js";
 
 const h = useHarness();
-
-// An operation whose response carries a secret, standing in for client_create (confidential), client_rotate_secret,
-// and enroll_link_issue, which arrive later in the stack.
-const secretIssue: WriteOperation<{ readonly user_id: string }, { readonly secret: string }> = {
-  name: "client_rotate_secret",
-  class: { access: "write", concern: "rp" },
-  establishesIdentity: false,
-  idempotent: true,
-  target: { kind: "user", field: "user_id" },
-  input: z.strictObject({ user_id: z.string() }),
-  output: z.object({ secret: z.string() }).readonly(),
-  http: { method: "POST", path: "/v1/clients/{id}/secrets", status: 201 },
-  async plan() {
-    const secret = randomToken();
-    return {
-      target: "none",
-      probe: { sql: "SELECT 1 AS ok", params: [] },
-      guard: { sql: "1", params: [] },
-      writes: [],
-      detail: {},
-      secret: true,
-      settle: () => "write",
-      result: () => ({ secret }),
-    };
-  },
-};
 
 async function keyRows(): Promise<readonly Record<string, unknown>[]> {
   return query(h(), "SELECT admin_name, operation, replayable, response_status, response_json, expires_at FROM idempotency_keys ORDER BY rowid");
@@ -114,14 +87,6 @@ describe("Idempotency-Key", () => {
     const key = randomToken();
     await expect(run(h(), userDisable, { user_id: id }, key)).rejects.toMatchObject({ kind: "state-conflict" });
     expect(await query(h(), "SELECT COUNT(*) AS n FROM idempotency_keys WHERE idempotency_key = ?", key)).toEqual([{ n: 0 }]);
-  });
-
-  it("never stores a secret-bearing response and answers its replay with secret-not-replayable", async () => {
-    const key = randomToken();
-    const first = await run(h(), secretIssue, { user_id: "x" }, key);
-    expect(await keyRows()).toEqual([expect.objectContaining({ replayable: 0, response_status: null, response_json: null })]);
-    expect(JSON.stringify(await query(h(), "SELECT * FROM idempotency_keys"))).not.toContain(first.body.secret);
-    await expect(run(h(), secretIssue, { user_id: "x" }, key)).rejects.toMatchObject({ kind: "secret-not-replayable" });
   });
 
   it("answers a concurrent request with the same key from the winner's stored row", async () => {

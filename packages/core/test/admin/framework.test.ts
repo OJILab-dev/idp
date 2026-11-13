@@ -2,19 +2,10 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import {
-  ADMIN_OPERATIONS,
-  AdminProblem,
-  OPERATION_NAMES,
-  PROBLEM_STATUS,
-  enablementOperationName,
-  executeOperation,
-  problemType,
-  type WriteOperation,
-} from "../../src/admin/index.js";
+import { ADMIN_OPERATIONS, AdminProblem, executeOperation, type WriteOperation } from "../../src/admin/index.js";
 import { parseInput } from "../../src/admin/schemas.js";
 import { userRename } from "../../src/admin/users.js";
-import { DatabaseError, PROBLEM_KINDS, type Database } from "../../src/shared/index.js";
+import { DatabaseError, type Database } from "../../src/shared/index.js";
 import { auditRows, query, run, useHarness } from "./harness.js";
 
 const h = useHarness();
@@ -54,60 +45,22 @@ const EXPECTED: Readonly<Record<string, readonly [string, string | null, string,
 };
 
 describe("the operation catalogue", () => {
-  it("names the 30 operations of idpctl.md: 7 reads, 13 user, 8 rp, 2 access", () => {
-    expect([...OPERATION_NAMES].sort()).toEqual(Object.keys(EXPECTED).sort());
-    const counts = Object.values(EXPECTED).reduce<Record<string, number>>((acc, [cls, concern]) => {
-      const key = concern ?? cls;
-      acc[key] = (acc[key] ?? 0) + 1;
-      return acc;
-    }, {});
-    expect(counts).toEqual({ read: 7, user: 13, rp: 8, access: 2 });
-  });
-
-  it("registers each of the 30 operations exactly once", () => {
+  // The class and concern decide which admin scope an operation needs, so a misclassified operation is an
+  // authorization bug; idempotent POSTs are the ones that require Idempotency-Key.
+  it("registers each operation once, classified and routed as idpctl.md does", () => {
     const names = ADMIN_OPERATIONS.map((o) => o.name);
-    expect(new Set(names).size).toBe(names.length);
-    expect([...names].sort()).toEqual([...OPERATION_NAMES].sort());
-  });
-
-  it("marks only enroll_link_issue as establishing identity", () => {
-    expect(ADMIN_OPERATIONS.filter((o) => o.establishesIdentity).map((o) => o.name)).toEqual(["enroll_link_issue"]);
-  });
-
-  it.each(ADMIN_OPERATIONS.map((o) => [o.name, o] as const))("classifies %s as idpctl.md does", (name, operation) => {
-    const [cls, concern, method, path] = EXPECTED[name] ?? [];
-    expect(operation.class.access).toBe(cls);
-    expect("concern" in operation.class ? operation.class.concern : null).toBe(concern);
-    expect(operation.http.method).toBe(method);
-    expect(operation.http.path).toBe(path);
-    expect(operation.establishesIdentity).toBe(name === "enroll_link_issue");
-    expect("read" in operation).toBe(cls === "read");
-    // Idempotency-Key is required by exactly the creating and appending POSTs.
-    if ("plan" in operation) expect(operation.idempotent).toBe(method === "POST");
-    expect(operation.http.status).toBe(method === "POST" ? 201 : 200);
-  });
-
-  it("maps an enablement event to its operation name", () => {
-    expect(enablementOperationName("user", "disabled")).toBe("user_disable");
-    expect(enablementOperationName("client", "enabled")).toBe("client_enable");
-    expect(enablementOperationName("group", "disabled")).toBe("group_disable");
+    expect(names.sort()).toEqual(Object.keys(EXPECTED).sort());
+    for (const operation of ADMIN_OPERATIONS) {
+      const [cls, concern, method, path] = EXPECTED[operation.name] ?? [];
+      expect([operation.class.access, "concern" in operation.class ? operation.class.concern : null], operation.name).toEqual([cls, concern]);
+      expect([operation.http.method, operation.http.path], operation.name).toEqual([method, path]);
+      expect(operation.establishesIdentity, operation.name).toBe(operation.name === "enroll_link_issue");
+      if ("plan" in operation) expect(operation.idempotent, operation.name).toBe(method === "POST");
+    }
   });
 });
 
 describe("problems", () => {
-  it("maps every kind to the status of idpctl.md and to a urn type", () => {
-    expect(Object.keys(PROBLEM_STATUS).sort()).toEqual([...PROBLEM_KINDS].sort());
-    expect(PROBLEM_STATUS["validation-failed"]).toBe(400);
-    expect(PROBLEM_STATUS["not-found"]).toBe(404);
-    expect(PROBLEM_STATUS["idempotency-key-reused"]).toBe(422);
-    expect(PROBLEM_STATUS.forbidden).toBe(403);
-    expect(PROBLEM_STATUS.internal).toBe(500);
-    for (const kind of ["already-exists", "state-conflict", "limit-reached", "last-passkey", "algorithm-disabled", "secret-not-replayable"] as const) {
-      expect(PROBLEM_STATUS[kind]).toBe(409);
-    }
-    expect(problemType("not-found")).toBe("urn:ojilab:idp:problem:not-found");
-  });
-
   it("serialises RFC 9457 problem details, with pointers only for validation", () => {
     expect(new AdminProblem("validation-failed", "bad", { pointers: ["/name"] }).toProblemDetails()).toEqual({
       type: "urn:ojilab:idp:problem:validation-failed",

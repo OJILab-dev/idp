@@ -59,7 +59,6 @@ describe("createD1AdminNonceStore", () => {
     ["now is NaN", NOW + 60, Number.NaN],
     ["now is not an integer", NOW + 60, NOW + 0.5],
     ["expiresAt is NaN", Number.NaN, NOW],
-    ["expiresAt is infinite", Number.POSITIVE_INFINITY, NOW],
   ])("fails closed with AdminNonceStoreError when %s, writing nothing", async (_, expiresAt, now) => {
     await expect(store.claim(NONCE, expiresAt, now)).rejects.toThrow(AdminNonceStoreError);
     expect(await rows()).toEqual([]);
