@@ -12,7 +12,7 @@ Cloudflare の上で、どの要素がどうつながり、どうデプロイさ
 | 共有コア（TypeScript） | ドメインの規則、入力の検証、SQL、ユースケースを 1 か所に持ち、2 つの Worker が使う | [技術選定](technology.md) |
 | D1 | IdP の全状態を置くデータベース。2 つの Worker が同じものをバインドする | [データモデル](data-model.md) |
 | `idpctl`（Go） | 手元で動かす管理 CLI。管理 API を呼ぶだけの薄いクライアントで、ドメインの規則は評価しない | [管理 CLI と管理用の Worker](idpctl.md) |
-| RP のサンプル（`examples/rp-sample`） | 別の Worker として動く、標準どおりの RP の参照実装。IdP からは import しない | [クライアントの種類](clients.md) |
+| RP のサンプル | 別の Worker として動く、標準どおりの RP の参照実装。IdP からは import しない | [クライアントの種類](clients.md) |
 
 IdP の Worker には管理用のエンドポイントや管理 UI を置かない。
 
@@ -60,8 +60,8 @@ flowchart LR
   merge["main へのマージ<br/>か手動の起動"]
   validate["設定ファイルの検証<br/>認証情報なし"]
   creds["1Password Environment<br/>GitHub の OIDC で読み込み"]
-  tf["Terraform の apply<br/>scripts/terraform.sh"]
-  build["入力の検証とビルド<br/>scripts/deploy.sh"]
+  tf["Terraform の apply"]
+  build["入力の検証とビルド"]
   mig["D1 のマイグレーション"]
   idp["IdP の Worker の deploy"]
   admin["管理用の Worker の deploy"]
@@ -70,4 +70,4 @@ flowchart LR
   merge --> validate --> creds --> tf --> build --> mig --> idp --> admin --> check
 ```
 
-実装は `.github/workflows/deploy.yml` で、各段の中身、順番の保証、認証情報の渡し方、残るリスクは [デプロイと設定](deployment.md)のデプロイのパイプラインに置く。最初のデプロイは [ブートストラップ](../deployment/bootstrap.md)と[実行手順](../deployment/runbook.md)に沿って運用者が行う。
+各段の中身、順番の保証、認証情報の渡し方、残るリスクは [デプロイと設定](deployment.md)のデプロイのパイプラインに置く。最初のデプロイは [ブートストラップ](../deployment/bootstrap.md)と[実行手順](../deployment/runbook.md)に沿って運用者が行う。

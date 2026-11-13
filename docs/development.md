@@ -1,6 +1,6 @@
 # 開発
 
-このリポジトリで開発するときの前提、コマンド、リポジトリの構成と運用をまとめます。
+このリポジトリで開発するときの前提、コマンド、リポジトリの運用をまとめます。
 変更する人とエージェントの契約の正本は [AGENT.md](../AGENT.md) です。ここと食い違うときは AGENT.md に従ってください。
 
 ## 前提とツールチェーン
@@ -29,23 +29,6 @@ Terraform とシェルスクリプトの検査は CI（[.github/workflows/ci.yml
 - PR では [.github/workflows/ci.yml](../.github/workflows/ci.yml) が検査と e2e テスト（Playwright）を流します。e2e は、カスタムドメインの形と `workers.dev` の形の issuer の両方で同じシナリオを流します。
 - [.github/workflows/deploy.yml](../.github/workflows/deploy.yml) は、main へのマージ（と手動の起動）から、Terraform の apply、D1 のマイグレーション、IdP の Worker、管理用の Worker の順にデプロイし、外から確かめます。ブートストラップの段階 5 以降にあたります。流れの設計は [デプロイと設定](design/deployment.md) の「デプロイのパイプライン」にあります。
 - 最初のデプロイは、運用者が [ブートストラップの実行手順](deployment/runbook.md) に沿って行います。
-
-## リポジトリの構成
-
-| パス | 内容 |
-| --- | --- |
-| [apps/worker/](../apps/worker) | IdP の Worker。OIDC エンドポイント、`/webauthn/*` の API、サインイン・登録・アカウントの静的ページ |
-| [apps/admin-worker/](../apps/admin-worker) | 管理用の Worker。管理者を確かめるゲートの後ろの管理 API と、その OpenAPI の仕様の生成（ゲートは RFC 9421 の署名と、署名鍵の許可リスト） |
-| [packages/core/](../packages/core) | 共有コア。利用者向け（`user`）、管理系（`admin`）、共通（`shared`）のユースケースとドメインの規則 |
-| [packages/d1-adapter/](../packages/d1-adapter) | 共有コアのデータベースのポートを D1 で実装するアダプタと、その適合テスト |
-| [contract/](../contract) | 実装に依存しない契約。D1 のマイグレーション（`migrations`）、管理 API の仕様（`openapi`）、テストベクタ（`testdata`）、スキーマのテスト（`test`） |
-| [examples/rp-sample/](../examples/rp-sample) | RP のサンプル（別の Worker）。認可コードフロー（PKCE、`state`、`nonce`、`iss` の確認、`client_secret_basic`）、ID トークンの検証、`/userinfo`、暗号化した Cookie のセッション、RP-Initiated Logout による IdP のセッションまでのログアウト。IdP からは import しない |
-| [cmd/idpctl/](../cmd/idpctl) | Go の管理 CLI。管理 API のクライアントは `contract/openapi/admin.json` から生成する |
-| [infra/](../infra) | Terraform と、そのオフラインのテスト。今はゾーンを引く data source と、デプロイの設定ファイルの検証だけを持ち、ゾーンに資源を置かない（管理者のクライアント証明書と mTLS の割り当ては[ホスティングのモード](design/hosting-modes.md)の実装の順番の 7 で外した）。ゾーンのルールセット（WAF、リダイレクト、レート制限）は持たず、HTTPS へのリダイレクト、TLS のバージョン、管理者の認証、レート制限は Worker が行う（[ドメインの置き場所](design/domain-placement.md)の決定 ③） |
-| [scripts/](../scripts) | ブートストラップのスクリプト（state のバケット、D1、マイグレーション、署名鍵と管理者の鍵の生成、Terraform の実行）と、2 つの Worker のデプロイのスクリプト（`deploy.sh`）。RP のサンプルのデプロイと秘密の設定のスクリプト（`deploy-rp-sample.sh`、`set-rp-sample-secrets.sh`）も置く |
-| [deployments/](../deployments) | デプロイごとの設定ファイル（`<デプロイの名前>.tfvars.json`）とその雛形 |
-| [docs/](.) | 設計思想、設計ドキュメント、デプロイの手順 |
-| [.github/workflows/](../.github/workflows) | PR の CI（`ci.yml`）と、main へのマージと手動の起動で動くデプロイ（`deploy.yml`） |
 
 ## 貢献者とエージェント向けのセキュリティ規則
 

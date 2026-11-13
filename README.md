@@ -62,5 +62,5 @@ RP のサンプルからのパスキーによるサインインと、RP-Initiate
 | [docs/deployment/runbook.md](docs/deployment/runbook.md) | ブートストラップを実行するときの運用者の操作の順番 |
 | [docs/deployment/agent-setup.md](docs/deployment/agent-setup.md) | 秘密の値をコンテキストに入れずに、エージェントが認証情報を準備する方法 |
 | [docs/deployment/secret.md](docs/deployment/secret.md) | 1Password Environments と GitHub Actions による CD 用 Secret の扱い |
-| [docs/development.md](docs/development.md) | 開発に必要なツール、コマンド、リポジトリの構成と運用 |
+| [docs/development.md](docs/development.md) | 開発に必要なツール、コマンド、リポジトリの運用 |
 | [AGENT.md](AGENT.md) | このリポジトリを変更する人とエージェントの契約 |
