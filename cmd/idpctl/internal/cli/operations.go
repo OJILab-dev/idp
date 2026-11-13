@@ -19,7 +19,10 @@ type opFlags struct {
 	since, until      string
 	public            bool
 	redirectURIs      stringList
-	secretOut         string
+	// postLogoutRedirectURIs are RP-Initiated Logout's registered return
+	// addresses; empty leaves the admin API's default (none).
+	postLogoutRedirectURIs stringList
+	secretOut              string
 }
 
 type stringList []string
@@ -75,6 +78,8 @@ func registerFlags(fs *flag.FlagSet, names []string, f *opFlags) {
 			fs.BoolVar(&f.public, "public", false, "register a public client (no client secret)")
 		case "redirect-uri":
 			fs.Var(&f.redirectURIs, "redirect-uri", "redirect URI; repeat for several")
+		case "post-logout-redirect-uri":
+			fs.Var(&f.postLogoutRedirectURIs, "post-logout-redirect-uri", "https URI to return to after RP-Initiated Logout; repeat for several")
 		case "secret-out":
 			fs.StringVar(&f.secretOut, "secret-out", "", "new file (mode 0600) that receives the IdP-issued secret")
 		}
@@ -123,7 +128,7 @@ func enablement(value string) adminapi.UserEnablementSwitchJSONBodyEnablement {
 	return adminapi.UserEnablementSwitchJSONBodyEnablement(value)
 }
 
-// operations lists the 29 operations of idpctl.md in its order.
+// operations lists the 30 operations of idpctl.md in its order.
 var operations = []operation{
 	{
 		name: "users_list", summary: "List users.", flags: pageFlags, secret: noSecret,
@@ -262,7 +267,7 @@ var operations = []operation{
 	{
 		name: "client_create", synopsis: "<client_id> <name>",
 		summary: "Register a client; a confidential client's secret is written to --secret-out.",
-		args:    2, flags: []string{"public", "redirect-uri", "id-token-alg", "secret-out"},
+		args:    2, flags: []string{"public", "redirect-uri", "post-logout-redirect-uri", "id-token-alg", "secret-out"},
 		secret: func(f *opFlags) string {
 			if f.public {
 				return ""
@@ -283,6 +288,10 @@ var operations = []operation{
 				alg := adminapi.ClientCreateJSONBodyIdTokenAlg(f.idTokenAlg)
 				body.IdTokenAlg = &alg
 			}
+			if len(f.postLogoutRedirectURIs) > 0 {
+				uris := append([]string{}, f.postLogoutRedirectURIs...)
+				body.PostLogoutRedirectUris = &uris
+			}
 			return done(c.api.ClientCreateWithResponse(ctx, &adminapi.ClientCreateParams{IdempotencyKey: c.key}, body))
 		},
 	},
@@ -297,6 +306,17 @@ var operations = []operation{
 		args: 2, variadic: true, secret: noSecret,
 		send: func(ctx context.Context, c *call, a []string, _ *opFlags) (response, error) {
 			return done(c.api.ClientSetRedirectsWithResponse(ctx, a[0], adminapi.ClientSetRedirectsJSONRequestBody{RedirectUris: a[1:]}))
+		},
+	},
+	{
+		name: "client_set_post_logout_redirects", synopsis: "<client_id> [<post_logout_redirect_uri>...]",
+		summary: "Replace a client's RP-Initiated Logout redirect URIs; none clears them.",
+		args:    1, variadic: true, secret: noSecret,
+		send: func(ctx context.Context, c *call, a []string, _ *opFlags) (response, error) {
+			// A copy, so an empty list is sent as [] rather than null.
+			uris := append([]string{}, a[1:]...)
+			return done(c.api.ClientSetPostLogoutRedirectsWithResponse(ctx, a[0],
+				adminapi.ClientSetPostLogoutRedirectsJSONRequestBody{PostLogoutRedirectUris: uris}))
 		},
 	},
 	{

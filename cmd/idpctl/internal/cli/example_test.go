@@ -50,6 +50,27 @@ func ExampleRun() {
 	// exit 0
 }
 
+// ExampleRun_postLogoutRedirects registers the URI a relying party returns
+// to after RP-Initiated Logout. Running the subcommand with only the client ID
+// clears the list, which stops post-logout redirects for that client.
+func ExampleRun_postLogoutRedirects() {
+	opts, cleanup := exampleServer(&testing.T{}, 200, "application/json",
+		`{"client_id":"grafana","post_logout_redirect_uris":["https://grafana.example.com/signed-out"]}`)
+	defer cleanup()
+
+	code := cli.Run(context.Background(), []string{"--host", "admin.example.test",
+		"client_set_post_logout_redirects", "grafana", "https://grafana.example.com/signed-out"}, opts)
+	fmt.Println("exit", code)
+	// Output:
+	// {
+	//   "client_id": "grafana",
+	//   "post_logout_redirect_uris": [
+	//     "https://grafana.example.com/signed-out"
+	//   ]
+	// }
+	// exit 0
+}
+
 // ExampleRun_problem shows a problem turning into its kind's exit code.
 func ExampleRun_problem() {
 	opts, cleanup := exampleServer(&testing.T{}, 409, "application/problem+json",
