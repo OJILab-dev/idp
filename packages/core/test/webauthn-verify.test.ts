@@ -4,7 +4,6 @@
 import { describe, expect, it } from "vitest";
 import { base64urlEncode } from "@idp/base64url";
 import { decodeCbor } from "@idp/cbor";
-import { importCosePublicKey, InvalidCoseKeyError, verifyCoseSignature } from "../src/user/webauthn/cose.js";
 import {
   claimedChallenge,
   parseAuthenticationResponse,
@@ -18,7 +17,6 @@ import {
   authenticationResponse,
   encodeCbor,
   generateCredential,
-  rawToDer,
   registrationResponse,
   signWith,
   type CborInput,
@@ -208,71 +206,5 @@ describe("the software authenticator's CBOR", () => {
   it("round-trips the values WebAuthn uses", () => {
     const value = new Map<number | string, unknown>([[1, -7], ["a", [true, false, null, "x", new Uint8Array([1, 2])]], [-300, 70000]]);
     expect(decodeCbor(encodeCbor(value as never))).toEqual(value);
-  });
-});
-
-describe("COSE keys and signatures", () => {
-  it("rejects keys whose type, curve, or coordinates do not match the algorithm", async () => {
-    const x = new Uint8Array(32);
-    for (const key of [
-      new Map<number, unknown>([[1, 1], [3, -7], [-1, 6], [-2, x]]),
-      new Map<number, unknown>([[1, 2], [3, -7], [-1, 2], [-2, x], [-3, x]]),
-      new Map<number, unknown>([[1, 2], [3, -7], [-1, 1], [-2, x], [-3, new Uint8Array(31)]]),
-      new Map<number, unknown>([[1, 1], [3, -8], [-1, 6], [-2, new Uint8Array(31)]]),
-      new Map<number, unknown>([[1, 3], [3, -257], [-1, new Uint8Array(128).fill(1)], [-2, new Uint8Array([1, 0, 1])]]),
-      new Map<number, unknown>([[1, 2], [3, -7], [-1, 1], [-2, x], [-3, x]]),
-    ]) {
-      await expect(importCosePublicKey(encodeCbor(key as never))).rejects.toBeInstanceOf(InvalidCoseKeyError);
-    }
-    await expect(importCosePublicKey(new Uint8Array([0x00]))).rejects.toBeInstanceOf(InvalidCoseKeyError);
-  });
-
-  describe("RSA keys", () => {
-    async function rsaParts(): Promise<{ readonly n: Uint8Array }> {
-      const credential = await generateCredential(-257);
-      const map = decodeCbor(credential.cosePublicKey) as ReadonlyMap<number, Uint8Array>;
-      return { n: map.get(-1) ?? new Uint8Array() };
-    }
-
-    function rsaKey(n: Uint8Array, e: readonly number[] = [1, 0, 1]): Uint8Array {
-      return encodeCbor(new Map<number, CborInput>([[1, 3], [3, -257], [-1, n], [-2, new Uint8Array(e)]]));
-    }
-
-    it("accepts a 2048-bit modulus with exponent 65537", async () => {
-      const { n } = await rsaParts();
-      expect((await importCosePublicKey(rsaKey(n))).alg).toBe(-257);
-    });
-
-    it("rejects a 256-byte modulus that is only 2041 bits", async () => {
-      const { n } = await rsaParts();
-      const short = n.slice();
-      short[0] = 0x01;
-      await expect(importCosePublicKey(rsaKey(short))).rejects.toThrow(/2048 to 4096 bits/);
-    });
-
-    it("rejects a modulus above 4096 bits", async () => {
-      const long = new Uint8Array(513).fill(0xff);
-      await expect(importCosePublicKey(rsaKey(long))).rejects.toThrow(/2048 to 4096 bits/);
-    });
-
-    it.each([[[3]], [[1, 0, 3]], [[0, 1, 0, 1]]])("rejects the public exponent %j", async (e) => {
-      const { n } = await rsaParts();
-      await expect(importCosePublicKey(rsaKey(n, e))).rejects.toThrow(/exponent is not 65537/);
-    });
-  });
-
-  it("accepts only minimal DER for ES256 signatures", async () => {
-    const credential = await generateCredential(-7);
-    const key = await importCosePublicKey(credential.cosePublicKey);
-    const data = new Uint8Array([1, 2, 3]);
-    const raw = new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, credential.privateKey, data));
-    const der = rawToDer(raw);
-    expect(await verifyCoseSignature(key, der, data)).toBe(true);
-    expect(await verifyCoseSignature(key, raw, data)).toBe(false);
-    // Re-encode r with a superfluous leading zero byte.
-    const rLength = der[3] ?? 0;
-    const padded = new Uint8Array([0x30, (der[1] ?? 0) + 1, 0x02, rLength + 1, 0x00, ...der.subarray(4)]);
-    expect(await verifyCoseSignature(key, padded, data)).toBe(false);
-    expect(await verifyCoseSignature(key, new Uint8Array([...der, 0]), data)).toBe(false);
   });
 });

@@ -2,6 +2,7 @@
 // reasons, and the reads of a stored credential. The SQL conditions that must hold at write time live with each
 // ceremony, because each one binds its challenge to a different issuer (docs/design/data-model.md, challenges).
 import { base64urlEncode } from "@idp/base64url";
+import type { CoseAlgorithm } from "@idp/cose-key";
 import {
   userEnabledCondition,
   type Database,
@@ -12,7 +13,17 @@ import {
 } from "../../shared/index.js";
 import { CorruptRowError } from "../clients.js";
 import type { PasskeyDeps } from "../deps.js";
-import { PUB_KEY_CRED_PARAMS, type StoredCredential } from "./verify.js";
+import type { StoredCredential } from "./verify.js";
+
+// The algorithms the IdP offers, in the order it prefers them (WebAuthn Level 3 §5.4; docs/design/standards-compliance.md):
+// EdDSA over Ed25519, then ES256, then RS256. Each is one @idp/cose-key verifies, so a registered key always verifies.
+const OFFERED_COSE_ALGORITHMS: readonly CoseAlgorithm[] = [-8, -7, -257];
+
+/** The `pubKeyCredParams` every creation request offers. */
+export const PUB_KEY_CRED_PARAMS: readonly { readonly type: "public-key"; readonly alg: number }[] = OFFERED_COSE_ALGORITHMS.map((alg) => ({
+  type: "public-key" as const,
+  alg,
+}));
 
 /**
  * How long a challenge stays valid: the upper end of the ceremony timeout WebAuthn Level 3 §13.4.3 recommends.

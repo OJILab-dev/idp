@@ -114,12 +114,24 @@ importers:
       '@idp/cbor':
         specifier: workspace:*
         version: link:../cbor
+      '@idp/cose-key':
+        specifier: workspace:*
+        version: link:../cose-key
       '@idp/jwk-thumbprint':
         specifier: workspace:*
         version: link:../jwk-thumbprint
       zod:
         specifier: 4.6.7
         version: 4.6.7
+
+  packages/cose-key:
+    dependencies:
+      '@idp/base64url':
+        specifier: workspace:*
+        version: link:../base64url
+      '@idp/cbor':
+        specifier: workspace:*
+        version: link:../cbor
 
   packages/d1-adapter:
     dependencies:

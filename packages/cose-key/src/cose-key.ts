@@ -1,10 +1,11 @@
-// COSE public keys (RFC 9052 §7, RFC 9053) for exactly the three algorithms the IdP offers in pubKeyCredParams
-// (docs/design/standards-compliance.md): -8 (EdDSA over Ed25519), -7 (ES256), and -257 (RS256). Any other key type,
-// curve, or algorithm is rejected at registration, so a stored key is always one these functions can verify with.
+// COSE public keys (RFC 9052 §7, RFC 9053, RFC 8230) for exactly three algorithms: -8 (EdDSA over Ed25519), -7
+// (ES256), and -257 (RS256), the ones WebAuthn authenticators commonly use. Any other key type, curve, or algorithm
+// is rejected on import, so an imported key is always one these functions can verify with. A key must carry its
+// alg (RFC 9052 §7.1 makes it optional), because the verification is chosen by the key, never by the signer.
 import { base64urlEncode } from "@idp/base64url";
 import { InvalidCborError, decodeCbor, type CborValue } from "@idp/cbor";
 
-/** The COSE algorithms offered and accepted, in the order the IdP prefers them (WebAuthn Level 3 §5.4). */
+/** The COSE algorithms this package imports and verifies. */
 export const COSE_ALGORITHMS = [-8, -7, -257] as const;
 
 /** One of {@link COSE_ALGORITHMS}. */
@@ -43,6 +44,11 @@ const MAX_RSA_MODULUS_BITS = 4096;
 // own message, and small exponents invite padding forgeries, so nothing else is let through.
 const RSA_EXPONENT_65537 = [0x01, 0x00, 0x01];
 
+// Web Crypto takes a view over an ArrayBuffer; a copy also accepts a view over a SharedArrayBuffer.
+function copy(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
+  return new Uint8Array(bytes);
+}
+
 // The bit length of an unsigned big-endian integer without leading zero bytes.
 function bitLength(bytes: Uint8Array): number {
   const first = bytes[0] ?? 0;
@@ -79,7 +85,7 @@ export async function importCosePublicKey(bytes: Uint8Array): Promise<CosePublic
     if (kty === KTY_OKP && alg === -8 && map.get(CRV_OR_N) === CRV_ED25519) {
       const x = bytesParam(map, X_OR_E);
       if (x.length !== 32) throw new InvalidCoseKeyError("Ed25519 key is not 32 bytes");
-      return { alg, key: await crypto.subtle.importKey("raw", x, { name: "Ed25519" }, false, ["verify"]) };
+      return { alg, key: await crypto.subtle.importKey("raw", copy(x), { name: "Ed25519" }, false, ["verify"]) };
     }
     if (kty === KTY_EC2 && alg === -7 && map.get(CRV_OR_N) === CRV_P256) {
       const x = bytesParam(map, X_OR_E);
@@ -102,7 +108,7 @@ export async function importCosePublicKey(bytes: Uint8Array): Promise<CosePublic
       }
       const jwk = { kty: "RSA", n: base64urlEncode(n), e: base64urlEncode(e), ext: true };
       const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
-      const { modulusLength } = key.algorithm as { readonly modulusLength: number };
+      const { modulusLength } = key.algorithm as CryptoKey["algorithm"] & { readonly modulusLength: number };
       if (modulusLength < MIN_RSA_MODULUS_BITS || modulusLength > MAX_RSA_MODULUS_BITS) {
         throw new InvalidCoseKeyError("RSA modulus is not 2048 to 4096 bits");
       }
@@ -129,18 +135,18 @@ export async function importCosePublicKey(bytes: Uint8Array): Promise<CosePublic
 export async function verifyCoseSignature(key: CosePublicKey, signature: Uint8Array, data: Uint8Array): Promise<boolean> {
   switch (key.alg) {
     case -8:
-      return signature.length === 64 && crypto.subtle.verify({ name: "Ed25519" }, key.key, signature, data);
+      return signature.length === 64 && crypto.subtle.verify({ name: "Ed25519" }, key.key, copy(signature), copy(data));
     case -7: {
       const raw = derToRawEcdsa(signature);
-      return raw !== undefined && crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key.key, raw, data);
+      return raw !== undefined && crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, key.key, raw, copy(data));
     }
     case -257:
-      return crypto.subtle.verify({ name: "RSASSA-PKCS1-v1_5" }, key.key, signature, data);
+      return crypto.subtle.verify({ name: "RSASSA-PKCS1-v1_5" }, key.key, copy(signature), copy(data));
   }
 }
 
 // ECDSA-Sig-Value ::= SEQUENCE { r INTEGER, s INTEGER } (RFC 3279 §2.2.3), strict DER, for P-256.
-function derToRawEcdsa(der: Uint8Array): Uint8Array | undefined {
+function derToRawEcdsa(der: Uint8Array): Uint8Array<ArrayBuffer> | undefined {
   if (der.length < 8 || der[0] !== 0x30 || der[1] !== der.length - 2) return undefined;
   const out = new Uint8Array(64);
   let offset = 2;
