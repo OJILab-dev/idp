@@ -17,7 +17,6 @@ export {
   type SqlCondition,
 } from "./audit.js";
 export { DatabaseError, type Database, type SqlRow, type SqlStatement, type SqlStatementResult, type SqlValue } from "./db.js";
-export { sha256Base64url } from "./hash.js";
 export {
   ADMIN_WORKER_NAME,
   HOSTING_MODES,
@@ -29,7 +28,6 @@ export {
 } from "./hosting.js";
 export { isClientId, isCredentialId, isRandomTokenFormat, isUuidV4, newUuidV4, randomToken } from "./identifiers.js";
 export { InvalidIssuerError, parseIssuer, type Issuer } from "./issuer.js";
-export { InvalidJwkError, jwkThumbprint } from "./jwk.js";
 export { MAX_PASSKEYS_PER_USER } from "./limits.js";
 export { passkeyBelowLimitCondition, passkeyRevocableCondition, userEnabledCondition } from "./passkey-rules.js";
 export { PROBLEM_KINDS, isProblemKind, type ProblemKind } from "./problems.js";

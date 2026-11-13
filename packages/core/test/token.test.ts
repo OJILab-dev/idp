@@ -3,7 +3,7 @@
 // (docs/design/security-checklist.md, OIDC and passkey sections).
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { base64urlDecode } from "@idp/base64url";
-import { sha256Base64url } from "../src/shared/index.js";
+import { sha256Base64url } from "@idp/jwk-thumbprint";
 import {
   authorize,
   exchangeToken,

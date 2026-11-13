@@ -3,13 +3,8 @@
 import { createD1Database } from "../../d1-adapter/src/index.js";
 import { createTestD1, type TestD1 } from "../../../contract/test/d1.js";
 import { base64urlEncode } from "@idp/base64url";
-import {
-  parseIssuer,
-  sha256Base64url,
-  type Database,
-  type SqlStatement,
-  type SqlValue,
-} from "../src/shared/index.js";
+import { sha256Base64url } from "@idp/jwk-thumbprint";
+import { parseIssuer, type Database, type SqlStatement, type SqlValue } from "../src/shared/index.js";
 import { loadSigningKeys, type Clock, type OidcDeps, type RandomSource, type SigningKeySet } from "../src/user/index.js";
 import { generateEd25519Jwk, generateRsaJwk } from "./keys.js";
 import { vectors } from "./vectors.js";

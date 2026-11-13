@@ -2,7 +2,7 @@
 // item of docs/design/security-checklist.md (passkeys; sessions) has a case here; the WebAuthn verification steps
 // themselves are covered case by case in webauthn-verify.test.ts.
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { sha256Base64url } from "../src/shared/index.js";
+import { sha256Base64url } from "@idp/jwk-thumbprint";
 import {
   addBegin,
   authorize,

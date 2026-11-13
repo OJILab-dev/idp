@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { authenticationResponse, generateCredential, registrationResponse, type SoftCredential } from "../../../packages/core/test/webauthn-authenticator.js";
 import { base64urlEncode } from "@idp/base64url";
-import { MAX_PASSKEYS_PER_USER, sha256Base64url } from "../../../packages/core/src/shared/index.js";
+import { sha256Base64url } from "@idp/jwk-thumbprint";
+import { MAX_PASSKEYS_PER_USER } from "../../../packages/core/src/shared/index.js";
 import {
   CLIENT,
   CONFIDENTIAL_SECRET,

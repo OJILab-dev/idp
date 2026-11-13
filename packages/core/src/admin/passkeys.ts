@@ -2,12 +2,12 @@
 // passkey rules, so the admin Worker and the IdP Worker apply the same limit and the same last-passkey rule.
 import { enrollLinkIssueOutput, passkeyRevokeOutput } from "./outputs.js";
 import { z } from "zod";
+import { sha256Base64url } from "@idp/jwk-thumbprint";
 import {
   isCredentialId,
   passkeyBelowLimitCondition,
   passkeyRevocableCondition,
   randomToken,
-  sha256Base64url,
   userEnabledCondition,
   MAX_PASSKEYS_PER_USER,
 } from "../shared/index.js";

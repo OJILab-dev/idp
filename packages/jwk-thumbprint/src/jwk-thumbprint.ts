@@ -1,17 +1,18 @@
-// The signing key's kid: the RFC 7638 JWK thumbprint with SHA-256 (docs/design/cross-language-contract.md).
+// The RFC 7638 JWK thumbprint with SHA-256, for the key shapes of RFC 8037 §2 (Ed25519) and RFC 7518 §6.3.1 (RSA).
+// The supported shapes are a deliberate subset: other key types and curves are rejected, not hashed.
 import { InvalidBase64urlError, base64urlDecode } from "@idp/base64url";
-import { sha256Base64url } from "./hash.js";
+import { sha256Base64url } from "./sha256.js";
 
 // RFC 8032 §5.1.5: an Ed25519 public key is 32 bytes.
 const ED25519_PUBLIC_KEY_BYTES = 32;
 
-/** Thrown when a JWK is not one of the key shapes the contract allows. */
+/** Thrown when a JWK is not one of the key shapes this package supports. */
 export class InvalidJwkError extends Error {
   override readonly name = "InvalidJwkError";
 }
 
 /**
- * Computes the RFC 7638 JWK thumbprint (SHA-256, unpadded base64url), the contract's `kid`.
+ * Computes the RFC 7638 JWK thumbprint (SHA-256, unpadded base64url).
  *
  * Only the required members enter the hash, in lexicographic order and without whitespace (RFC 7638 §3.2,
  * §3.3): `crv`, `kty`, `x` for Ed25519 (RFC 8037 §2) and `e`, `kty`, `n` for RSA. Other members such as `alg`,
@@ -21,7 +22,7 @@ export class InvalidJwkError extends Error {
  * @returns The 43-character thumbprint.
  * @throws {InvalidJwkError} The value is not an object; `kty` is neither `OKP` nor `RSA`; an OKP key's `crv` is not
  *   `Ed25519`; a required member is missing, not a string, or not canonical base64url; an Ed25519 `x` is not
- *   32 bytes; or `alg` is the deprecated `EdDSA` (RFC 9864 §4.1.2), which the contract rejects fail-closed.
+ *   32 bytes; or `alg` is the deprecated `EdDSA` (RFC 9864 §4.1.2), rejected fail-closed.
  */
 export async function jwkThumbprint(jwk: unknown): Promise<string> {
   if (typeof jwk !== "object" || jwk === null || Array.isArray(jwk)) {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { InvalidBase64urlError, base64urlDecode, base64urlEncode } from "@idp/base64url";
-import { sha256Base64url } from "../src/shared/index.js";
+import { sha256Base64url } from "@idp/jwk-thumbprint";
 import { hexToBytes, vectors } from "./vectors.js";
 
 describe("base64url", () => {

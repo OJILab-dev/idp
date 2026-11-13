@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { AdminProblem, ENROLL_LINK_TTL_SECONDS } from "../../src/admin/index.js";
 import { enrollLinkIssue, passkeyRevoke } from "../../src/admin/passkeys.js";
 import { userCreate, userDisable } from "../../src/admin/users.js";
-import { MAX_PASSKEYS_PER_USER, isRandomTokenFormat, randomToken, sha256Base64url } from "../../src/shared/index.js";
+import { sha256Base64url } from "@idp/jwk-thumbprint";
+import { MAX_PASSKEYS_PER_USER, isRandomTokenFormat, randomToken } from "../../src/shared/index.js";
 import { T0, auditRows, query, run, seedPasskey, seedSession, useHarness } from "./harness.js";
 
 const h = useHarness();

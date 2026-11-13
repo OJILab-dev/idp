@@ -3,13 +3,13 @@
 // never reused.
 import { clientCreateOutput, clientRenameOutput, clientRotateSecretOutput, clientSetIdTokenAlgOutput, clientSetPostLogoutRedirectsOutput, clientSetRedirectsOutput, clientsListOutput } from "./outputs.js";
 import { z } from "zod";
+import { sha256Base64url } from "@idp/jwk-thumbprint";
 import {
   POST_LOGOUT_REDIRECT_URI_RULES,
   classifyRedirectUri,
   isPostLogoutRedirectUriRegistrable,
   isRedirectUriAllowed,
   randomToken,
-  sha256Base64url,
   type ClientType,
   type SqlCondition,
   type SqlRow,
