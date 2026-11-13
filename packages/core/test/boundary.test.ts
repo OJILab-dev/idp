@@ -30,3 +30,28 @@ describe("user-facing code cannot import the admin modules", () => {
     expect(await lintAs(file, code)).not.toContain("no-restricted-imports");
   });
 });
+
+// A standards package must stay copy-portable (docs/design/packages.md, "依存の禁止の強制").
+describe("standards packages import only web standards and their declared standards packages", () => {
+  it.each([
+    'import "node:crypto";',
+    'import "cloudflare:workers";',
+    'import "@cloudflare/workers-types";',
+    'import "zod";',
+    'import "hono";',
+    'import "@idp/core/user";',
+    'import "@idp/cloudflare/d1";',
+    'import "@idp/d1-adapter";',
+    'import "../../core/src/user/index.js";',
+  ])("packages/base64url/src rejects %s", async (code) => {
+    expect(await lintAs("packages/base64url/src/probe.ts", code)).toContain("no-restricted-imports");
+  });
+
+  it("packages/base64url/src allows its own modules", async () => {
+    expect(await lintAs("packages/base64url/src/probe.ts", 'import "./base64url.js";')).not.toContain("no-restricted-imports");
+  });
+
+  it("the sample relying party cannot import a standards package", async () => {
+    expect(await lintAs("examples/rp-sample/src/probe.ts", 'import "@idp/base64url";')).toContain("no-restricted-imports");
+  });
+});

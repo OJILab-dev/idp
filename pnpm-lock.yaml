@@ -79,6 +79,9 @@ importers:
       '@cloudflare/vite-plugin':
         specifier: 2.0.0-beta.v.4
         version: 2.0.0-beta.v.4(@types/node@26.6.5)(vite@8.3.5(@types/node@26.6.5))(workerd@1.20261019.1)
+      '@idp/base64url':
+        specifier: workspace:*
+        version: link:../../packages/base64url
       vite:
         specifier: 8.3.5
         version: 8.3.5(@types/node@26.6.5)
@@ -96,8 +99,13 @@ importers:
         specifier: 8.3.5
         version: 8.3.5(@types/node@26.6.5)
 
+  packages/base64url: {}
+
   packages/core:
     dependencies:
+      '@idp/base64url':
+        specifier: workspace:*
+        version: link:../base64url
       zod:
         specifier: 4.6.7
         version: 4.6.7

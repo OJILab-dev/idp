@@ -10,7 +10,7 @@ import { Miniflare } from "miniflare";
 import { build } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { migrationNames, readMigration, splitStatements } from "../../../contract/test/d1.js";
-import { base64urlDecode } from "../src/shared/index.js";
+import { base64urlDecode } from "@idp/base64url";
 import { EXPECTED_REFUSALS, makeTestKeys, materialize, signBase, spkiBase64, substitute, tamper, type TestKeys } from "./admin-signature-fixture.js";
 import { type SignedRequest, type VerifyCase, vectors } from "./vectors.js";
 

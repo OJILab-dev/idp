@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect } from "vitest";
 import { createFixture, type Fixture as CoreFixture } from "../../../packages/core/test/oidc-fixture.js";
 import { generateEd25519Jwk } from "../../../packages/core/test/keys.js";
 import { generateCredential, type SoftCredential } from "../../../packages/core/test/webauthn-authenticator.js";
-import { base64urlEncode } from "../../../packages/core/src/shared/index.js";
+import { base64urlEncode } from "@idp/base64url";
 import { createHandler } from "../src/index.js";
 import type { Env } from "../src/config.js";
 

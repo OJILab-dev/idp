@@ -1,6 +1,7 @@
 // Loads the signing keys from the Worker Secrets and validates them against docs/design/cross-language-contract.md.
 // The Worker calls this once per isolate and caches the result at module scope (docs/design/tokens.md).
-import { InvalidBase64urlError, InvalidJwkError, base64urlDecode, jwkThumbprint } from "../shared/index.js";
+import { InvalidBase64urlError, base64urlDecode } from "@idp/base64url";
+import { InvalidJwkError, jwkThumbprint } from "../shared/index.js";
 
 /** The JWS algorithms the IdP signs and verifies with (RFC 9864 §2.2 `Ed25519`, RFC 7518 §3.3 `RS256`). */
 export type JwsAlgorithm = "Ed25519" | "RS256";

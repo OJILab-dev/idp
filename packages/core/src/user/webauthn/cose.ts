@@ -1,7 +1,7 @@
 // COSE public keys (RFC 9052 §7, RFC 9053) for exactly the three algorithms the IdP offers in pubKeyCredParams
 // (docs/design/standards-compliance.md): -8 (EdDSA over Ed25519), -7 (ES256), and -257 (RS256). Any other key type,
 // curve, or algorithm is rejected at registration, so a stored key is always one these functions can verify with.
-import { base64urlEncode } from "../../shared/index.js";
+import { base64urlEncode } from "@idp/base64url";
 import { InvalidCborError, decodeCbor, type CborValue } from "./cbor.js";
 
 /** The COSE algorithms offered and accepted, in the order the IdP prefers them (WebAuthn Level 3 §5.4). */

@@ -16,7 +16,6 @@ export {
   type AuditTarget,
   type SqlCondition,
 } from "./audit.js";
-export { InvalidBase64urlError, base64urlDecode, base64urlEncode } from "./base64url.js";
 export { DatabaseError, type Database, type SqlRow, type SqlStatement, type SqlStatementResult, type SqlValue } from "./db.js";
 export { sha256Base64url } from "./hash.js";
 export {

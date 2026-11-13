@@ -1,6 +1,6 @@
 // JWS compact serialisation (RFC 7515 §7.1) over WebCrypto, limited to what the IdP issues: one signature, a
 // header of exactly alg, kid, and typ, and the algorithms Ed25519 and RS256. No JOSE library is needed for that.
-import { InvalidBase64urlError, base64urlDecode, base64urlEncode } from "../shared/index.js";
+import { InvalidBase64urlError, base64urlDecode, base64urlEncode } from "@idp/base64url";
 import type { JwsAlgorithm, SigningKey } from "./signing-keys.js";
 
 /** The `typ` header: `JWT` for ID tokens, `at+jwt` for access tokens (RFC 9068 §2.1), so neither passes as the other. */

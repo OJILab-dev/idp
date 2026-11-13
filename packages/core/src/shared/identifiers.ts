@@ -1,5 +1,5 @@
 // Formats of the identifiers and random values fixed by docs/design/cross-language-contract.md.
-import { InvalidBase64urlError, base64urlDecode, base64urlEncode } from "./base64url.js";
+import { InvalidBase64urlError, base64urlDecode, base64urlEncode } from "@idp/base64url";
 
 const RANDOM_TOKEN_BYTES = 32;
 

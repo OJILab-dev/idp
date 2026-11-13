@@ -1,5 +1,39 @@
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
+
+// The packages under packages/ that hold IdP or platform code. Every other directory there is a standards package
+// (docs/design/packages.md), so a new package gets the strict rules below unless it is listed here.
+const IDP_PACKAGES = new Set(["core", "d1-adapter", "cloudflare"]);
+
+const standardsPackages = readdirSync(join(import.meta.dirname, "packages"), { withFileTypes: true })
+  .filter((entry) => entry.isDirectory() && !IDP_PACKAGES.has(entry.name))
+  .map((entry) => {
+    const manifest = JSON.parse(readFileSync(join(import.meta.dirname, "packages", entry.name, "package.json"), "utf8"));
+    return { dir: entry.name, dependencies: Object.keys(manifest.dependencies ?? {}) };
+  });
+
+// A standards package depends only on the standards packages it declares and on the web-standard APIs, so a copy of
+// its directory works in another repository (docs/design/packages.md, "依存の禁止の強制").
+function standardsImportBan(dependencies) {
+  return {
+    patterns: [
+      {
+        group: ["@idp/*", "@idp/*/**", ...dependencies.map((name) => `!${name}`)],
+        message: "A standards package may import only the standards packages it declares (docs/design/packages.md).",
+      },
+      {
+        group: ["node:*", "cloudflare:*", "@cloudflare/*", "zod", "zod/*", "hono", "hono/*"],
+        message: "A standards package uses web-standard APIs only (docs/design/packages.md).",
+      },
+      {
+        group: ["../../*", "**/packages/**", "**/apps/**", ...sampleImportBan.patterns[0].group],
+        message: "A standards package must not reach outside its own directory (docs/design/packages.md).",
+      },
+    ],
+  };
+}
 
 // The IdP Worker must never contain admin use cases (design principle 1, docs/design/technology.md).
 // User-facing code may import only the user-facing and shared modules of the core.
@@ -63,6 +97,10 @@ export default tseslint.config(
     files: ["apps/worker/**/*.ts", "packages/core/src/user/**/*.ts", "packages/core/src/shared/**/*.ts"],
     rules: { "no-restricted-imports": ["error", { patterns: [...adminImportBan.patterns, ...sampleImportBan.patterns] }] },
   },
+  ...standardsPackages.map(({ dir, dependencies }) => ({
+    files: [`packages/${dir}/src/**/*.ts`],
+    rules: { "no-restricted-imports": ["error", standardsImportBan(dependencies)] },
+  })),
   {
     files: ["examples/**/*.ts"],
     rules: { "no-restricted-imports": ["error", idpImportBan] },

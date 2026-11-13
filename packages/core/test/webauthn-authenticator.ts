@@ -1,7 +1,7 @@
 // A software authenticator and client for the tests: it creates credentials and assertions the way a browser and a
 // passkey provider would, with WebCrypto keys generated per test run (no private key is committed), and every field
 // can be overridden so each verification step has a case that breaks exactly that step.
-import { base64urlEncode } from "../src/shared/index.js";
+import { base64urlEncode } from "@idp/base64url";
 
 /** A value the test CBOR encoder can write. */
 export type CborInput = number | string | boolean | null | Uint8Array | readonly CborInput[] | ReadonlyMap<number | string, CborInput>;

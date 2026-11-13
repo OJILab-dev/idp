@@ -1,5 +1,5 @@
 // The signing key's kid: the RFC 7638 JWK thumbprint with SHA-256 (docs/design/cross-language-contract.md).
-import { InvalidBase64urlError, base64urlDecode } from "./base64url.js";
+import { InvalidBase64urlError, base64urlDecode } from "@idp/base64url";
 import { sha256Base64url } from "./hash.js";
 
 // RFC 8032 §5.1.5: an Ed25519 public key is 32 bytes.

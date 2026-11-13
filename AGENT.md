@@ -91,10 +91,10 @@ mise install
 pnpm install --frozen-lockfile
 ```
 
-TypeScript の workspace（`packages/core`、`apps/worker`、`apps/admin-worker`、RP のサンプルの `examples/rp-sample`）と、D1 のスキーマ（`contract/migrations`）の正規コマンドは次のとおりです。CI（`.github/workflows/ci.yml`）も同じ `pnpm run check` を実行します。
+TypeScript の workspace（`packages/core`、標準パッケージの `packages/<規格の名前>`、`apps/worker`、`apps/admin-worker`、RP のサンプルの `examples/rp-sample`）と、D1 のスキーマ（`contract/migrations`）の正規コマンドは次のとおりです。CI（`.github/workflows/ci.yml`）も同じ `pnpm run check` を実行します。
 
 ```sh
-pnpm run typecheck   # tsc
+pnpm run typecheck   # tsc。標準パッケージは自分の tsconfig.json（Web 標準の型だけ）でも検査する
 pnpm run lint        # ESLint。IdP の Worker から管理系のモジュールへの import を禁止する規則を含む
 pnpm run test        # Vitest。D1 のスキーマのテストはローカルの D1（miniflare、workerd の SQLite）で動く
 pnpm run check       # 上の 3 つを順に実行する。コミットの前に必ず通す
