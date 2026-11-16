@@ -22,7 +22,14 @@ import { COOKIES, clearCookie, isSameOrigin, isSameOriginFetch, log, readCookie,
 import type { AppEnv } from "./app.js";
 
 /** The error kinds a page can receive. Each names what the user can do next, never which check failed. */
-type ErrorKind = "invalid_request" | "no_session" | "cross_origin_request" | "passkey_rejected" | "limit_reached" | "last_passkey";
+type ErrorKind =
+  | "invalid_request"
+  | "no_session"
+  | "cross_origin_request"
+  | "passkey_rejected"
+  | "unknown_credential"
+  | "limit_reached"
+  | "last_passkey";
 
 type Refusal = { readonly status: 400 | 401 | 403 | 409; readonly error: ErrorKind };
 
@@ -50,8 +57,22 @@ type Body = Readonly<Record<string, unknown>>;
 
 const INVALID_REQUEST: PasskeyRejection = { kind: "rejected", reason: "invalid_request" };
 
-function refuse(c: Context<AppEnv>, route: string, rejection: PasskeyRejection): Response {
-  const { status, error } = REFUSALS[rejection.reason];
+// The one exception, on /webauthn/auth/verify only: a passkey the IdP does not know (revoked, or never registered)
+// gets its own kind, so the sign-in page can tell the browser to forget it (WebAuthn Level 3 signalUnknownCredential).
+// The core answers it only after the challenge proved to belong to this browser's live authorize request, and it says
+// no more than that one random, unguessable credential ID is not registered. Elsewhere (add and revoke) the same
+// reason means a passkey of another user, so it stays passkey_rejected.
+const SIGN_IN_REFUSALS: Readonly<Partial<Record<PasskeyRejectionReason, Refusal>>> = {
+  unknown_credential: { status: 403, error: "unknown_credential" },
+};
+
+function refuse(
+  c: Context<AppEnv>,
+  route: string,
+  rejection: PasskeyRejection,
+  overrides: Readonly<Partial<Record<PasskeyRejectionReason, Refusal>>> = {},
+): Response {
+  const { status, error } = overrides[rejection.reason] ?? REFUSALS[rejection.reason];
   log({ route, status, reason: rejection.reason });
   return c.json({ error }, status);
 }
@@ -109,7 +130,7 @@ export function mountWebauthnRoutes(app: Hono<AppEnv>, deps: (c: Context<AppEnv>
       sessionToken: session(c),
       credential: body["credential"],
     });
-    if (result.kind === "rejected") return refuse(c, "auth_verify", result);
+    if (result.kind === "rejected") return refuse(c, "auth_verify", result, SIGN_IN_REFUSALS);
     // The authorize request cookie stays: the page posts /authorize/resume next, which consumes it.
     writeCookie(c, COOKIES.session, result.sessionToken, result.expiresAt - clock.now());
     log({ route: "auth_verify", status: 204 });
@@ -134,7 +155,8 @@ export function mountWebauthnRoutes(app: Hono<AppEnv>, deps: (c: Context<AppEnv>
 
   app.get("/webauthn/credentials", async (c) => {
     const result = await listOwnPasskeys(deps(c), { sessionToken: session(c) });
-    return result.kind === "passkeys" ? succeed(c, "credentials", { credentials: result.passkeys }) : refuse(c, "credentials", result);
+    if (result.kind === "rejected") return refuse(c, "credentials", result);
+    return succeed(c, "credentials", { rp_id: result.rpId, user_handle: result.userHandle, credentials: result.passkeys });
   });
 
   app.post("/webauthn/add/begin", async (c) => {

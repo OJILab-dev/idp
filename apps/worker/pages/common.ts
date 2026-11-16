@@ -167,3 +167,40 @@ export async function createCredential(options: unknown): Promise<unknown> {
   if (!(credential instanceof PublicKeyCredential)) throw new DOMException("no credential", "NotAllowedError");
   return credential.toJSON();
 }
+
+// The signal methods are best-effort hints to the authenticator (WebAuthn Level 3 §5.1.10): a browser without them,
+// or one that rejects the call, changes nothing the user sees, so every call is feature-detected and its failure,
+// synchronous or not, is dropped.
+function bestEffort(call: () => Promise<void>): void {
+  try {
+    void call().catch(() => undefined);
+  } catch {
+    // A synchronous throw (a partial implementation) is as harmless as a rejection.
+  }
+}
+
+/**
+ * Tells the browser that the RP does not know a credential, so the authenticator can hide or delete that passkey
+ * (`PublicKeyCredential.signalUnknownCredential`, §5.1.10.2). Call it only when the Worker answered `unknown_credential`.
+ *
+ * @param rpId The RP ID of the ceremony.
+ * @param credentialId The rejected credential's ID, base64url.
+ */
+export function signalUnknownCredential(rpId: string, credentialId: string): void {
+  if (typeof PublicKeyCredential === "undefined" || typeof PublicKeyCredential.signalUnknownCredential !== "function") return;
+  bestEffort(() => PublicKeyCredential.signalUnknownCredential({ rpId, credentialId }));
+}
+
+/**
+ * Tells the browser the complete list of the user's passkeys the RP still accepts, so the authenticator can hide or
+ * delete the others for that user (`PublicKeyCredential.signalAllAcceptedCredentials`, §5.1.10.3). The list must be complete:
+ * a passkey missing from it may disappear from the authenticator.
+ *
+ * @param rpId The RP ID.
+ * @param userId The user's user handle, base64url.
+ * @param allAcceptedCredentialIds Every credential ID the RP accepts for the user, base64url.
+ */
+export function signalAllAcceptedCredentials(rpId: string, userId: string, allAcceptedCredentialIds: readonly string[]): void {
+  if (typeof PublicKeyCredential === "undefined" || typeof PublicKeyCredential.signalAllAcceptedCredentials !== "function") return;
+  bestEffort(() => PublicKeyCredential.signalAllAcceptedCredentials({ rpId, userId, allAcceptedCredentialIds: [...allAcceptedCredentialIds] }));
+}

@@ -1,13 +1,41 @@
 // The sign-in page (docs/design/authentication.md, steps 4 to 6). Each load takes one challenge bound to the
 // authorize request cookie; the conditional (autofill) request and the button share it, and the button aborts the
 // conditional request first. After /webauthn/auth/verify the form posts to /authorize/resume.
-import { ApiError, api, applyMessages, describeFailure, element, getAssertion, pageLocale, showStatus, supportsPasskeys, t } from "./common.js";
+import {
+  ApiError,
+  api,
+  applyMessages,
+  describeFailure,
+  element,
+  getAssertion,
+  pageLocale,
+  showStatus,
+  signalUnknownCredential,
+  supportsPasskeys,
+  t,
+} from "./common.js";
 
 const locale = pageLocale();
 applyMessages(locale);
 
-async function finish(credential: unknown): Promise<void> {
-  await api("POST", "/webauthn/auth/verify", { credential });
+function stringField(value: unknown, name: string): string | undefined {
+  const field = typeof value === "object" && value !== null ? (value as Record<string, unknown>)[name] : undefined;
+  return typeof field === "string" ? field : undefined;
+}
+
+async function finish(options: unknown, credential: unknown): Promise<void> {
+  try {
+    await api("POST", "/webauthn/auth/verify", { credential });
+  } catch (error) {
+    // The IdP no longer knows this passkey (revoked, or never registered): ask the authenticator to stop offering it.
+    // Only this answer signals; any other failure may be transient and must leave the passkey alone.
+    if (error instanceof ApiError && error.type === "unknown_credential") {
+      const rpId = stringField(options, "rpId");
+      const credentialId = stringField(credential, "id");
+      if (rpId !== undefined && credentialId !== undefined) signalUnknownCredential(rpId, credentialId);
+    }
+    throw error;
+  }
   // A form POST rather than a fetch: the response is the redirect to the RP, which the browser must follow.
   element<HTMLFormElement>("resume").submit();
 }
@@ -44,7 +72,7 @@ async function main(): Promise<void> {
     showStatus("error", "");
     showStatus("status", t(locale, "signin_working"));
     getAssertion(options)
-      .then(finish)
+      .then((credential) => finish(options, credential))
       .catch((error: unknown) => {
         showStatus("status", "");
         showStatus("error", describeFailure(locale, error));
@@ -57,7 +85,7 @@ async function main(): Promise<void> {
   if (await PublicKeyCredential.isConditionalMediationAvailable()) {
     conditional = new AbortController();
     getAssertion(options, { mediation: "conditional", signal: conditional.signal })
-      .then(finish)
+      .then((credential) => finish(options, credential))
       .catch((error: unknown) => {
         // The button aborts the autofill request on purpose; only a real failure is shown.
         if (!(error instanceof DOMException && error.name === "AbortError")) showStatus("error", describeFailure(locale, error));

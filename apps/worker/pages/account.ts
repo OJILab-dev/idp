@@ -11,6 +11,7 @@ import {
   getAssertion,
   pageLocale,
   showStatus,
+  signalAllAcceptedCredentials,
   supportsPasskeys,
   t,
   wireLanguageSelector,
@@ -26,8 +27,16 @@ type PasskeyRow = {
   readonly backup_state: boolean;
 };
 
+/** The body of `GET /webauthn/credentials`: the session user's own passkeys, the RP ID, and the user's user handle. */
+type CredentialsBody = {
+  readonly rp_id: string;
+  readonly user_handle: string;
+  readonly credentials: readonly PasskeyRow[];
+};
+
 let locale: UiLocale = pageLocale();
 let rows: readonly PasskeyRow[] = [];
+let owner: { readonly rpId: string; readonly userHandle: string } | undefined;
 applyMessages(locale);
 wireLanguageSelector(locale, (next) => {
   locale = next;
@@ -60,10 +69,14 @@ function render(): void {
 }
 
 async function load(): Promise<void> {
-  const body = (await api("GET", "/webauthn/credentials")) as { readonly credentials: readonly PasskeyRow[] };
+  const body = (await api("GET", "/webauthn/credentials")) as CredentialsBody;
   rows = body.credentials;
+  owner = { rpId: body.rp_id, userHandle: body.user_handle };
   element("signed-in").hidden = false;
   render();
+  // The list is every passkey the IdP still accepts for this user, so the authenticator can drop the ones revoked
+  // here or by the administrator. Every add and revoke reloads the list, so this also runs after each of them.
+  signalAllAcceptedCredentials(owner.rpId, owner.userHandle, rows.map((row) => row.credential_id));
 }
 
 async function addPasskey(): Promise<void> {
@@ -79,8 +92,12 @@ async function revokePasskey(credentialId: string): Promise<void> {
     readonly session_ended: boolean;
   };
   // Revoking the passkey this session was signed in with ends the session too (authentication.md, revocation step 4).
-  if (result.session_ended) signedOut(t(locale, "account_revoked_signed_out"));
-  else await load();
+  // The list cannot be reloaded without a session, so the signal goes out with the last list minus the revoked one.
+  if (result.session_ended) {
+    rows = rows.filter((row) => row.credential_id !== credentialId);
+    if (owner !== undefined) signalAllAcceptedCredentials(owner.rpId, owner.userHandle, rows.map((row) => row.credential_id));
+    signedOut(t(locale, "account_revoked_signed_out"));
+  } else await load();
 }
 
 async function signOut(): Promise<void> {
