@@ -32,6 +32,7 @@ const SESSION = "__Host-session";
 const AUTHORIZE_REQUEST = "__Host-authorize_request";
 const SAME_ORIGIN = { "sec-fetch-site": "same-origin" } as const;
 const ENROLL_TOKEN = "ZW5yb2xsLXRva2VuLWVucm9sbC10b2tlbi1lbnJvbGw";
+const OTHER_USER = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
 
 type Options = { readonly challenge: string } & Readonly<Record<string, unknown>>;
 
@@ -136,7 +137,7 @@ describe("passkey sign-in", () => {
     expect(await f.core.query("SELECT 1 FROM sessions")).toHaveLength(1);
   });
 
-  it("refuses an assertion signed for another origin and one by an unknown passkey alike", async () => {
+  it("refuses an assertion signed for another origin generically, and names only an unknown passkey", async () => {
     const f = fixture();
     const passkey = await seedUser(f);
     const requestId = await startAuthorize(f);
@@ -145,7 +146,8 @@ describe("passkey sign-in", () => {
     const phished = await authenticationResponse(passkey, challenge, { ...RP, origin: "https://evil.example.net" });
     await expectRefusal(await page(f, "POST", "/webauthn/auth/verify", { cookies, json: { credential: phished } }), 403, "passkey_rejected");
     const stranger = await authenticationResponse(await generateCredential(-8), challenge, RP);
-    await expectRefusal(await page(f, "POST", "/webauthn/auth/verify", { cookies, json: { credential: stranger } }), 403, "passkey_rejected");
+    // Its own kind, so the page can signal the browser to forget the passkey (WebAuthn signalUnknownCredential).
+    await expectRefusal(await page(f, "POST", "/webauthn/auth/verify", { cookies, json: { credential: stranger } }), 403, "unknown_credential");
   });
 });
 
@@ -273,10 +275,21 @@ describe("enrollment through an enroll link", () => {
 describe("the account page's API", () => {
   const fixture = useFixture();
 
-  async function listed(f: Fixture, session: string): Promise<readonly Readonly<Record<string, unknown>>[]> {
+  type Listing = { readonly rp_id: string; readonly user_handle: string; readonly credentials: readonly Readonly<Record<string, unknown>>[] };
+
+  async function listing(f: Fixture, session: string): Promise<Listing> {
     const res = await page(f, "GET", "/webauthn/credentials", { cookies: { [SESSION]: session } });
     expect(res.status).toBe(200);
-    return ((await res.json()) as { credentials: Readonly<Record<string, unknown>>[] }).credentials;
+    return (await res.json()) as Listing;
+  }
+
+  async function listed(f: Fixture, session: string): Promise<readonly Readonly<Record<string, unknown>>[]> {
+    return (await listing(f, session)).credentials;
+  }
+
+  async function userHandleOf(f: Fixture, userId: string): Promise<string> {
+    const [row] = await f.core.query("SELECT user_handle FROM users WHERE id = ?", userId);
+    return base64urlEncode(row?.["user_handle"] as Uint8Array);
   }
 
   async function add(f: Fixture, session: string, signer: SoftCredential): Promise<SoftCredential> {
@@ -300,13 +313,27 @@ describe("the account page's API", () => {
     return page(f, "POST", "/webauthn/revoke/verify", { cookies, json: { credential_id: idOf(target), credential: assertion } });
   }
 
-  it("lists only the fields the design allows", async () => {
+  it("lists only the fields the design allows, with the RP ID and the session user's own user handle", async () => {
     const f = fixture();
     const passkey = await seedUser(f);
+    await f.core.addUser(OTHER_USER, { name: "Bob" });
+    await addSoftPasskey(f, OTHER_USER, NOW - 3000);
     const session = await f.core.addSession(USER, idOf(passkey));
-    expect(await listed(f, session)).toEqual([
-      { credential_id: idOf(passkey), created_at: NOW - 4000, last_used_at: null, created_via: "enroll", backup_state: true },
-    ]);
+    expect(await listing(f, session)).toEqual({
+      rp_id: RP.rpId,
+      user_handle: await userHandleOf(f, USER),
+      credentials: [{ credential_id: idOf(passkey), created_at: NOW - 4000, last_used_at: null, created_via: "enroll", backup_state: true }],
+    });
+  });
+
+  it("keeps another user's passkey generic on revoke, unlike an unknown one at sign-in", async () => {
+    const f = fixture();
+    const passkey = await seedUser(f);
+    await f.core.addUser(OTHER_USER, { name: "Bob" });
+    const theirs = await addSoftPasskey(f, OTHER_USER, NOW - 3000);
+    const session = await f.core.addSession(USER, idOf(passkey));
+    const res = await page(f, "POST", "/webauthn/revoke/begin", { cookies: { [SESSION]: session }, json: { credential_id: idOf(theirs) } });
+    await expectRefusal(res, 403, "passkey_rejected");
   });
 
   it("refuses the list without a session, and for a disabled user", async () => {
