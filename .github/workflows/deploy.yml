@@ -122,11 +122,13 @@ jobs:
         run: |
           set +x
           remote_url="$(git remote get-url origin)"
+          basic="$(printf 'x-access-token:%s' "${GH_READ_TOKEN}" | base64 | tr -d '\n')"
+          echo "::add-mask::${basic}"
           GIT_CONFIG_KEY_0="http.${remote_url}.extraheader"
-          GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GH_READ_TOKEN}" | base64 -w 0)"
+          GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${basic}"
           export GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
           export GIT_CONFIG_COUNT=1
-          unset GH_READ_TOKEN
+          unset GH_READ_TOKEN basic
           source scripts/lib.sh
           require_main_head "${GITHUB_WORKSPACE}" "${GITHUB_SHA}"
 

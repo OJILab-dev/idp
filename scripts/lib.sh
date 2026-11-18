@@ -396,8 +396,9 @@ require_checkout_commit() {
 }
 
 # Stops unless the checkout is the given commit and that commit is still the head of the remote's main, read
-# directly from the remote (no remote-tracking ref). The CI deploy calls it with GITHUB_SHA: GitHub's concurrency
-# serialises runs but does not order them, and a run can be re-run later, so without this an older merge could apply
+# directly from the remote (no remote-tracking ref). The deploy workflow calls it with GITHUB_SHA before loading
+# deployment credentials: GitHub's concurrency serialises runs but does not order them, and a run can be re-run
+# later, so without this an older merge could apply
 # and deploy over a newer one, after the newer one's forward-only migrations (docs/design/deployment.md).
 require_main_head() {
   local repo="${1}"

@@ -589,8 +589,17 @@ test_require_main_head() {
     export GITHUB_WORKSPACE="${root}/work" GITHUB_SHA="${head}" GH_READ_TOKEN="fake-read-token"
     export GITHUB_SERVER_URL="https://github.com" GITHUB_REPOSITORY="test/private"
     cd "${IDP_REPO_ROOT}"
-    assert_succeeds "workflow authenticates the private main read" bash -x "${root}/check-main.sh" >"${root}/out" 2>"${root}/err"
-    assert_fails "workflow does not echo the token or header" grep -E 'fake-read-token|AUTHORIZATION: basic' "${root}/out" "${root}/err"
+    local status=0
+    bash -x "${root}/check-main.sh" >"${root}/out" 2>"${root}/err" || status="$?"
+    assert_equal "workflow authenticates the private main read" "0" "${status}"
+    local basic
+    basic="$(printf 'x-access-token:fake-read-token' | base64 | tr -d '\n')"
+    assert_equal "workflow masks the encoded credential exactly once" "1" "$(grep -Fxc "::add-mask::${basic}" "${root}/out" || true)"
+    # The runner consumes this exact mask command without displaying its value. Every other output must be safe,
+    # including stderr from a shell started with xtrace. Do not exclude arbitrary add-mask commands.
+    grep -Fvx "::add-mask::${basic}" "${root}/out" >"${root}/visible-out" || true
+    assert_fails "workflow does not echo credentials outside the mask command" \
+      grep -E "fake-read-token|AUTHORIZATION: basic|${basic}" "${root}/visible-out" "${root}/err"
     assert_fails "workflow does not persist Git credentials" command git -C "${root}/work" config --local --get-regexp 'http\..*extraheader'
     [[ "${failures}" -eq 0 ]]
   ) || failures=$((failures + 1))
