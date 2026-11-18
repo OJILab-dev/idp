@@ -45,14 +45,16 @@ Terraform とシェルスクリプトの検査は CI（[.github/workflows/ci.yml
 
 ### Repository settings
 
-GitHub 上のリポジトリ設定は、リポジトリのルートの `./setup-repository.sh` で適用します。設定を変更せずドリフトだけを確認するときは `--check` を付けます（AGENT.md の「Repository settings」）。
+setup スクリプトの Organization の確認と 1Password の入力は、`bash scripts/test/setup.test.sh` で検査します。GitHub と 1Password には接続せず、偽の認証情報を使います。
+
+GitHub 上のリポジトリ設定は、リポジトリのルートの `./setup-repository.sh` で適用します。設定を変更せずドリフトだけを確認するときは `--check` を付けます（AGENT.md の「Repository settings」）。対象の GitHub Organization は環境変数 `IDP_GITHUB_ORG` で指定でき、未設定または空の場合は `OJILab-dev` を使います。別の Organization では、適用時と `--check` のどちらにも指定します。
 
 ### 1Password Environments による CD
 
 CD 用 Secret の正本は 1Password Environment に置き、GitHub Actions の OIDC token を 1Password が検証して、許可された job にだけ実行時に渡します。
 GitHub には 1Password Integration Key 以外の長寿命 Secret を保存しません。
 1Password 側で作成した Workload ID と Environment ID は、`./setup-1password-integration.sh` で GitHub 側へ設定します。ドリフトだけを確認するときは `--check` を付けます（AGENT.md の「1Password integration」）。
-Environment と GitHub Actions destination の作成手順、命名規則、権限、ローテーションは [1Password Environments と GitHub Actions](deployment/secret.md) を参照してください。
+別の Organization では `IDP_GITHUB_ORG` を指定します。Integration Key を読むアカウントは `OP_ACCOUNT`、保管先の secret reference は `OP_INTEGRATION_KEY_REF` で変更できます。既定値と、Environment と GitHub Actions destination の作成手順、命名規則、権限、ローテーションは [1Password Environments と GitHub Actions](deployment/secret.md) を参照してください。
 
 ### GitHub Actions の pin
 

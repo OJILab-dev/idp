@@ -93,6 +93,18 @@ OP_ENVIRONMENT_ID='<environment-id>' \
 このscriptは2つのIDをrepository variablesへ登録し、VaultのIntegration Keyを値を表示せずrepository secretへ渡します。
 GitHub Freeのprivate repositoryでも一貫して参照できるよう、これら3つはGitHub Environmentではなくrepository levelへ置きます。
 
+別のOrganizationや1Passwordアカウントで使う場合は、実行時に次の環境変数を指定します。未設定または空の場合は既定値を使います。
+
+| 環境変数 | 用途 | 既定値 |
+| --- | --- | --- |
+| `IDP_GITHUB_ORG` | 対象repositoryのGitHub Organization | `OJILab-dev` |
+| `OP_ACCOUNT` | Integration Keyを読む1Passwordアカウント | `ojilab.1password.com` |
+| `OP_INTEGRATION_KEY_REF` | Integration Keyのsecret reference | `op://github-organization/OP_INTEGRATION_KEY/password` |
+
+`OP_INTEGRATION_KEY_REF`には秘密の値ではなく、保管先の参照を指定します。指定したアカウントで認証し、そのOrganizationのProviderが発行したIntegration Keyを保管しておきます。`OJILab-dev/template-cf-stack`では、環境変数にかかわらず実行を拒否します。
+
+`--check`はGitHub側の変数とSecretの存在を確認し、Workload IDとEnvironment IDを指定した場合はその値も照合します。1Passwordは読まず、Integration Keyの値は照合しません。別のOrganizationでは`--check`にも`IDP_GITHUB_ORG`を指定します。
+
 ## Workflowでの参照
 
 deploy jobだけに`id-token: write`を付与します（例外はIdPのPRの`terraform plan` jobで、下の「制約」を参照）。

@@ -3,9 +3,13 @@
 set -eu
 
 mode=apply
+github_org=${IDP_GITHUB_ORG:-OJILab-dev}
 
 usage() {
-  printf '%s\n' "Usage: ./setup-repository.sh [--check]"
+  printf '%s\n' "Usage: ./setup-repository.sh [--check]" \
+    "" \
+    "環境変数（未設定または空の場合は既定値を使います）:" \
+    "  IDP_GITHUB_ORG  対象の GitHub Organization（既定値: OJILab-dev）"
 }
 
 fail() {
@@ -48,10 +52,10 @@ gh auth status -h github.com >/dev/null 2>&1 || fail "gh is not authenticated to
 
 repository=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 case "$repository" in
-  OJILab-dev/*)
+  "$github_org"/*)
     ;;
   *)
-    fail "repository must belong to OJILab-dev: $repository"
+    fail "repository must belong to $github_org: $repository"
     ;;
 esac
 

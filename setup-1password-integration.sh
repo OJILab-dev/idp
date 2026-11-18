@@ -3,9 +3,18 @@
 set -eu
 
 mode=apply
+github_org=${IDP_GITHUB_ORG:-OJILab-dev}
+op_account=${OP_ACCOUNT:-ojilab.1password.com}
+integration_key_ref=${OP_INTEGRATION_KEY_REF:-op://github-organization/OP_INTEGRATION_KEY/password}
 
 usage() {
-  printf '%s\n' "Usage: OP_WORKLOAD_ID=<id> OP_ENVIRONMENT_ID=<id> ./setup-1password-integration.sh [--check]"
+  printf '%s\n' "Usage: OP_WORKLOAD_ID=<id> OP_ENVIRONMENT_ID=<id> ./setup-1password-integration.sh [--check]" \
+    "" \
+    "環境変数（未設定または空の場合は既定値を使います）:" \
+    "  IDP_GITHUB_ORG          対象の GitHub Organization（既定値: OJILab-dev）" \
+    "  OP_ACCOUNT              Integration Key を読む 1Password アカウント（既定値: ojilab.1password.com）" \
+    "  OP_INTEGRATION_KEY_REF  Integration Key の secret reference（既定値: op://github-organization/OP_INTEGRATION_KEY/password）" \
+    "--check は 1Password を読まず、GitHub 側の設定だけを確認します。"
 }
 
 fail() {
@@ -50,10 +59,10 @@ case "$repository" in
   OJILab-dev/template-cf-stack)
     fail "run this script in a repository generated from the template"
     ;;
-  OJILab-dev/*)
+  "$github_org"/*)
     ;;
   *)
-    fail "repository must belong to OJILab-dev: $repository"
+    fail "repository must belong to $github_org: $repository"
     ;;
 esac
 
@@ -93,8 +102,8 @@ if [ "$mode" = apply ]; then
   note "Configuring 1Password integration for $repository"
   gh variable set OP_WORKLOAD_ID --repo "$repository" --body "$OP_WORKLOAD_ID"
   gh variable set OP_ENVIRONMENT_ID --repo "$repository" --body "$OP_ENVIRONMENT_ID"
-  integration_key=$(op read 'op://github-organization/OP_INTEGRATION_KEY/password' \
-    --account ojilab.1password.com)
+  integration_key=$(op read "$integration_key_ref" \
+    --account "$op_account")
   [ -n "$integration_key" ] || fail "1Password returned an empty Integration Key"
   printf '%s' "$integration_key" | gh secret set OP_INTEGRATION_KEY --repo "$repository"
   unset integration_key
