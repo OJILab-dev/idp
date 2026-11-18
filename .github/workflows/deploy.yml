@@ -114,9 +114,19 @@ jobs:
           persist-credentials: false
 
       # Concurrency serialises runs but does not order them, and an old run can be re-run: a commit that is no longer
-      # the head of main stops here, before any credential is loaded. scripts/deploy.sh checks the same again.
+      # the head of main stops here, before deployment credentials are loaded. Keep the read token in this step
+      # only, never in the checkout or the later build (which runs dependency code).
       - name: Require the head of main
+        env:
+          GH_READ_TOKEN: ${{ github.token }}
         run: |
+          set +x
+          remote_url="$(git remote get-url origin)"
+          GIT_CONFIG_KEY_0="http.${remote_url}.extraheader"
+          GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "${GH_READ_TOKEN}" | base64 -w 0)"
+          export GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0
+          export GIT_CONFIG_COUNT=1
+          unset GH_READ_TOKEN
           source scripts/lib.sh
           require_main_head "${GITHUB_WORKSPACE}" "${GITHUB_SHA}"
 

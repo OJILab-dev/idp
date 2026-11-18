@@ -385,6 +385,16 @@ require_reviewed_checkout() {
     fail "HEAD (${head}) is not ${remote}/main (${reviewed}); check out the reviewed main before a local deploy"
 }
 
+# Checks the local identity without network access; CI's workflow owns the authenticated main-head check.
+require_checkout_commit() {
+  local repo="${1}"
+  local commit="${2}"
+  [[ "${commit}" =~ ^[0-9a-f]{40}$ ]] || fail "not a commit ID: ${commit}"
+  local head
+  head="$(git -C "${repo}" rev-parse HEAD)" || fail "cannot read HEAD of ${repo}"
+  [[ "${head}" == "${commit}" ]] || fail "the checkout (${head}) is not the commit to deploy (${commit})"
+}
+
 # Stops unless the checkout is the given commit and that commit is still the head of the remote's main, read
 # directly from the remote (no remote-tracking ref). The CI deploy calls it with GITHUB_SHA: GitHub's concurrency
 # serialises runs but does not order them, and a run can be re-run later, so without this an older merge could apply
@@ -393,10 +403,7 @@ require_main_head() {
   local repo="${1}"
   local commit="${2}"
   local remote="${3:-origin}"
-  [[ "${commit}" =~ ^[0-9a-f]{40}$ ]] || fail "not a commit ID: ${commit}"
-  local head
-  head="$(git -C "${repo}" rev-parse HEAD)" || fail "cannot read HEAD of ${repo}"
-  [[ "${head}" == "${commit}" ]] || fail "the checkout (${head}) is not the commit to deploy (${commit})"
+  require_checkout_commit "${repo}" "${commit}"
   local main
   main="$(git -C "${repo}" ls-remote --exit-code "${remote}" refs/heads/main | cut -f 1)" ||
     fail "cannot read main from ${remote}"

@@ -369,15 +369,21 @@ test_stops_before_any_change() {
   rm -rf "${tree}"
 }
 
-# A late or re-run CI job for a commit that is no longer the head of main stops before any change, so it never
-# rolls back a newer deploy.
-test_ci_refuses_an_older_commit() {
+# The workflow owns remote freshness. The deploy step checks identity without needing private-repo credentials.
+test_ci_checks_only_checkout_identity() {
   local tree
   tree="$(make_tree custom_domain)"
   printf '2222222222222222222222222222222222222222\n' >"${tree}/stub/git_main"
   run_ci "${tree}" deploy.sh --ci test
-  assert_equal "CI: a commit behind main stops" "1" "$(status_of "${tree}")"
-  assert_equal "CI: a commit behind main changes nothing" "" "$(changes_of "${tree}")"
+  assert_equal "CI: relies on the workflow main-head check" "0" "$(status_of "${tree}")"
+  assert_equal "CI: never reads the remote during the build step" "0" "$(grep -c 'ls-remote' "${tree}/err" || true)"
+  rm -rf "${tree}"
+
+  tree="$(make_tree custom_domain)"
+  printf '2222222222222222222222222222222222222222\n' >"${tree}/stub/git_head"
+  run_ci "${tree}" deploy.sh --ci test
+  assert_equal "CI: a different checkout stops" "1" "$(status_of "${tree}")"
+  assert_equal "CI: a different checkout changes nothing" "" "$(changes_of "${tree}")"
   rm -rf "${tree}"
 
   tree="$(make_tree custom_domain)"
@@ -503,7 +509,7 @@ test_workers_dev_setting_check
 test_new_routes_are_waited_for
 test_before_signing_key
 test_stops_before_any_change
-test_ci_refuses_an_older_commit
+test_ci_checks_only_checkout_identity
 test_removes_earlier_build_output
 test_failed_idp_deploy_stops_the_admin_deploy
 test_local_deploy
