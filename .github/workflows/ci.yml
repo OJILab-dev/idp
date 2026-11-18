@@ -109,6 +109,10 @@ jobs:
       - name: scripts/deploy-rp-sample.sh and scripts/set-rp-sample-secrets.sh tests
         run: scripts/test/rp-sample.test.sh
 
+      # Offline: stub gh, op, and mise copied from the test itself; fake credentials only.
+      - name: Repository and 1Password setup tests
+        run: scripts/test/setup.test.sh
+
   e2e:
     runs-on: takumi-runner
     timeout-minutes: 20

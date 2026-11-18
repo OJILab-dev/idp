@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Offline setup tests. The command stubs use fake credentials and never contact GitHub or 1Password.
+# Offline: gh, op, and mise are copies of this test acting as stubs; no GitHub or 1Password access.
+# Keep xtrace off to check that scripts do not print even the fake Integration Key.
 set -euo pipefail
 
 case "$(basename "$0")" in
@@ -43,6 +44,9 @@ esac
 root=$(cd "$(dirname "$0")/../.." && pwd)
 tree=$(mktemp -d "$root/.setup-test.XXXXXX")
 trap 'rm -rf "$tree"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 mkdir -p "$tree/bin" "$tree/.github/rulesets"
 cp "$root"/setup-*.sh "$tree/"
 cp "$root/.github/repository-settings.json" "$tree/.github/"
@@ -73,7 +77,10 @@ assert_refused() {
     printf 'FAIL: accepted %s\n' "$TEST_REPOSITORY" >&2
     exit 1
   fi
-  grep -Fq -- "$2" "$tree/output"
+  grep -Fq -- "$2" "$tree/output" || {
+    printf 'FAIL: missing refusal message: %s\n' "$2" >&2
+    exit 1
+  }
   if grep -Eq '^gh (api|variable|secret)|^op ' "$SETUP_LOG"; then
     printf 'FAIL: accessed configuration after owner refusal\n' >&2
     exit 1
@@ -86,6 +93,13 @@ for script in setup-repository.sh setup-1password-integration.sh; do
   if grep -Eq '^op |^gh (variable|secret) set|^gh api --method' "$SETUP_LOG"; then
     printf 'FAIL: check mode read 1Password or changed configuration\n' >&2
     exit 1
+  fi
+
+  run_setup "$script"
+  if [[ "$script" == setup-repository.sh ]]; then
+    assert_logged 'gh api --method PATCH repos/OJILab-dev/idp --input .github/repository-settings.json'
+  else
+    assert_logged 'gh secret set OP_INTEGRATION_KEY --repo OJILab-dev/idp'
   fi
 
   export TEST_REPOSITORY=Example-Org/idp
@@ -114,6 +128,8 @@ export IDP_GITHUB_ORG=OJILab-dev
 assert_refused setup-1password-integration.sh 'run this script in a repository generated from the template'
 unset IDP_GITHUB_ORG
 export IDP_GITHUB_ORG=Example-Org
+assert_refused setup-1password-integration.sh 'run this script in a repository generated from the template'
+export TEST_REPOSITORY=Example-Org/template-cf-stack
 assert_refused setup-1password-integration.sh 'run this script in a repository generated from the template'
 unset IDP_GITHUB_ORG
 

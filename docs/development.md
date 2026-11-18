@@ -45,9 +45,9 @@ Terraform とシェルスクリプトの検査は CI（[.github/workflows/ci.yml
 
 ### Repository settings
 
-setup スクリプトの Organization の確認と 1Password の入力は、`bash scripts/test/setup.test.sh` で検査します。GitHub と 1Password には接続せず、偽の認証情報を使います。
+setup スクリプトの Organization の確認と 1Password の入力は、`scripts/test/setup.test.sh` で検査します。CI の `infra` ジョブでも実行します。GitHub と 1Password には接続せず、偽の認証情報を使います。
 
-GitHub 上のリポジトリ設定は、リポジトリのルートの `./setup-repository.sh` で適用します。設定を変更せずドリフトだけを確認するときは `--check` を付けます（AGENT.md の「Repository settings」）。対象の GitHub Organization は環境変数 `IDP_GITHUB_ORG` で指定でき、未設定または空の場合は `OJILab-dev` を使います。別の Organization では、適用時と `--check` のどちらにも指定します。
+GitHub 上のリポジトリ設定は、リポジトリのルートの `./setup-repository.sh` で適用します。設定を変更せずドリフトだけを確認するときは `--check` を付けます（AGENT.md の「Repository settings」）。対象の GitHub Organization は環境変数 `IDP_GITHUB_ORG` で指定できます（既定値は [1Password Environments と GitHub Actions](deployment/secret.md) 参照）。別の Organization では、適用時と `--check` のどちらにも指定します。
 
 ### 1Password Environments による CD
 

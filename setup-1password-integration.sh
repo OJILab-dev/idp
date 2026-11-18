@@ -56,7 +56,7 @@ gh auth status -h github.com >/dev/null 2>&1 || fail "gh is not authenticated to
 
 repository=$(gh repo view --json nameWithOwner --jq .nameWithOwner)
 case "$repository" in
-  OJILab-dev/template-cf-stack)
+  OJILab-dev/template-cf-stack|"$github_org"/template-cf-stack)
     fail "run this script in a repository generated from the template"
     ;;
   "$github_org"/*)

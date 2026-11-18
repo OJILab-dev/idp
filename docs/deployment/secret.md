@@ -98,10 +98,12 @@ GitHub Freeのprivate repositoryでも一貫して参照できるよう、これ
 | 環境変数 | 用途 | 既定値 |
 | --- | --- | --- |
 | `IDP_GITHUB_ORG` | 対象repositoryのGitHub Organization | `OJILab-dev` |
-| `OP_ACCOUNT` | Integration Keyを読む1Passwordアカウント | `ojilab.1password.com` |
+| `OP_ACCOUNT` | Integration Keyを読む1Passwordアカウント（`op` CLIと同じ環境変数。シェルに設定済みならその値を使う） | `ojilab.1password.com` |
 | `OP_INTEGRATION_KEY_REF` | Integration Keyのsecret reference | `op://github-organization/OP_INTEGRATION_KEY/password` |
 
-`OP_INTEGRATION_KEY_REF`には秘密の値ではなく、保管先の参照を指定します。指定したアカウントで認証し、そのOrganizationのProviderが発行したIntegration Keyを保管しておきます。`OJILab-dev/template-cf-stack`では、環境変数にかかわらず実行を拒否します。
+`OP_INTEGRATION_KEY_REF`には秘密の値ではなく、保管先の参照を指定します。実行前に、運用者は`op`で対象のアカウントにサインインし、そのOrganizationのWorkload Identity Providerが発行したIntegration Keyを参照先に保存しておきます。`OP_ACCOUNT`をシェルに設定している場合は、実行前に対象のアカウントであることを確認してください。
+
+`OJILab-dev/template-cf-stack`と、`IDP_GITHUB_ORG`で指定したOrganizationの`template-cf-stack`では実行を拒否します。
 
 `--check`はGitHub側の変数とSecretの存在を確認し、Workload IDとEnvironment IDを指定した場合はその値も照合します。1Passwordは読まず、Integration Keyの値は照合しません。別のOrganizationでは`--check`にも`IDP_GITHUB_ORG`を指定します。
 

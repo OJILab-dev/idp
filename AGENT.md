@@ -62,6 +62,7 @@ GitHub 上の設定を適用する場合は、リポジトリのルートで次�
 ```
 
 スクリプトが拒否した owner、visibility、default branch を推測で変更してはいけません。
+`IDP_GITHUB_ORG` は運用者が指定した値だけを使い、拒否を通すために推測で設定してはいけません（用途と既定値は [docs/deployment/secret.md](docs/deployment/secret.md) 参照）。
 
 ## 1Password integration
 
@@ -78,6 +79,8 @@ OP_ENVIRONMENT_ID='<environment-id>' \
 ```sh
 ./setup-1password-integration.sh --check
 ```
+
+`IDP_GITHUB_ORG`、`OP_ACCOUNT`、`OP_INTEGRATION_KEY_REF` は運用者が指定した値だけを使い、拒否を通すために推測で設定してはいけません（用途と既定値は [docs/deployment/secret.md](docs/deployment/secret.md) 参照）。
 
 1Password Service Account と `OP_SERVICE_ACCOUNT_TOKEN` を追加してはいけません。
 このリポジトリは Organization 共通の Workload Identity Provider と GitHub OIDC を使います（[docs/deployment/secret.md](docs/deployment/secret.md) 参照）。
