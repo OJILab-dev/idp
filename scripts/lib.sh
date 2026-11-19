@@ -395,11 +395,24 @@ require_checkout_commit() {
   [[ "${head}" == "${commit}" ]] || fail "the checkout (${head}) is not the commit to deploy (${commit})"
 }
 
+# The workflow's token-scoped steps only: authenticate one check without persisting credentials or tracing secrets.
+require_main_head_ci() {
+  [[ "${-}" != *x* ]] || fail "require_main_head_ci must run without xtrace"
+  [[ -n "${GH_READ_TOKEN:-}" ]] || fail "GH_READ_TOKEN is not set"
+  local remote_url
+  local basic
+  remote_url="$(git -C "${1}" remote get-url origin)" || fail "cannot read origin URL"
+  basic="$(printf 'x-access-token:%s' "${GH_READ_TOKEN}" | base64 | tr -d '\n')" || return 1
+  echo "::add-mask::${basic}"
+  GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.${remote_url}.extraheader" GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${basic}" \
+    require_main_head "$@"
+}
+
 # Stops unless the checkout is the given commit and that commit is still the head of the remote's main, read
 # directly from the remote (no remote-tracking ref). The deploy workflow calls it with GITHUB_SHA before loading
-# deployment credentials: GitHub's concurrency serialises runs but does not order them, and a run can be re-run
-# later, so without this an older merge could apply
-# and deploy over a newer one, after the newer one's forward-only migrations (docs/design/deployment.md).
+# deployment credentials and again after Terraform: GitHub's concurrency serialises runs but does not order them,
+# and a run can be re-run later, so without this an older merge could apply and deploy over a newer one, after the
+# newer one's forward-only migrations (docs/design/deployment.md).
 require_main_head() {
   local repo="${1}"
   local commit="${2}"

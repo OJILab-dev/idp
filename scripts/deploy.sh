@@ -226,7 +226,7 @@ main() {
   if [[ "${ci}" == "true" ]]; then
     # The value is checked by name only: printenv's output is discarded, so xtrace never shows the token.
     printenv CLOUDFLARE_API_TOKEN >/dev/null || fail "CLOUDFLARE_API_TOKEN is not set; load the deployment's 1Password Environment"
-    # The workflow already checked main before Terraform, under the same concurrency lock. Only check the local
+    # The workflow already checked main immediately after Terraform. Only check the local
     # identity here: a remote read would need the GitHub token in this step, where cf build runs dependency code.
     require_checkout_commit "${IDP_REPO_ROOT}" "${GITHUB_SHA:-}"
     IDP_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"

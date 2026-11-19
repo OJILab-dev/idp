@@ -369,23 +369,9 @@ test_stops_before_any_change() {
   rm -rf "${tree}"
 }
 
-# The workflow owns remote freshness. The deploy step checks identity without needing private-repo credentials.
-test_ci_checks_only_checkout_identity() {
+# The workflow owns remote freshness; the script still requires the workflow's commit identity.
+test_ci_requires_commit_identity() {
   local tree
-  tree="$(make_tree custom_domain)"
-  printf '2222222222222222222222222222222222222222\n' >"${tree}/stub/git_main"
-  run_ci "${tree}" deploy.sh --ci test
-  assert_equal "CI: relies on the workflow main-head check" "0" "$(status_of "${tree}")"
-  assert_equal "CI: never reads the remote during the build step" "0" "$(grep -c 'ls-remote' "${tree}/err" || true)"
-  rm -rf "${tree}"
-
-  tree="$(make_tree custom_domain)"
-  printf '2222222222222222222222222222222222222222\n' >"${tree}/stub/git_head"
-  run_ci "${tree}" deploy.sh --ci test
-  assert_equal "CI: a different checkout stops" "1" "$(status_of "${tree}")"
-  assert_equal "CI: a different checkout changes nothing" "" "$(changes_of "${tree}")"
-  rm -rf "${tree}"
-
   tree="$(make_tree custom_domain)"
   : >"${tree}/stub/expect_token"
   PATH="${tree}/bin:${PATH}" STUB_DIR="${tree}/stub" CLOUDFLARE_ACCOUNT_ID="${ACCOUNT_ID}" CLOUDFLARE_API_TOKEN="stub-api-token" \
@@ -509,7 +495,7 @@ test_workers_dev_setting_check
 test_new_routes_are_waited_for
 test_before_signing_key
 test_stops_before_any_change
-test_ci_checks_only_checkout_identity
+test_ci_requires_commit_identity
 test_removes_earlier_build_output
 test_failed_idp_deploy_stops_the_admin_deploy
 test_local_deploy

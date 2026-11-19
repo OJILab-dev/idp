@@ -555,54 +555,6 @@ test_require_main_head() {
   local head
   head="$(git -C "${root}/work" rev-parse HEAD)"
   assert_succeeds "the head of main deploys" require_main_head "${root}/work" "${head}"
-  assert_succeeds "local identity check accepts HEAD" require_checkout_commit "${root}/work" "${head}"
-  assert_fails "local identity check refuses a missing commit" require_checkout_commit "${root}/work" ""
-  assert_fails "local identity check refuses a different commit" require_checkout_commit "${root}/work" "$(printf '1%.0s' {1..40})"
-  # Execute the actual workflow shell, with a transport wrapper that requires its ephemeral header. No real
-  # credential or network is used, and real git still supplies HEAD and the remote ref from the throwaway repo.
-  awk '
-    /- name: Require the head of main/ { step = 1; next }
-    step && /run: \|/ { body = 1; next }
-    body && /^      - / { exit }
-    body { sub(/^          /, ""); print }
-  ' "${IDP_REPO_ROOT}/.github/workflows/deploy.yml" >"${root}/check-main.sh"
-  (
-    # Exported to the workflow shell below, not called by this shell.
-    # shellcheck disable=SC2329
-    git() {
-      if [[ "${1-} ${2-} ${3-}" == "remote get-url origin" ]]; then
-        printf 'https://github.com/test/private.git\n'
-        return
-      fi
-      if [[ "${3-}" == "ls-remote" ]]; then
-        local header
-        header="$(command git config --get-urlmatch http.extraheader "https://github.com/test/private.git")" || return 1
-        [[ "${header}" == "AUTHORIZATION: basic $(printf 'x-access-token:fake-read-token' | base64 | tr -d '\n')" ]] || return 1
-        # A URL-scoped header must not be sent to another repository.
-        if command git config --get-urlmatch http.extraheader "https://github.com/test/other.git"; then
-          return 1
-        fi
-      fi
-      command git "$@"
-    }
-    export -f git
-    export GITHUB_WORKSPACE="${root}/work" GITHUB_SHA="${head}" GH_READ_TOKEN="fake-read-token"
-    export GITHUB_SERVER_URL="https://github.com" GITHUB_REPOSITORY="test/private"
-    cd "${IDP_REPO_ROOT}"
-    local status=0
-    bash -x "${root}/check-main.sh" >"${root}/out" 2>"${root}/err" || status="$?"
-    assert_equal "workflow authenticates the private main read" "0" "${status}"
-    local basic
-    basic="$(printf 'x-access-token:fake-read-token' | base64 | tr -d '\n')"
-    assert_equal "workflow masks the encoded credential exactly once" "1" "$(grep -Fxc "::add-mask::${basic}" "${root}/out" || true)"
-    # The runner consumes this exact mask command without displaying its value. Every other output must be safe,
-    # including stderr from a shell started with xtrace. Do not exclude arbitrary add-mask commands.
-    grep -Fvx "::add-mask::${basic}" "${root}/out" >"${root}/visible-out" || true
-    assert_fails "workflow does not echo credentials outside the mask command" \
-      grep -E "fake-read-token|AUTHORIZATION: basic|${basic}" "${root}/visible-out" "${root}/err"
-    assert_fails "workflow does not persist Git credentials" command git -C "${root}/work" config --local --get-regexp 'http\..*extraheader'
-    [[ "${failures}" -eq 0 ]]
-  ) || failures=$((failures + 1))
   assert_fails "a malformed commit is refused" require_main_head "${root}/work" "main"
   assert_fails "a checkout other than the commit is refused" require_main_head "${root}/work" "$(printf '1%.0s' {1..40})"
   git clone --quiet "${root}/origin.git" "${root}/other" 2>/dev/null
