@@ -36,6 +36,8 @@ usage() {
     "" \
     "      --ci                  Take the account from CLOUDFLARE_ACCOUNT_ID and the deploy token from" \
     "                            CLOUDFLARE_API_TOKEN, both loaded from the deployment's 1Password Environment." \
+    "                            Only for the deploy workflow, after its main-head check; checks HEAD against" \
+    "                            GITHUB_SHA without reading the remote or receiving a GitHub token." \
     "                            Without it, the checkout must be clean and equal to the freshly fetched" \
     "                            origin/main, the account is read from the 1Password item, and cf uses the" \
     "                            operator's cf auth login session." \
@@ -224,9 +226,9 @@ main() {
   if [[ "${ci}" == "true" ]]; then
     # The value is checked by name only: printenv's output is discarded, so xtrace never shows the token.
     printenv CLOUDFLARE_API_TOKEN >/dev/null || fail "CLOUDFLARE_API_TOKEN is not set; load the deployment's 1Password Environment"
-    # A run whose commit is no longer the head of main (a late run or a re-run) stops before any change, so it never
-    # deploys over a newer merge and its migrations. The workflow checks the same before Terraform.
-    require_main_head "${IDP_REPO_ROOT}" "${GITHUB_SHA:-}"
+    # The workflow already checked main immediately after Terraform. Only check the local
+    # identity here: a remote read would need the GitHub token in this step, where cf build runs dependency code.
+    require_checkout_commit "${IDP_REPO_ROOT}" "${GITHUB_SHA:-}"
     IDP_ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
     [[ "${IDP_ACCOUNT_ID}" =~ ^[0-9a-f]{32}$ ]] || fail "CLOUDFLARE_ACCOUNT_ID is not a Cloudflare account ID"
     # No verify_cf_account: the token is scoped to the Environment's one account, so no session can span accounts,

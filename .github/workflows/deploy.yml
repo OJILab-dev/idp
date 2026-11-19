@@ -114,11 +114,14 @@ jobs:
           persist-credentials: false
 
       # Concurrency serialises runs but does not order them, and an old run can be re-run: a commit that is no longer
-      # the head of main stops here, before any credential is loaded. scripts/deploy.sh checks the same again.
+      # the head of main stops here, before deployment credentials are loaded. Keep the read token in this step
+      # only (and the recheck below), never in the checkout or the later build (which runs dependency code).
       - name: Require the head of main
+        env:
+          GH_READ_TOKEN: ${{ github.token }}
         run: |
           source scripts/lib.sh
-          require_main_head "${GITHUB_WORKSPACE}" "${GITHUB_SHA}"
+          require_main_head_ci "${GITHUB_WORKSPACE}" "${GITHUB_SHA}"
 
       - name: Enable Takumi Guard for npm
         uses: flatt-security/setup-takumi-guard-npm@6d4182745c1e474c35a023573c2612c085be45a4 # v1.2.0
@@ -169,6 +172,15 @@ jobs:
         run: |
           scripts/terraform.sh --ci "${DEPLOYMENT}" init
           scripts/terraform.sh --ci "${DEPLOYMENT}" apply
+
+      # Terraform may take time: recheck immediately before deployment, in a separate step so the repository
+      # token never reaches cf build or deploy. No deployment credentials are passed to this step.
+      - name: Require the head of main after Terraform
+        env:
+          GH_READ_TOKEN: ${{ github.token }}
+        run: |
+          source scripts/lib.sh
+          require_main_head_ci "${GITHUB_WORKSPACE}" "${GITHUB_SHA}"
 
       # Only the deploy token, under the name cf reads; never the Terraform token or the R2 credentials. cf build runs
       # the Vite build (dependency code) inside this step, so the deploy token is visible to that code.
